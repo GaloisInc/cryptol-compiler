@@ -18,7 +18,10 @@ common warnings
 
 common extensions
     default-extensions:
-      BlockArguments
+      BlockArguments,
+      DeriveFunctor,
+      DeriveFoldable,
+      DeriveTraversable
 
 
 library
@@ -27,7 +30,8 @@ library
       Cryptol.Compiler.IR
     -- other-modules:
     build-depends:
-      base ^>=4.14.3.0,
+      base,
+      cryptol
 
     hs-source-dirs:   src
     default-language: Haskell2010

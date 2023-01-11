@@ -1,5 +1,7 @@
 module Cryptol.Compiler.IR where
 
+import Cryptol.Utils.Panic(panic)
+
 data Name = Name String IRType
 
 data IRType =
@@ -8,6 +10,7 @@ data IRType =
   | TBool
   | TWord Int
   | TTuple [IRType]
+    deriving Show
 
 data IRDecl =
   IRFun Name [Name] IRExpr
@@ -39,6 +42,8 @@ data IRPrim e =
     deriving (Functor,Foldable,Traversable)
 
 
+
+--------------------------------------------------------------------------------
 class HasType t where
   typeOf :: t -> IRType
 
@@ -72,8 +77,9 @@ instance HasType e => HasType (IRPrim e) where
 
       Select e n ->
         case typeOf e of
-          TTuple ts | t : _ <- drop n ts -> t
-          _ -> error "typeOf: Select" -- ["Malformed Select"]
+          TTuple ts
+            | t : _ <- drop n ts -> t
+          t                      -> panic "typeOf" [ "Select", show t]
 
       Array t _ -> t
 
@@ -81,7 +87,7 @@ instance HasType e => HasType (IRPrim e) where
         case typeOf arr of
           TArray t  -> t
           TStream t -> t
-          _         -> error "typeOf: indexIn"
+          t         -> panic "typeOf" [ "IndexIn", show t ]
 
 
 
