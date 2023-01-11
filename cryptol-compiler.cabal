@@ -1,0 +1,55 @@
+cabal-version:      3.4
+name:               cryptol-compiler
+version:            0.1.0.0
+-- synopsis:
+-- description:
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Iavor Diatchki
+maintainer:         iavor.diatchki@gmail.com
+copyright:          Galois Inc, 2023
+category:           Language
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+-- extra-source-files:
+
+common warnings
+    ghc-options: -Wall
+
+common extensions
+    default-extensions:
+      BlockArguments
+
+
+library
+    import:           warnings, extensions
+    exposed-modules:
+      Cryptol.Compiler.IR
+    -- other-modules:
+    build-depends:
+      base ^>=4.14.3.0,
+
+    hs-source-dirs:   src
+    default-language: Haskell2010
+
+executable cryptol-compiler
+    import:           warnings, extensions
+    main-is:          Main.hs
+    -- other-modules:
+    build-depends:
+        base ^>=4.14.3.0,
+        cryptol-compiler
+
+    hs-source-dirs:   app
+    default-language: Haskell2010
+
+test-suite cryptol-compiler-test
+    import:           warnings, extensions
+    default-language: Haskell2010
+    -- other-modules:
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Main.hs
+    build-depends:
+        base ^>=4.14.3.0,
+        cryptol-compiler
