@@ -18,6 +18,7 @@ common warnings
 
 common extensions
     default-extensions:
+      OverloadedStrings,
       BlockArguments,
       DeriveFunctor,
       DeriveFoldable,
@@ -28,9 +29,12 @@ library
     import:           warnings, extensions
     exposed-modules:
       Cryptol.Compiler.IR
+      Cryptol.Compiler.PP
     -- other-modules:
     build-depends:
       base,
+      text,
+      pretty,
       cryptol
 
     hs-source-dirs:   src
