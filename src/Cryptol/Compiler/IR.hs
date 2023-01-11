@@ -1,9 +1,12 @@
+-- | Basic IR for code generation.
 module Cryptol.Compiler.IR where
 
 import Cryptol.Utils.Panic(panic)
 
-data Name = Name String IRType
+-- | Typed names
+data IRName name = IRName name IRType
 
+-- | Value types
 data IRType =
     TArray IRType
   | TStream IRType
@@ -12,18 +15,24 @@ data IRType =
   | TTuple [IRType]
     deriving Show
 
-data IRDecl =
-  IRFun Name [Name] IRExpr
+-- | Declarations
+data IRDecl name =
+  IRFun (IRName name) [IRName name] (IRExpr name)
 
-data IRExprF e =
-    IRVar Name
-  | IRCall Name [e]
-  | IRPrim (IRPrim e)
-  | IRIf e e e
+-- | Expressions
+newtype IRExpr name = IRExpr (IRExprF name (IRExpr name))
+
+-- | The various flavours of expressions.
+-- Expressions are split in two parse, as this makes it easier to traverse them.
+data IRExprF name expr =
+    IRVar (IRName name)
+  | IRCall (IRName name) [expr]
+  | IRPrim (IRPrim expr)
+  | IRIf expr expr expr
     deriving (Functor,Foldable,Traversable)
 
-newtype IRExpr = IRExpr (IRExprF IRExpr)
 
+-- | Primitives.
 data IRPrim e =
     WordLit Integer Int   -- ^ value, size
   | BoolLit Bool
@@ -44,13 +53,18 @@ data IRPrim e =
 
 
 --------------------------------------------------------------------------------
+-- HasType
+
+-- | Things that have a type.
 class HasType t where
+
+  -- | Compute the type of something.
   typeOf :: t -> IRType
 
-instance HasType Name where
-  typeOf (Name _ t) = t
+instance HasType (IRName name) where
+  typeOf (IRName _ t) = t
 
-instance HasType e => HasType (IRExprF e) where
+instance HasType expr => HasType (IRExprF name expr) where
   typeOf expr =
     case expr  of
       IRVar x     -> typeOf x
@@ -58,7 +72,7 @@ instance HasType e => HasType (IRExprF e) where
       IRPrim p    -> typeOf p
       IRIf _ x _  -> typeOf x
 
-instance HasType IRExpr where
+instance HasType (IRExpr name) where
   typeOf (IRExpr e) = typeOf e
 
 instance HasType e => HasType (IRPrim e) where
