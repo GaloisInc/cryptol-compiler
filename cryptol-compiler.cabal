@@ -35,7 +35,8 @@ library
       base,
       text,
       pretty,
-      cryptol
+      cryptol,
+      language-rust
 
     hs-source-dirs:   src
     default-language: Haskell2010
