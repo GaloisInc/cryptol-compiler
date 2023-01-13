@@ -1,4 +1,9 @@
 module Main where
 
+import Options
+
 main :: IO ()
-main = putStrLn "Not yet implemented"
+main =
+  do opts <- getOptions
+     print opts
+

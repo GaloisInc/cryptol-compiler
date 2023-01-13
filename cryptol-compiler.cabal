@@ -44,9 +44,11 @@ library
 executable cryptol-compiler
     import:           warnings, extensions
     main-is:          Main.hs
-    -- other-modules:
+    other-modules:
+      Options
     build-depends:
         base ^>=4.14.3.0,
+        simple-get-opt,
         cryptol-compiler
 
     hs-source-dirs:   app
