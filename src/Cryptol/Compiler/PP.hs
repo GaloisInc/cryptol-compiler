@@ -22,6 +22,8 @@ import qualified Data.Text as Text
 import qualified Text.PrettyPrint as PP
 import Data.String
 
+import qualified Cryptol.Utils.PP as Cry
+
 -- | Configuration for pretty printing
 data PPCfg = PPCfg
   { ppPrec            :: !Int   -- ^ Precedence context
@@ -39,6 +41,9 @@ defaultPPConfig = PPCfg
 
 -- | A configurable document.
 newtype Doc = Doc (PPCfg -> PP.Doc)
+
+instance Show Doc where
+  show = show . runDoc
 
 -- | Render a docuemtn with the default configuration.
 -- Use 'updPPCfg' to provide a speicific configuration.
@@ -82,6 +87,9 @@ lift2 f (Doc a) (Doc b) = Doc \cfg -> f (a cfg) (b cfg)
 liftMany :: ([PP.Doc] -> PP.Doc) -> [Doc] -> Doc
 liftMany f xs = Doc \cfg -> f [ g cfg | Doc g <- xs ]
 
+-- | This is not great
+instance PP Cry.Doc where
+  pp d = lift (PP.text (show (Cry.runDocWith Cry.defaultPPCfg  d)))
 
 instance PP Int where
   pp x = lift (PP.int x)

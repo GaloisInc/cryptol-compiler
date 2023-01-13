@@ -1,9 +1,13 @@
 module Main where
 
+import Cryptol.Compiler.Monad
+
 import Options
+
 
 main :: IO ()
 main =
   do opts <- getOptions
-     print opts
+     mods <- runCryC (mapM loadModuleByPath (optFiles opts))
+     mapM_ print mods
 

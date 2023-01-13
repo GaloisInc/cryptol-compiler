@@ -46,7 +46,7 @@ getOptions =
           exitSuccess
 
      when (null (optFiles opts))
-      do hPutStrLn stderr "No input files."
+      do hPutStrLn stderr "No input files. See --help for command line options."
          exitFailure
 
      pure opts
