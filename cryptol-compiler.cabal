@@ -33,9 +33,11 @@ library
       Cryptol.Compiler.Monad
       Cryptol.Compiler.Error
       Cryptol.Compiler.PP
+      Cryptol.Compiler.Simple
     -- other-modules:
     build-depends:
       base,
+      containers,
       text,
       pretty,
       cryptol,
@@ -53,6 +55,7 @@ executable cryptol-compiler
       Options
     build-depends:
         base ^>=4.14.3.0,
+        containers,
         simple-get-opt,
         cryptol-compiler
 

@@ -1,25 +1,47 @@
 -- | The compiler monad, used to keep track of state, configuration, errors,
 -- etc.
 module Cryptol.Compiler.Monad
-  ( CryC
-  , runCryC
+  (
+    -- * Compiler Monad
+    CryC, runCryC
+
+    -- * Loaded Modules
   , loadModuleByPath
+  , getTypes
+  , getLoadedModules
+
+    -- * Names of Primitives
+  , getPrimTypeName
+  , getPrimDeclName
+  , Cry.preludeName
+  , Cry.floatName
+
+    -- * Errors and Warnings
   , addWarning
   , throwError
+  , panic
+
+    -- * IO
   , doIO
   ) where
 
+import Data.Text(Text)
+import qualified Data.Text as Text
 import Control.Exception
 import MonadLib
 import qualified Data.ByteString as BS
+import Data.Map(Map)
+import qualified Data.Map as Map
 
 import qualified Cryptol.ModuleSystem as Cry
 import qualified Cryptol.ModuleSystem.Env as Cry
 import qualified Cryptol.TypeCheck.InferTypes as Cry
 import qualified Cryptol.TypeCheck.Solver.SMT as Cry
 import qualified Cryptol.TypeCheck.AST as Cry
+import qualified Cryptol.Utils.Ident as Cry
 import qualified Cryptol.Utils.PP as Cry
 import qualified Cryptol.Utils.Logger as Cry
+import           Cryptol.Utils.Panic (panic)
 import qualified Cryptol.Eval.Value as Cry
 
 import Cryptol.Compiler.PP(pp)
@@ -37,6 +59,18 @@ newtype CryC a = CryC (M a)
 data CompilerState = CompilerState
   { rwModuleInput :: Cry.ModuleInput IO
   , rwWarnings    :: Cry.Logger
+
+  , rwTypes       :: Maybe (Map Cry.Name Cry.Schema)
+    -- ^ This caches the types of all top-level things we know about.
+    -- It is computed the first time we try to access the types.
+    -- It is cleared if new modules are loaded, so that it gets recomputed.
+
+  , rwPrims       :: Maybe Cry.PrimMap
+    -- ^ This caches the names of loaded primitives.
+    -- These are computed the first time they are loaded and are
+    -- cleared if new modules are loaded.
+    -- The mapping is used to determined the Cryptol names assigned to
+    -- various primitives.
   }
 
 -- | Execute a computation. May throw `CompilerError` if things go wrong.
@@ -47,6 +81,8 @@ runCryC (CryC m) =
      let initialState =
            CompilerState
               { rwWarnings = Cry.stderrLogger
+              , rwTypes = Nothing
+              , rwPrims = Nothing
               , rwModuleInput =
                   Cry.ModuleInput
                      { Cry.minpCallStacks = False
@@ -83,16 +119,18 @@ doModuleCmd cmd =
        Left err -> throwError (LoadError err)
        Right (a,newEnv) ->
          do mapM_ (addWarning . LoadWarning) warnings
-            CryC (sets_ \s -> s { rwModuleInput =
+            CryC (sets_ \s -> s { rwTypes = Nothing
+                                , rwModuleInput =
                                     (rwModuleInput s)
                                        { Cry.minpModuleEnv = newEnv }})
             pure a
 
 -- | Load a module to the compiler's environment.
 -- This will also load all of the module's dependencies.
-loadModuleByPath :: FilePath -> CryC (Cry.ModulePath, Cry.TCTopEntity)
+loadModuleByPath :: FilePath -> CryC ()
 loadModuleByPath path =
-  doModuleCmd (Cry.loadModuleByPath path)
+  do _ <- doModuleCmd (Cry.loadModuleByPath path)
+     pure ()
 
 -- | Report this warning
 addWarning :: CompilerWarning -> CryC ()
@@ -103,5 +141,68 @@ addWarning w =
 -- | Abort execution with this error
 throwError :: CompilerError -> CryC a
 throwError e = CryC (raise e)
+
+-- | Get all loaded modules.
+-- These are in dependency oreder, where later modules only depend on
+-- earlier ones.
+getLoadedModules :: CryC [Cry.Module]
+getLoadedModules =
+  CryC (Cry.loadedNonParamModules . Cry.minpModuleEnv . rwModuleInput <$> get)
+
+-- | Get the name of a built-in type constructor.
+getPrimTypeName :: Cry.ModName -> Text -> CryC Cry.Name
+getPrimTypeName mn t =
+  do mp <- getPrimMap
+     case Map.lookup (Cry.PrimIdent mn t) (Cry.primTypes mp) of
+       Just nm -> pure nm
+       Nothing -> panic "getPrimTypeName"
+                    [ "Unknown primitive"
+                    , "Module: " ++ show (Cry.pp mn)
+                    , "Primitive: " ++ show (Text.unpack t)
+                    ]
+
+-- | Get the name of a built-in function/value.
+getPrimDeclName :: Cry.ModName -> Text -> CryC Cry.Name
+getPrimDeclName mn t =
+  do mp <- getPrimMap
+     case Map.lookup (Cry.PrimIdent mn t) (Cry.primDecls mp) of
+       Just nm -> pure nm
+       Nothing -> panic "getPrimDeclName"
+                    [ "Unknown primitive"
+                    , "Module: " ++ show (Cry.pp mn)
+                    , "Primitive: " ++ show (Text.unpack t)
+                    ]
+
+-- | Get the map of loaded primitives.
+getPrimMap :: CryC Cry.PrimMap
+getPrimMap =
+  do mb <- CryC (rwPrims <$> get)
+     case mb of
+       Just done -> pure done
+       Nothing ->
+         do mp <- doModuleCmd Cry.getPrimMap
+            CryC (sets_ \s -> s { rwPrims = Just mp })
+            pure mp
+
+-- | Get the types of all loaded declarations.
+getTypes :: CryC (Map Cry.Name Cry.Schema)
+getTypes =
+  do mb <- CryC (rwTypes <$> get)
+     case mb of
+       Just done -> pure done
+       Nothing ->
+         do ms <- getLoadedModules
+            let mp = Map.fromList [ d | m <- ms, d <- declsTypesOf m ]
+            CryC (sets_ \s -> s { rwTypes = Just mp })
+            pure mp
+  where
+  declsTypesOf m =
+    [ (Cry.dName d, Cry.dSignature d)
+    | dg <- Cry.mDecls m
+    , d  <- Cry.groupDecls dg
+    ]
+
+
+
 
 

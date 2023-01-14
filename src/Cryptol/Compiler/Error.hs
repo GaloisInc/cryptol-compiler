@@ -11,7 +11,7 @@ import Cryptol.Compiler.PP
 
 -- | Compiler errors.
 data CompilerError =
-  LoadError Cry.ModuleError     -- ^ Error loading a Cryptol module
+    LoadError Cry.ModuleError     -- ^ Error loading a Cryptol module
   deriving Show
 
 -- | Compiler warnings.

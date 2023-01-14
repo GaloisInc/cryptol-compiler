@@ -15,6 +15,9 @@ module Cryptol.Compiler.PP
   , ($$), vcat, vsep
   , commaSep, parens, parensAfter, brackets
   , nest
+
+    -- * Cryptol pretty printing
+  , cryPP
   ) where
 
 import Data.Text(Text)
@@ -90,6 +93,10 @@ liftMany f xs = Doc \cfg -> f [ g cfg | Doc g <- xs ]
 -- | This is not great
 instance PP Cry.Doc where
   pp d = lift (PP.text (show (Cry.runDocWith Cry.defaultPPCfg  d)))
+
+-- | Pretty print something using Cryptol's pretty printing.
+cryPP :: Cry.PP a => a -> Doc
+cryPP = pp . Cry.pp
 
 instance PP Int where
   pp x = lift (PP.int x)
