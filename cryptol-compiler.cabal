@@ -24,7 +24,7 @@ common extensions
       DeriveFoldable,
       DeriveTraversable,
       DerivingVia,
-      FlexibleInstances
+      FlexibleInstances,
       TypeFamilies,
       DataKinds
 
