@@ -1,7 +1,6 @@
 packages:
   .
   deps/cryptol
-  ../../simple-smt
 
 source-repository-package
   type: git
