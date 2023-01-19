@@ -7,7 +7,6 @@ module Cryptol.Compiler.Monad
 
     -- * Loaded Modules
   , loadModuleByPath
-  , getTypes
   , getLoadedModules
 
     -- * Names of Primitives
@@ -26,6 +25,11 @@ module Cryptol.Compiler.Monad
 
     -- * IO
   , doIO
+
+    -- * Types
+  , withLocals
+  , getTypeOf
+  , getSchemaOf
   ) where
 
 import Data.Text(Text)
@@ -41,6 +45,7 @@ import qualified Cryptol.ModuleSystem.Env as Cry
 import qualified Cryptol.TypeCheck.InferTypes as Cry
 import qualified Cryptol.TypeCheck.Solver.SMT as Cry
 import qualified Cryptol.TypeCheck.AST as Cry
+import qualified Cryptol.TypeCheck.TypeOf as Cry
 import qualified Cryptol.Utils.Ident as Cry
 import qualified Cryptol.Utils.PP as Cry
 import qualified Cryptol.Utils.Logger as Cry
@@ -51,12 +56,23 @@ import Cryptol.Compiler.PP(pp)
 import Cryptol.Compiler.Error
 
 -- | This is the implementation of the monad
-type M = ExceptionT CompilerError (StateT CompilerState IO)
+type M =
+  WithBase IO
+    '[ ReaderT    CompilerContext
+     , ExceptionT CompilerError
+     , StateT     CompilerState
+     ]
 
 -- | Common compilation functionality.
 newtype CryC a = CryC (M a)
   deriving (Functor,Applicative,Monad)
   via M
+
+
+-- | Context for compiler computations
+data CompilerContext = CompilerContext
+  { roLocalTypes :: Map Cry.Name Cry.Schema
+  }
 
 -- | State of the compiler.
 data CompilerState = CompilerState
@@ -88,7 +104,11 @@ runCryC :: CryC a -> IO a
 runCryC (CryC m) =
   Cry.withSolver (pure ()) tcSolverConfig \solver ->
   do env <- Cry.initialModuleEnv
-     let initialState =
+     let initialContext =
+           CompilerContext
+             { roLocalTypes = Map.empty
+             }
+         initialState =
            CompilerState
               { rwWarnings = Cry.stderrLogger
               , rwTypes = Nothing
@@ -102,7 +122,7 @@ runCryC (CryC m) =
                      , Cry.minpTCSolver   = solver
                      }
               }
-     (res,_) <- runStateT initialState (runExceptionT m)
+     (res,_) <- runM m initialContext initialState
      case res of
        Left err -> throwIO err
        Right a  -> pure a
@@ -214,9 +234,9 @@ getPrims =
   where
   inv mp = Map.fromList [ (x,y) | (y,x) <- Map.toList mp ]
 
--- | Get the types of all loaded declarations.
-getTypes :: CryC (Map Cry.Name Cry.Schema)
-getTypes =
+-- | Get the types of all top-level loaded declarations.
+getTopTypes :: CryC (Map Cry.Name Cry.Schema)
+getTopTypes =
   do mb <- CryC (rwTypes <$> get)
      case mb of
        Just done -> pure done
@@ -233,6 +253,31 @@ getTypes =
     ]
 
 
+-- | Add some locals for the duration of a compiler computation
+withLocals :: [(Cry.Name, Cry.Schema)] -> CryC a -> CryC a
+withLocals locs (CryC m) = CryC (mapReader upd m)
+  where
+  upd ro = ro { roLocalTypes = Map.union (Map.fromList locs) (roLocalTypes ro) }
 
+-- | Get the types of everything in scope.
+getTypes :: CryC (Map Cry.Name Cry.Schema)
+getTypes =
+  do locals  <- CryC (roLocalTypes <$> ask)
+     globals <- getTopTypes
+     -- XXX: maybe we should cache this?
+     pure (Map.union locals globals)
+
+-- | Get the type of an expression.
+-- This will panic of the expression does not have a monomorphic type.
+getTypeOf :: Cry.Expr -> CryC Cry.Type
+getTypeOf expr =
+  do env <- getTypes
+     pure (Cry.fastTypeOf env expr)
+
+-- | Get the schema of an expression.
+getSchemaOf :: Cry.Expr -> CryC Cry.Schema
+getSchemaOf expr =
+  do env <- getTypes
+     pure (Cry.fastSchemaOf env expr)
 
 

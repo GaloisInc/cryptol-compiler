@@ -25,6 +25,8 @@ common extensions
       DeriveTraversable,
       DerivingVia,
       FlexibleInstances
+      TypeFamilies,
+      DataKinds
 
 
 library
@@ -34,7 +36,6 @@ library
       Cryptol.Compiler.Monad
       Cryptol.Compiler.Error
       Cryptol.Compiler.PP
-      Cryptol.Compiler.CompileType
       Cryptol.Compiler.Simple
     -- other-modules:
     build-depends:
@@ -56,7 +57,7 @@ executable cryptol-compiler
     other-modules:
       Options
     build-depends:
-        base,
+        base ^>=4.14.3.0,
         containers,
         simple-get-opt,
         cryptol-compiler
@@ -72,5 +73,5 @@ test-suite cryptol-compiler-test
     hs-source-dirs:   test
     main-is:          Main.hs
     build-depends:
-        base,
+        base ^>=4.14.3.0,
         cryptol-compiler
