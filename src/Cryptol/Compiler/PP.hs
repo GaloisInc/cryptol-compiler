@@ -110,6 +110,12 @@ instance PP Text where
 instance IsString Doc where
   fromString = lift . PP.text
 
+instance Semigroup Doc where
+  (<>) = (<.>)
+
+instance Monoid Doc where
+  mempty = lift mempty
+
 -- | Join docuements with separation.
 hsep :: [Doc] -> Doc
 hsep = liftMany PP.hsep
@@ -162,5 +168,4 @@ brackets = lift1 PP.brackets
 -- | Separate with commas
 commaSep :: [Doc] -> Doc
 commaSep = liftMany (PP.hsep . PP.punctuate PP.comma)
-
 

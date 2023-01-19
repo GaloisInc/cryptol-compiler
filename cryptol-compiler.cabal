@@ -23,7 +23,8 @@ common extensions
       DeriveFunctor,
       DeriveFoldable,
       DeriveTraversable,
-      DerivingVia
+      DerivingVia,
+      FlexibleInstances
 
 
 library
@@ -33,6 +34,7 @@ library
       Cryptol.Compiler.Monad
       Cryptol.Compiler.Error
       Cryptol.Compiler.PP
+      Cryptol.Compiler.CompileType
       Cryptol.Compiler.Simple
     -- other-modules:
     build-depends:

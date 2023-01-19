@@ -9,16 +9,21 @@ data IRName name = IRName name IRType
 
 -- | Value types
 data IRType =
-    TArray IRType
-  | TStream IRType
+    TArray         IRSize  IRType
+  | TStream (Maybe IRSize) IRType   -- ^ Nothing means infinite
   | TBool
-  | TWord Int
+  | TWord          IRSize
   | TTuple [IRType]
+    deriving Show
+
+data IRSize =
+    IRFixed Int
+  | IRUnknown
     deriving Show
 
 -- | Declarations
 data IRDecl name =
-  IRFun (IRName name) [IRName name] (IRExpr name)
+    IRFun (IRName name) [IRName name] (IRExpr name)
 
 -- | Expressions
 newtype IRExpr name = IRExpr (IRExprF name (IRExpr name))
@@ -79,7 +84,7 @@ instance HasType (IRExpr name) where
 instance HasType e => HasType (IRPrim e) where
   typeOf prim =
     case prim of
-      WordLit _ n -> TWord n
+      WordLit _ n -> TWord (IRFixed n)
       BoolLit _   -> TBool
 
       Add x _ -> typeOf x
@@ -100,9 +105,10 @@ instance HasType e => HasType (IRPrim e) where
 
       IndexIn arr _ ->
         case typeOf arr of
-          TArray t  -> t
-          TStream t -> t
-          t         -> panic "typeOf" [ "IndexIn", show t ]
+          TArray  _sz t -> t
+          TStream _sz t -> t
+          TWord   _sz   -> TBool
+          t             -> panic "typeOf" [ "IndexIn", show t ]
 
 
 --------------------------------------------------------------------------------
@@ -112,10 +118,28 @@ instance HasType e => HasType (IRPrim e) where
 instance PP IRType where
   pp ty =
     case ty of
-      TArray t  -> brackets (pp t)
-      TStream t -> brackets ("str|" <+> pp t)
+      TArray sz t -> brackets (pp t <.> szDoc)
+        where
+        szDoc =
+          case sz of
+            IRUnknown -> mempty
+            IRFixed n -> ";" <+> pp n
+
+      TStream mbsz t -> brackets ("str|" <+> pp t <.> szdoc)
+        where
+        szdoc =
+          case mbsz of
+            Nothing -> "; inf"
+            Just sz ->
+              case sz of
+                IRUnknown -> mempty
+                IRFixed s -> ";" <+> pp s
+
       TBool     -> "bool"
-      TWord n   -> "u" <.> pp n
+      TWord sz  ->
+        case sz of
+          IRUnknown -> "bitvec"
+          IRFixed n -> "u_" <.> pp n
       TTuple ts -> parens (commaSep (map pp ts))
 
 
@@ -159,7 +183,7 @@ instance PP expr => PP (IRPrim expr) where
       Select e n  -> withPrec 1 (pp e) <.> pp n
 
       Array t es
-        | null es   -> parensAfter 0 ("[] :" <+> pp (TArray t))
+        | null es   -> parensAfter 0 ("[] :" <+> pp (TArray (IRFixed 0) t))
         | otherwise -> withPrec 0 (brackets (commaSep (map pp es)))
 
       IndexIn a i -> withPrec 1 (pp a) <.> brackets (withPrec 0 (pp i))

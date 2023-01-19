@@ -13,12 +13,15 @@ module Cryptol.Compiler.Monad
     -- * Names of Primitives
   , getPrimTypeName
   , getPrimDeclName
+  , isPrimDecl
+  , isPrimType
   , Cry.preludeName
   , Cry.floatName
 
     -- * Errors and Warnings
   , addWarning
   , throwError
+  , unsupported
   , panic
 
     -- * IO
@@ -65,12 +68,19 @@ data CompilerState = CompilerState
     -- It is computed the first time we try to access the types.
     -- It is cleared if new modules are loaded, so that it gets recomputed.
 
-  , rwPrims       :: Maybe Cry.PrimMap
+  , rwPrims       :: Maybe Prims
     -- ^ This caches the names of loaded primitives.
     -- These are computed the first time they are loaded and are
     -- cleared if new modules are loaded.
     -- The mapping is used to determined the Cryptol names assigned to
     -- various primitives.
+  }
+
+-- | Information about primitives
+data Prims = Prims
+  { primToName  :: Cry.PrimMap
+  , nameToPrimV :: Map Cry.Name Cry.PrimIdent
+  , nameToPrimT :: Map Cry.Name Cry.PrimIdent
   }
 
 -- | Execute a computation. May throw `CompilerError` if things go wrong.
@@ -142,6 +152,10 @@ addWarning w =
 throwError :: CompilerError -> CryC a
 throwError e = CryC (raise e)
 
+-- | Abort due to an unsupported feature.
+unsupported :: Text -> CryC a
+unsupported msg = throwError (Unsupported msg)
+
 -- | Get all loaded modules.
 -- These are in dependency oreder, where later modules only depend on
 -- earlier ones.
@@ -152,8 +166,8 @@ getLoadedModules =
 -- | Get the name of a built-in type constructor.
 getPrimTypeName :: Cry.ModName -> Text -> CryC Cry.Name
 getPrimTypeName mn t =
-  do mp <- getPrimMap
-     case Map.lookup (Cry.PrimIdent mn t) (Cry.primTypes mp) of
+  do mp <- getPrims
+     case Map.lookup (Cry.PrimIdent mn t) (Cry.primTypes (primToName mp)) of
        Just nm -> pure nm
        Nothing -> panic "getPrimTypeName"
                     [ "Unknown primitive"
@@ -164,8 +178,8 @@ getPrimTypeName mn t =
 -- | Get the name of a built-in function/value.
 getPrimDeclName :: Cry.ModName -> Text -> CryC Cry.Name
 getPrimDeclName mn t =
-  do mp <- getPrimMap
-     case Map.lookup (Cry.PrimIdent mn t) (Cry.primDecls mp) of
+  do mp <- getPrims
+     case Map.lookup (Cry.PrimIdent mn t) (Cry.primDecls (primToName mp)) of
        Just nm -> pure nm
        Nothing -> panic "getPrimDeclName"
                     [ "Unknown primitive"
@@ -173,16 +187,32 @@ getPrimDeclName mn t =
                     , "Primitive: " ++ show (Text.unpack t)
                     ]
 
+-- | Check if the given name is a primitive value, and if so get the
+-- primitive name.
+isPrimDecl :: Cry.Name -> CryC (Maybe Cry.PrimIdent)
+isPrimDecl nm = Map.lookup nm . nameToPrimV <$> getPrims
+
+-- | Check if the given name is a primitive type, and if so get the
+-- primitive name.
+isPrimType :: Cry.Name -> CryC (Maybe Cry.PrimIdent)
+isPrimType nm = Map.lookup nm . nameToPrimT <$> getPrims
+
 -- | Get the map of loaded primitives.
-getPrimMap :: CryC Cry.PrimMap
-getPrimMap =
+getPrims :: CryC Prims
+getPrims =
   do mb <- CryC (rwPrims <$> get)
      case mb of
        Just done -> pure done
        Nothing ->
          do mp <- doModuleCmd Cry.getPrimMap
-            CryC (sets_ \s -> s { rwPrims = Just mp })
-            pure mp
+            let ps = Prims { primToName  = mp
+                           , nameToPrimV = inv (Cry.primDecls mp)
+                           , nameToPrimT = inv (Cry.primTypes mp)
+                           }
+            CryC (sets_ \s -> s { rwPrims = Just ps })
+            pure ps
+  where
+  inv mp = Map.fromList [ (x,y) | (y,x) <- Map.toList mp ]
 
 -- | Get the types of all loaded declarations.
 getTypes :: CryC (Map Cry.Name Cry.Schema)
