@@ -1,46 +1,62 @@
 -- | Basic IR for code generation.
-module Cryptol.Compiler.IR where
+module Cryptol.Compiler.IR
+  ( module Cryptol.Compiler.IR
+  , module Cryptol.Compiler.IR.Type
+  ) where
 
 import Cryptol.Utils.Panic(panic)
+import qualified Cryptol.TypeCheck.AST as Cry
+
 import Cryptol.Compiler.PP
+import Cryptol.Compiler.IR.Type
+
+
+-- | Value types, specialized to Cryptol names
+type Type = IRType Cry.TParam
+
+-- | Possibly infinite IR size types, specialized to Cryptol names
+type StreamSize = IRStreamSize Cry.TParam
+
+-- | Size types, specialized to Cryptol names
+type Size = IRSize Cry.TParam
+
+-- | Names, specialized to Cryptol names
+type Name = IRName Cry.TParam Cry.Name
+
+-- | Declarations, specialized to Cryptol names
+type Decl = IRDecl Cry.TParam Cry.Name
+
+-- | Expressions, specialized to Cryptol names
+type Expr = IRExpr Cry.TParam Cry.Name
+
+-- | Primitives, specialized to Cryptol names
+type Prim = IRExpr Cry.TParam
+
 
 -- | Typed names
-data IRName name = IRName name IRType
-
--- | Value types
-data IRType =
-    TArray         IRSize  IRType
-  | TStream (Maybe IRSize) IRType   -- ^ Nothing means infinite
-  | TBool
-  | TWord          IRSize
-  | TTuple [IRType]
-    deriving Show
-
-data IRSize =
-    IRFixed Int
-  | IRUnknown
-    deriving Show
+data IRName tname name = IRName name (IRType tname)
 
 -- | Declarations
-data IRDecl name =
-    IRFun (IRName name) [IRName name] (IRExpr name)
+data IRDecl tname name =
+    IRFun (IRName tname name) [IRName tname name] (IRExpr tname name)
 
 -- | Expressions
-newtype IRExpr name = IRExpr (IRExprF name (IRExpr name))
+newtype IRExpr tname name = IRExpr (IRExprF tname name (IRExpr tname name))
 
 -- | The various flavours of expressions.
--- Expressions are split in two parse, as this makes it easier to traverse them.
-data IRExprF name expr =
-    IRVar (IRName name)
-  | IRCall (IRName name) [expr]
-  | IRPrim (IRPrim expr)
+-- Expressions are split in two parts because this makes it easier to
+-- write generic traversals.
+data IRExprF tname name expr =
+    IRVar (IRName tname name)
+  | IRCall (IRName tname name) [expr]
+  | IRPrim (IRPrim tname expr)
   | IRIf expr expr expr
     deriving (Functor,Foldable,Traversable)
 
 
 -- | Primitives.
-data IRPrim e =
-    WordLit Integer Int   -- ^ value, size
+data IRPrim tname e =
+    WordLit Integer (IRSize tname)
   | BoolLit Bool
 
   | Add e e
@@ -52,7 +68,7 @@ data IRPrim e =
   | Tuple [e]
   | Select e Int
 
-  | Array IRType [e]
+  | Array (IRType tname) [e]
   | IndexIn e e           -- ^ array, index
     deriving (Functor,Foldable,Traversable)
 
@@ -62,15 +78,15 @@ data IRPrim e =
 -- Computing Types
 
 -- | Things that have a type.
-class HasType t where
+class PP tname => HasType t tname | t -> tname where
 
   -- | Compute the type of something.
-  typeOf :: t -> IRType
+  typeOf :: t -> IRType tname
 
-instance HasType (IRName name) where
+instance PP tname => HasType (IRName tname name) tname where
   typeOf (IRName _ t) = t
 
-instance HasType expr => HasType (IRExprF name expr) where
+instance HasType expr tname => HasType (IRExprF tname name expr) tname where
   typeOf expr =
     case expr  of
       IRVar x     -> typeOf x
@@ -78,14 +94,14 @@ instance HasType expr => HasType (IRExprF name expr) where
       IRPrim p    -> typeOf p
       IRIf _ x _  -> typeOf x
 
-instance HasType (IRExpr name) where
+instance PP tname => HasType (IRExpr tname name) tname where
   typeOf (IRExpr e) = typeOf e
 
-instance HasType e => HasType (IRPrim e) where
+instance HasType e tname => HasType (IRPrim tname e) tname where
   typeOf prim =
     case prim of
-      WordLit _ n -> TWord (IRFixed n)
-      BoolLit _   -> TBool
+      WordLit _ sz  -> TWord sz
+      BoolLit _     -> TBool
 
       Add x _ -> typeOf x
       Sub x _ -> typeOf x
@@ -99,7 +115,7 @@ instance HasType e => HasType (IRPrim e) where
         case typeOf e of
           TTuple ts
             | t : _ <- drop n ts -> t
-          t                      -> panic "typeOf" [ "Select", show t]
+          t -> panic "typeOf" [ "Select", show (pp t) ]
 
       Array t _ -> t
 
@@ -108,49 +124,20 @@ instance HasType e => HasType (IRPrim e) where
           TArray  _sz t -> t
           TStream _sz t -> t
           TWord   _sz   -> TBool
-          t             -> panic "typeOf" [ "IndexIn", show t ]
+          t             -> panic "typeOf" [ "IndexIn", show (pp t) ]
 
 
 --------------------------------------------------------------------------------
 -- Pretty Printing
 
-
-instance PP IRType where
-  pp ty =
-    case ty of
-      TArray sz t -> brackets (pp t <.> szDoc)
-        where
-        szDoc =
-          case sz of
-            IRUnknown -> mempty
-            IRFixed n -> ";" <+> pp n
-
-      TStream mbsz t -> brackets ("str|" <+> pp t <.> szdoc)
-        where
-        szdoc =
-          case mbsz of
-            Nothing -> "; inf"
-            Just sz ->
-              case sz of
-                IRUnknown -> mempty
-                IRFixed s -> ";" <+> pp s
-
-      TBool     -> "bool"
-      TWord sz  ->
-        case sz of
-          IRUnknown -> "bitvec"
-          IRFixed n -> "u_" <.> pp n
-      TTuple ts -> parens (commaSep (map pp ts))
-
-
-instance PP name => PP (IRName name) where
+instance (PP tname, PP name) => PP (IRName tname name) where
   pp (IRName x t) =
     getPPCfg \cfg ->
       if ppShowTypes cfg
         then parensAfter 0 (pp x <+> ":" <+> pp t)
         else pp x
 
-instance (PP name, PP expr) => PP (IRExprF name expr) where
+instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
   pp expr =
     case expr of
      IRVar x        -> pp x
@@ -164,10 +151,10 @@ instance (PP name, PP expr) => PP (IRExprF name expr) where
             , nest 2 "else" <+> pp e3
             ]
 
-instance PP name => PP (IRExpr name) where
+instance (PP tname, PP name) => PP (IRExpr tname name) where
   pp (IRExpr e) = pp e
 
-instance PP expr => PP (IRPrim expr) where
+instance (PP tname, PP expr) => PP (IRPrim tname expr) where
   pp prim =
     case prim of
       WordLit n w -> pp n <.> "_u" <.> pp w
@@ -183,7 +170,7 @@ instance PP expr => PP (IRPrim expr) where
       Select e n  -> withPrec 1 (pp e) <.> pp n
 
       Array t es
-        | null es   -> parensAfter 0 ("[] :" <+> pp (TArray (IRFixed 0) t))
+        | null es -> parensAfter 0 ("[] :" <+> pp (TArray (IRFixedSize 0) t))
         | otherwise -> withPrec 0 (brackets (commaSep (map pp es)))
 
       IndexIn a i -> withPrec 1 (pp a) <.> brackets (withPrec 0 (pp i))
