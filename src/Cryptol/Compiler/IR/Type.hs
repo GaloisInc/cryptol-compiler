@@ -1,4 +1,7 @@
-module Cryptol.Compiler.IR.Type where
+module Cryptol.Compiler.IR.Type
+  ( module Cryptol.Compiler.IR.Type
+  , Cry.TFun(..)
+  ) where
 
 import qualified Cryptol.TypeCheck.TCon as Cry
 
@@ -9,22 +12,29 @@ import Cryptol.Compiler.PP
 -- | Value types
 data IRType tname =
     TBool                                         -- ^ Boolean
+  | TInteger                                      -- ^ Unbounded integer
+  | TIntegerMod (IRSize tname)                    -- ^ Z
+  | TRational                                     -- ^ Rational number
+  | TFloat                                        -- ^ Floating point small
+  | TDouble                                       -- ^ Floating point large
+
   | TWord (IRSize tname)                          -- ^ Bit vector
   | TArray (IRSize tname) (IRType tname)          -- ^ Array
-  | TStream (IRStreamSize tname) (IRType tname)   -- ^ Iterators
-  | TTuple [IRType tname]                         -- ^ Tuples
+  | TStream (IRStreamSize tname) (IRType tname)   -- ^ Iterator
+  | TTuple [IRType tname]                         -- ^ Tuple
   | TPoly tname                                   -- ^ Polymorphic
   deriving Show
 
+-- | Size types tha tcould be infinite.
 data IRStreamSize tname =
-    IRInfSize
-  | IRSize (IRSize tname)
+    IRInfSize                                     -- ^ Infinite size
+  | IRSize (IRSize tname)                         -- ^ Finite size
   deriving Show
 
 -- | Size types
 data IRSize tname =
-    IRFixedSize Integer                     -- ^ A specific size
-  | IRPolySize  tname                       -- ^ Polymorphic size; finite
+    IRFixedSize Integer                           -- ^ A specific size
+  | IRPolySize  tname                             -- ^ Polymorphic size; finite
   | IRComputedSize Cry.TFun [IRStreamSize tname]  -- ^ Computed size
     deriving Show
 
@@ -36,11 +46,15 @@ instance PP tname => PP (IRType tname) where
   pp ty =
     case ty of
       TBool         -> "Bool"
+      TInteger      -> "Integer"
+      TIntegerMod n -> parensAfter 0 ("Z" <+> withPrec 1 (pp n))
+      TRational     -> "Rational"
+      TFloat        -> "Float"
+      TDouble       -> "Double"
+      TWord n       -> parensAfter 0 ("Word"  <+> withPrec 1 (pp n))
+      TArray n t    -> parensAfter 0 ("Array" <+> withPrec 1 (pp n<+> pp t))
+      TStream n t -> parensAfter 0 ("Stream" <+> withPrec 1 (pp n <+> pp t))
       TPoly nm      -> pp nm
-      TWord sz      -> parensAfter 0 ("Word"  <+> withPrec 1 (pp sz))
-      TArray sz t   -> parensAfter 0 ("Array" <+> withPrec 1 (pp sz <+> pp t))
-      TStream sz t ->
-        parensAfter 0 ("Stream" <+> withPrec 1 (pp sz <+> pp t))
       TTuple ts     -> withPrec 0 (parens (commaSep (map pp ts)))
 
 instance PP tname => PP (IRStreamSize tname) where

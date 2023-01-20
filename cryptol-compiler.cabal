@@ -40,6 +40,7 @@ library
       Cryptol.Compiler.Error
       Cryptol.Compiler.PP
       Cryptol.Compiler.Simple
+      Cryptol.Compiler.CompileType
     -- other-modules:
     build-depends:
       base,

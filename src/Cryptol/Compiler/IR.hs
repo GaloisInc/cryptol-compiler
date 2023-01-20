@@ -10,6 +10,8 @@ import qualified Cryptol.TypeCheck.AST as Cry
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Type
 
+--------------------------------------------------------------------------------
+-- Specialization for Cryptol names
 
 -- | Value types, specialized to Cryptol names
 type Type = IRType Cry.TParam
@@ -33,12 +35,17 @@ type Expr = IRExpr Cry.TParam Cry.Name
 type Prim = IRExpr Cry.TParam
 
 
+--------------------------------------------------------------------------------
+
+
 -- | Typed names
 data IRName tname name = IRName name (IRType tname)
 
 -- | Declarations
 data IRDecl tname name =
     IRFun (IRName tname name) [IRName tname name] (IRExpr tname name)
+    -- ^ The function's result type is in the function's name.
+
 
 -- | Expressions
 newtype IRExpr tname name = IRExpr (IRExprF tname name (IRExpr tname name))
