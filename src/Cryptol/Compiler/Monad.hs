@@ -49,11 +49,11 @@ import qualified Cryptol.TypeCheck.TypeOf as Cry
 import qualified Cryptol.Utils.Ident as Cry
 import qualified Cryptol.Utils.PP as Cry
 import qualified Cryptol.Utils.Logger as Cry
-import           Cryptol.Utils.Panic (panic)
 import qualified Cryptol.Eval.Value as Cry
 
 import Cryptol.Compiler.PP(pp)
 import Cryptol.Compiler.Error
+import Cryptol.Compiler.IR
 
 -- | This is the implementation of the monad
 type M =
@@ -71,7 +71,8 @@ newtype CryC a = CryC (M a)
 
 -- | Context for compiler computations
 data CompilerContext = CompilerContext
-  { roLocalTypes :: Map Cry.Name Cry.Schema
+  { roLocalTypes    :: Map Cry.Name Cry.Schema
+  , roLocalIRNames  :: Map Cry.Name Name
   }
 
 -- | State of the compiler.
@@ -107,6 +108,7 @@ runCryC (CryC m) =
      let initialContext =
            CompilerContext
              { roLocalTypes = Map.empty
+             , roLocalIRNames = Map.empty
              }
          initialState =
            CompilerState
@@ -254,10 +256,14 @@ getTopTypes =
 
 
 -- | Add some locals for the duration of a compiler computation
-withLocals :: [(Cry.Name, Cry.Schema)] -> CryC a -> CryC a
+withLocals :: [(Cry.Name, Cry.Schema, Name)] -> CryC a -> CryC a
 withLocals locs (CryC m) = CryC (mapReader upd m)
   where
-  upd ro = ro { roLocalTypes = Map.union (Map.fromList locs) (roLocalTypes ro) }
+  locTs = Map.fromList [ (x,t) | (x,t,_) <- locs ]
+  locNs = Map.fromList [ (x,n) | (x,_,n) <- locs ]
+  upd ro = ro { roLocalTypes   = Map.union locTs (roLocalTypes ro)
+              , roLocalIRNames = Map.union locNs (roLocalIRNames ro)
+              }
 
 -- | Get the types of everything in scope.
 getTypes :: CryC (Map Cry.Name Cry.Schema)

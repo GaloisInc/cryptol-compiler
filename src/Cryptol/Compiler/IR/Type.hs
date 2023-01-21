@@ -5,7 +5,7 @@ module Cryptol.Compiler.IR.Type
 
 import qualified Cryptol.TypeCheck.TCon as Cry
 
-import Cryptol.Compiler.Monad(panic)
+import Cryptol.Compiler.Error
 import Cryptol.Compiler.PP
 
 

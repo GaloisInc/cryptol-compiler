@@ -1,10 +1,13 @@
 module Cryptol.Compiler.Simple where
 
+import Control.Monad(unless)
+
 import qualified Cryptol.Utils.Ident as Cry
 import qualified Cryptol.TypeCheck.AST as Cry
 
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.Monad
+import Cryptol.Compiler.CompileType
 
 
 compileModule :: Cry.Module -> CryC [Decl]
@@ -23,10 +26,22 @@ compileDecl d =
   case Cry.dDefinition d of
     Cry.DPrim       -> pure []
     Cry.DForeign {} -> pure [] -- XXX: Revisit
-    Cry.DExpr e     -> undefined
+    Cry.DExpr e ->
+      do let (as,ps,xs,body) = prepExprDecl e
+         unless (null as && null ps)
+                (unsupported "XXX: polymorphic declarations")
+         ns  <- mapM compileParam xs
+         def <- withLocals ns (compileExpr body)
+         undefined
 
 compileRecDecls :: [Cry.Decl] -> CryC [Decl]
 compileRecDecls d = undefined
+
+compileParam :: (Cry.Name, Cry.Type) -> CryC (Cry.Name, Cry.Schema, Name)
+compileParam (x,t) =
+  do irt <- compileValType t
+     let s = Cry.tMono t
+     pure (x, s, IRName x irt)
 
 
 prepExprDecl ::
@@ -36,8 +51,6 @@ prepExprDecl expr = (tparams, quals, args, body)
   (tparams,expr1) = Cry.splitWhile Cry.splitTAbs     expr
   (quals,expr2)   = Cry.splitWhile Cry.splitProofAbs expr1
   (args,body)     = Cry.splitWhile Cry.splitAbs      expr2
-
-
 
 compileExpr :: Cry.Expr -> CryC Expr
 compileExpr expr0 =

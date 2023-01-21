@@ -1,11 +1,15 @@
 -- | The compiler's errors and warnings.
-module Cryptol.Compiler.Error where
+module Cryptol.Compiler.Error
+  ( module Cryptol.Compiler.Error
+  , panic
+  ) where
 
 import Data.Text(Text)
 import Control.Exception
 
 import qualified Cryptol.ModuleSystem as Cry
 import qualified Cryptol.Utils.PP as Cry
+import Cryptol.Utils.Panic (panic)
 
 import Cryptol.Compiler.PP
 
