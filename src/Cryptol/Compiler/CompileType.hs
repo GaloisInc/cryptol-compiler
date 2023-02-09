@@ -9,7 +9,7 @@ import Cryptol.Compiler.Monad
 {- | Maps a Cryptol type to an IR type.
 Assumptions:
   (1) Size polymorphic type variables are finite
-  (2) Value polymorphic teyp variables are not Bit
+  (2) Value polymorphic type variables are not Bit
 
 The idea is that we generate specialized versions for polymorphic variables
 that can scope over those cases.
