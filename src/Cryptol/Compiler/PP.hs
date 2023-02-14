@@ -15,6 +15,7 @@ module Cryptol.Compiler.PP
   , ($$), vcat, vsep
   , commaSep, parens, parensAfter, brackets
   , nest
+  , showPP
 
     -- * Cryptol pretty printing
   , cryPP
@@ -25,7 +26,10 @@ import qualified Data.Text as Text
 import qualified Text.PrettyPrint as PP
 import Data.String
 
-import qualified Cryptol.Utils.PP as Cry
+import Cryptol.Utils.Ident                  qualified as Cry
+import Cryptol.Utils.PP                     qualified as Cry
+import Cryptol.ModuleSystem.Name            qualified as Cry
+import Cryptol.TypeCheck.Type               qualified as Cry
 
 -- | Configuration for pretty printing
 data PPCfg = PPCfg
@@ -107,6 +111,21 @@ instance PP Integer where
 instance PP Text where
   pp x = lift (PP.text (Text.unpack x))
 
+
+
+--------------------------------------------------------------------------------
+instance PP Cry.TParam where
+  pp = cryPP
+
+instance PP Cry.Name where
+  pp = cryPP
+
+instance PP Cry.PrimIdent where
+  pp (Cry.PrimIdent _m x) = pp x
+
+
+
+--------------------------------------------------------------------------------
 instance IsString Doc where
   fromString = lift . PP.text
 
@@ -169,3 +188,5 @@ brackets = lift1 PP.brackets
 commaSep :: [Doc] -> Doc
 commaSep = liftMany (PP.hsep . PP.punctuate PP.comma)
 
+showPP :: Show a => a -> Doc
+showPP a = lift (PP.text (show a))
