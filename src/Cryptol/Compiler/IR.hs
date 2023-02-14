@@ -4,8 +4,10 @@ module Cryptol.Compiler.IR
   , module Cryptol.Compiler.IR.Type
   ) where
 
+import Data.Ratio(numerator,denominator)
+
 import Cryptol.Utils.Panic(panic)
-import qualified Cryptol.TypeCheck.AST as Cry
+import Cryptol.TypeCheck.AST qualified as Cry
 
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Type
@@ -63,7 +65,8 @@ data IRExprF tname name expr =
 
 -- | Primitives.
 data IRPrim tname e =
-    WordLit Integer (IRSize tname)
+    IntegerLit  Integer  (IRType tname)
+  | RationalLit Rational (IRType tname)
   | BoolLit Bool
 
   | Add e e
@@ -107,8 +110,9 @@ instance PP tname => HasType (IRExpr tname name) tname where
 instance HasType e tname => HasType (IRPrim tname e) tname where
   typeOf prim =
     case prim of
-      WordLit _ sz  -> TWord sz
-      BoolLit _     -> TBool
+      IntegerLit _ t  -> t
+      RationalLit _ t -> t
+      BoolLit _       -> TBool
 
       Add x _ -> typeOf x
       Sub x _ -> typeOf x
@@ -164,8 +168,10 @@ instance (PP tname, PP name) => PP (IRExpr tname name) where
 instance (PP tname, PP expr) => PP (IRPrim tname expr) where
   pp prim =
     case prim of
-      WordLit n w -> pp n <.> "_u" <.> pp w
-      BoolLit b   -> if b then "true" else "false"
+      IntegerLit n t  -> parens (pp n <+> ":" <+> pp t)
+      RationalLit n t -> parens (pp (numerator n) <.> "/" <.>
+                                 pp (denominator n) <+> ":" <+> pp t)
+      BoolLit b       -> if b then "true" else "false"
 
       Add e1 e2   -> ppInfix 1 1 1 "+" e1 e2
       Sub e1 e2   -> ppInfix 1 1 2 "-" e1 e2
@@ -185,4 +191,11 @@ instance (PP tname, PP expr) => PP (IRPrim tname expr) where
     where
     ppInfix n l r op e1 e2 =
       parensAfter n (withPrec l (pp e1) <+> op <+> withPrec r (pp e2))
+
+
+instance (PP tname, PP name) => PP (IRDecl tname name) where
+  pp (IRFun f as e) =
+    vcat [ "fn" <+> pp f <+> withPrec 1 (hsep (map pp as)) <+> "="
+         , nest 2 (pp e)
+         ]
 
