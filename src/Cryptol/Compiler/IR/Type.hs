@@ -18,6 +18,7 @@ data IRType tname =
   | TFloat                                        -- ^ Floating point small
   | TDouble                                       -- ^ Floating point large
 
+  | TSize                                         -- ^ Sizes of arrays, indexing
   | TWord (IRSize tname)                          -- ^ Bit vector
   | TArray (IRSize tname) (IRType tname)          -- ^ Array
   | TStream (IRStreamSize tname) (IRType tname)   -- ^ Iterator
@@ -51,6 +52,7 @@ instance PP tname => PP (IRType tname) where
       TRational     -> "Rational"
       TFloat        -> "Float"
       TDouble       -> "Double"
+      TSize         -> "Size"
       TWord n       -> parensAfter 0 ("Word"  <+> withPrec 1 (pp n))
       TArray n t    -> parensAfter 0 ("Array" <+> withPrec 1 (pp n<+> pp t))
       TStream n t -> parensAfter 0 ("Stream" <+> withPrec 1 (pp n <+> pp t))
