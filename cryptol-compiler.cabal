@@ -20,6 +20,7 @@ common extensions
     default-extensions:
       OverloadedStrings,
       BlockArguments,
+      ImportQualifiedPost,
       DeriveFunctor,
       DeriveFoldable,
       DeriveTraversable,
@@ -41,6 +42,7 @@ library
       Cryptol.Compiler.PP
       Cryptol.Compiler.Simple
       Cryptol.Compiler.CompileType
+      Cryptol.Compiler.Interval
     -- other-modules:
     build-depends:
       base,
