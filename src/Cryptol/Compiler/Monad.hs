@@ -30,6 +30,7 @@ module Cryptol.Compiler.Monad
   , withLocals
   , getTypeOf
   , getSchemaOf
+  , getTopTypes
   ) where
 
 import Data.Text(Text)
@@ -67,6 +68,9 @@ type M =
 newtype CryC a = CryC (M a)
   deriving (Functor,Applicative,Monad)
   via M
+
+instance BaseM CryC CryC where
+  inBase = id
 
 
 -- | Context for compiler computations
