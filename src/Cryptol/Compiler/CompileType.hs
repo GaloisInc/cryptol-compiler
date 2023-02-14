@@ -1,10 +1,18 @@
-module Cryptol.Compiler.CompileType where
+module Cryptol.Compiler.CompileType
+  ( compileValType
+  , compileStreamSizeType
+  ) where
 
-import qualified Cryptol.TypeCheck.AST as Cry
-import qualified Cryptol.TypeCheck.Solver.InfNat as Cry
+import Cryptol.TypeCheck.AST qualified as Cry
+import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.Monad
+
+
+
+--------------------------------------------------------------------------------
+
 
 {- | Maps a Cryptol type to an IR type.
 Assumptions:
@@ -91,6 +99,12 @@ compileValType ty =
 compileStreamSizeType :: Cry.Type -> CryC StreamSize
 compileStreamSizeType ty =
   case ty of
+    Cry.TUser _ _ t     -> compileStreamSizeType t
+
+    Cry.TVar t          -> case t of
+                             Cry.TVBound v -> pure (IRSize (IRPolySize v))
+                             Cry.TVFree {} -> unexpected "TVFree"
+
     Cry.TCon tc ts ->
       case tc of
         Cry.TC tcon ->
@@ -131,11 +145,6 @@ compileStreamSizeType ty =
         Cry.PC {}       -> unexpected "PC"
         Cry.TError {}   -> unexpected "TError"
 
-    Cry.TVar t          -> case t of
-                             Cry.TVBound v -> pure (IRSize (IRPolySize v))
-                             Cry.TVFree {} -> unexpected "TVFree"
-    Cry.TUser _ _ t     -> compileStreamSizeType t
-
     Cry.TRec {}         -> unexpected "TRec"
     Cry.TNewtype {}     -> unexpected "TNewtype"
   where
@@ -170,4 +179,3 @@ instance LiftInfNat a => LiftInfNat (Cry.Nat' -> a) where
           _                      -> dflt
 
       [] -> panic "liftInfNat" ["Malformed size type: missing arguments"]
-
