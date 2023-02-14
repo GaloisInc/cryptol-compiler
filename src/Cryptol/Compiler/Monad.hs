@@ -26,8 +26,11 @@ module Cryptol.Compiler.Monad
     -- * IO
   , doIO
 
-    -- * Types
+    -- * Locals
   , withLocals
+  , getLocal
+
+    -- * Types
   , getTypeOf
   , getSchemaOf
   , getTopTypes
@@ -289,5 +292,8 @@ getSchemaOf :: Cry.Expr -> CryC Cry.Schema
 getSchemaOf expr =
   do env <- getTypes
      pure (Cry.fastSchemaOf env expr)
+
+getLocal :: Cry.Name -> CryC (Maybe Name)
+getLocal x = Map.lookup x . roLocalIRNames <$> CryC ask
 
 

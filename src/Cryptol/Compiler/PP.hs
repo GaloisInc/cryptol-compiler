@@ -8,6 +8,7 @@ module Cryptol.Compiler.PP
   , getPPCfg
   , updPPCfg
   , withPrec
+  , withTypes
   , PPCfg(..)
 
     -- * Combinators
@@ -76,6 +77,9 @@ updPPCfg f (Doc g) = Doc (g . f)
 -- | Change the precedence config for a given document.
 withPrec :: Int -> Doc -> Doc
 withPrec n = updPPCfg \cfg -> cfg { ppPrec = n }
+
+withTypes :: Doc -> Doc
+withTypes = updPPCfg \cfg -> cfg { ppShowTypes = True }
 
 
 --------------------------------------------------------------------------------

@@ -57,7 +57,7 @@ newtype IRExpr tname name = IRExpr (IRExprF tname name (IRExpr tname name))
 -- write generic traversals.
 data IRExprF tname name expr =
     IRVar (IRName tname name)
-  | IRCall (IRName tname name) [expr]
+  | IRCall (IRName tname name) [expr] -- XXX: type parameters
   | IRPrim (IRPrim tname expr)
   | IRIf expr expr expr
     deriving (Functor,Foldable,Traversable)
@@ -99,10 +99,10 @@ instance PP tname => HasType (IRName tname name) tname where
 instance HasType expr tname => HasType (IRExprF tname name expr) tname where
   typeOf expr =
     case expr  of
-      IRVar x     -> typeOf x
-      IRCall f _  -> typeOf f
-      IRPrim p    -> typeOf p
-      IRIf _ x _  -> typeOf x
+      IRVar x       -> typeOf x
+      IRCall f _    -> typeOf f
+      IRPrim p      -> typeOf p
+      IRIf _ x _    -> typeOf x
 
 instance PP tname => HasType (IRExpr tname name) tname where
   typeOf (IRExpr e) = typeOf e
@@ -145,7 +145,7 @@ instance (PP tname, PP name) => PP (IRName tname name) where
   pp (IRName x t) =
     getPPCfg \cfg ->
       if ppShowTypes cfg
-        then parensAfter 0 (pp x <+> ":" <+> pp t)
+        then parensAfter 0 (pp x <+> ":" <+> withPrec 0 (pp t))
         else pp x
 
 instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
@@ -168,9 +168,9 @@ instance (PP tname, PP name) => PP (IRExpr tname name) where
 instance (PP tname, PP expr) => PP (IRPrim tname expr) where
   pp prim =
     case prim of
-      IntegerLit n t  -> parens (pp n <+> ":" <+> pp t)
-      RationalLit n t -> parens (pp (numerator n) <.> "/" <.>
-                                 pp (denominator n) <+> ":" <+> pp t)
+      IntegerLit n t  -> parensAfter 0 (pp n <+> ":" <+> pp t)
+      RationalLit n t -> parensAfter 0 (pp (numerator n) <.> "/" <.>
+                                        pp (denominator n) <+> ":" <+> pp t)
       BoolLit b       -> if b then "true" else "false"
 
       Add e1 e2   -> ppInfix 1 1 1 "+" e1 e2
@@ -179,7 +179,7 @@ instance (PP tname, PP expr) => PP (IRPrim tname expr) where
       Div e1 e2   -> ppInfix 2 2 3 "/" e1 e2
       Mod e1 e2   -> ppInfix 2 2 3 "%" e1 e2
 
-      Tuple es    -> withPrec 0 (commaSep (map pp es))
+      Tuple es    -> parens (withPrec 0 (commaSep (map pp es)))
       Select e n  -> withPrec 1 (pp e) <.> pp n
 
       Array t es
@@ -195,7 +195,8 @@ instance (PP tname, PP expr) => PP (IRPrim tname expr) where
 
 instance (PP tname, PP name) => PP (IRDecl tname name) where
   pp (IRFun f as e) =
-    vcat [ "fn" <+> pp f <+> withPrec 1 (hsep (map pp as)) <+> "="
+    vcat [ "fn" <+> pp f <+> withTypes (withPrec 1 (hsep (map pp as)))
+            <+> "->" <+> withPrec 0 (pp (typeOf f)) <+> "="
          , nest 2 (pp e)
          ]
 

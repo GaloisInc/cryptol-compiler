@@ -126,7 +126,19 @@ compileVar x ts args =
   do mbPrim <- isPrimDecl x
      case mbPrim of
        Just p  -> compilePrim p ts args
-       Nothing -> panic "compileVar" [ show (pp x) ]
+       Nothing ->
+          do mb <- getLocal x
+             case mb of
+               Nothing -> compileCall x ts args
+               Just n ->
+                 case (ts,args) of
+                   (_ : _, _) -> unsupported "Polymorphic locals"
+                   (_, _ : _) -> unsupported "Funciton local"
+                   ([],[])    -> pure (IRExpr (IRVar n))
+
+compileCall ::
+  Cry.Name -> [Cry.Type] -> [Expr] -> CryC Expr
+compileCall = undefined
 
 
 --------------------------------------------------------------------------------
