@@ -43,6 +43,7 @@ library
       Cryptol.Compiler.Simple
       Cryptol.Compiler.CompileType
       Cryptol.Compiler.Interval
+      Cryptol.Compiler.SeqReps
     -- other-modules:
     build-depends:
       base,

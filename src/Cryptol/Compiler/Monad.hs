@@ -34,6 +34,9 @@ module Cryptol.Compiler.Monad
   , getTypeOf
   , getSchemaOf
   , getTopTypes
+
+    -- * SMT solver
+  , getSolver
   ) where
 
 import Data.Text(Text)
@@ -137,7 +140,7 @@ runCryC (CryC m) =
        Right a  -> pure a
 
   where
-  tcSolverConfig  = Cry.defaultSolverConfig []
+  tcSolverConfig  = (Cry.defaultSolverConfig []) -- { Cry.solverVerbose = 5 }
   evalConfig      = pure Cry.EvalOpts
                            { Cry.evalLogger  = Cry.quietLogger
                            , Cry.evalPPOpts  = Cry.defaultPPOpts
@@ -296,4 +299,9 @@ getSchemaOf expr =
 getLocal :: Cry.Name -> CryC (Maybe Name)
 getLocal x = Map.lookup x . roLocalIRNames <$> CryC ask
 
+--------------------------------------------------------------------------------
 
+getSolver :: CryC Cry.Solver
+getSolver =
+  do s <- CryC get
+     pure (Cry.minpTCSolver (rwModuleInput s))
