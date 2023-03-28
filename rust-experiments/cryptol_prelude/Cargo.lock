@@ -3,5 +3,14 @@
 version = 3
 
 [[package]]
+name = "bva"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "525e30a1bcc13994d0f84c0bd2e00532e7b445a2dfb36b5cd83be13f4fb35f34"
+
+[[package]]
 name = "cryptol_prelude"
 version = "0.1.0"
+dependencies = [
+ "bva",
+]

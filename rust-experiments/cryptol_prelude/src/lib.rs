@@ -1,1 +1,1 @@
-mod ring;
+mod word;

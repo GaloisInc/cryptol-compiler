@@ -10,47 +10,44 @@ trait Ring {
 impl Ring for u8 {
     fn radd(&self, rhs: Self) -> Self { self.wrapping_add(rhs) }
     fn rmul(&self, rhs: Self) -> Self { self.wrapping_mul(rhs) }
-    fn rsub(&self, other: Self) -> Self { self.wrapping_sub(rhs) }
+    fn rsub(&self, rhs: Self) -> Self { self.wrapping_sub(rhs) }
     fn rneg(&self) -> Self { self.wrapping_neg() }
 }
 
 impl Ring for u64 {
   fn radd(&self, rhs: Self) -> Self { self.wrapping_add(rhs) }
   fn rmul(&self, rhs: Self) -> Self { self.wrapping_mul(rhs) }
-  fn rsub(&self, other: Self) -> Self { self.wrapping_sub(rhs) }
+  fn rsub(&self, rhs: Self) -> Self { self.wrapping_sub(rhs) }
   fn rneg(&self) -> Self { self.wrapping_neg() }
 }
 
 
-trait Bits: Copy + std::ops::Shr<u32> + std::ops::BitAnd {
-  const BIT_COUNT: u32;
-  const ONES: Self;
+trait Bits: Copy {
+  fn mod2n(&self, n: u32) -> Self;
 }
 
 impl Bits for u8 {
-  const BIT_COUNT: u32 = u8::BITS;
-  const ONES: Self = u8::MAX;
+  fn mod2n(&self, n: u32) -> Self {
+    self >> u8::BITS.saturating_sub(n)
+  }
 }
 
 impl Bits for u64 {
-  const BIT_COUNT: u32 = u64::BITS;
-  const ONES: Self = u8::MAX;
+  fn mod2n(&self, n: u32) -> Self {
+    self >> u64::BITS.saturating_sub(n)
+  }
 }
 
 // ------------------------------------------------------------------
 
-fn mod_mask<T: Bits>(n: u32) -> T {
-  T::ONES & (T::BIT_COUNT - n)
-}
-
 fn add_mod<T>(i: T, j: T, n: u32) -> T
   where T: Bits + Ring
 {
-  i.radd(j) & mod_mask(n)
+  i.radd(j).mod2n(n)
 }
 
 fn sub_mod<T>(i: T, j: T, n: u32) -> T
   where T: Bits + Ring
 {
-  i.radd(j) & mod_mask(n)
+  i.radd(j).mod2n(n)
 }
