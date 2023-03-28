@@ -1,1 +1,1 @@
-mod word;
+mod cryptol;
