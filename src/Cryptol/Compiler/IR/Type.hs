@@ -48,14 +48,15 @@ instance PP tname => PP (IRType tname) where
     case ty of
       TBool         -> "Bool"
       TInteger      -> "Integer"
-      TIntegerMod n -> parensAfter 0 ("Z" <+> withPrec 1 (pp n))
+      TIntegerMod n -> parensAfter 0 ("Z" <+> withPrec 9 (pp n))
       TRational     -> "Rational"
       TFloat        -> "Float"
       TDouble       -> "Double"
       TSize         -> "Size"
-      TWord n       -> parensAfter 0 ("Word"  <+> withPrec 1 (pp n))
-      TArray n t    -> parensAfter 0 ("Array" <+> withPrec 1 (pp n<+> pp t))
-      TStream n t -> parensAfter 0 ("Stream" <+> withPrec 1 (pp n <+> pp t))
+      TWord n       -> parensAfter 0 ("Word"  <+> withPrec 9 (pp n))
+      TArray n t    -> parensAfter 0 ("Array" <+> withPrec 9 (pp n)
+                                              <+> withPrec 1 (pp t))
+      TStream n t -> parensAfter 0 ("Stream" <+> withPrec 9 (pp n <+> pp t))
       TPoly nm      -> pp nm
       TTuple ts     -> withPrec 0 (parens (commaSep (map pp ts)))
 

@@ -44,6 +44,7 @@ library
       Cryptol.Compiler.CompileType
       Cryptol.Compiler.Interval
       Cryptol.Compiler.SeqReps
+      Cryptol.Compiler.Specialize
     -- other-modules:
     build-depends:
       base,

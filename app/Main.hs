@@ -16,6 +16,7 @@ import Cryptol.Compiler.Monad
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.Simple
 import Cryptol.Compiler.Interval
+import Cryptol.Compiler.Specialize
 
 
 import Options
@@ -27,11 +28,34 @@ main =
      runCryC
        do mapM_ loadModuleByPath (optFiles opts)
           -- doSimpleCompile
-          doTypeAnalysis
+          -- doTypeAnalysis
+          doTestSpec
 
   `catch` \e ->
     do hPrint stderr (pp (e :: CompilerError))
        exitFailure
+
+
+doTestSpec :: CryC ()
+doTestSpec =
+  do tys <- getTopTypes
+     let isPrel x = Cry.nameTopModule x == Cry.preludeName
+         nonPrel  = Map.filterWithKey (\k _ -> not (isPrel k)) tys
+     forM_ (Map.toList nonPrel) \(x,t) ->
+       do doIO (print (cryPP x $$ nest 2 (cryPP t)))
+          xs <- testSpec t
+          let ppOpt ((as,b),x) =
+                vcat [ commaSep (map pp as)
+                     , pp b
+                     , nest 2 (if Map.null x
+                                 then ""
+                                 else "where" $$ ppSpecMap x)
+                     , "---"
+                     ]
+          let doc = nest 2 (vcat [ "---", vcat (map ppOpt xs) ])
+          doIO (print doc)
+
+
 
 doTypeAnalysis :: CryC ()
 doTypeAnalysis =
