@@ -17,6 +17,7 @@ import Cryptol.Compiler.PP
 import Cryptol.Compiler.Simple
 import Cryptol.Compiler.Interval
 import Cryptol.Compiler.Specialize
+import Cryptol.Compiler.IR.Subst
 
 
 import Options
@@ -44,12 +45,12 @@ doTestSpec =
      forM_ (Map.toList nonPrel) \(x,t) ->
        do doIO (print (cryPP x $$ nest 2 (cryPP t)))
           xs <- testSpec t
-          let ppOpt ((as,b),x) =
+          let ppOpt (su,as,b) =
                 vcat [ commaSep (map pp as)
                      , pp b
-                     , nest 2 (if Map.null x
+                     , nest 2 (if suIsEmpty su
                                  then ""
-                                 else "where" $$ ppSpecMap x)
+                                 else "where" $$ pp su)
                      , "---"
                      ]
           let doc = nest 2 (vcat [ "---", vcat (map ppOpt xs) ])

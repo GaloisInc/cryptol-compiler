@@ -16,17 +16,18 @@ import Cryptol.Compiler.PP
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.Monad (panic)
 import Cryptol.Compiler.IR
+import Cryptol.Compiler.IR.Subst
 
-testSpec :: Cry.Schema -> M.CryC [(([Type],Type), Map Cry.TParam TConstraint)]
+testSpec :: Cry.Schema -> M.CryC [ (Subst,[Type],Type) ]
 testSpec sch =
   runSpecM
     do SpecM $ set RW { roTParams = Cry.sVars sch
                       , rwProps = mapMaybe toNumP (Cry.sProps sch)
                       , rwConstraints = mempty
                       }
-       res <- compileFunType (Cry.sType sch)
-       pure res
-
+       (args,res) <- compileFunType (Cry.sType sch)
+       su  <- getSubst
+       pure (su, apSubst su args, apSubst su res)
 
   where
   toNumP p =
@@ -35,6 +36,20 @@ testSpec sch =
       Cry.TCon (Cry.PC Cry.PLiteral) [val,_] -> Just (Cry.pFin val)
       _ | Cry.isNumeric p -> Just p
         | otherwise -> Nothing
+
+getSubst :: SpecM Subst
+getSubst =
+  do fi <- checkFixedSize
+     let su1 = Map.foldrWithKey suAddSize suEmpty fi
+     cs <- rwConstraints <$> SpecM get
+     pure (Map.foldrWithKey addT su1 cs)
+  where
+  addT x c su =
+    case c of
+      IsBool -> suAddType x TBool su
+      _      -> su
+
+
 
 --------------------------------------------------------------------------------
 newtype SpecM a = SpecM (SpecImpl a)
@@ -73,8 +88,11 @@ data SizeConstraint =
   | IsInf
     deriving Eq
 
-checkPossible :: SpecM ()
-checkPossible =
+
+
+--------------------------------------------------------------------------------
+prepSolver :: (Cry.Solver -> [Cry.TParam] -> [Cry.Prop] -> IO a) -> SpecM a
+prepSolver k =
   do solver  <- doCryC M.getSolver
      rw      <- SpecM get
      let tparams = roTParams rw
@@ -82,10 +100,37 @@ checkPossible =
          props2  = [ sizeProp s (Cry.TVar (Cry.tpVar x))
                    | (x,SizeConstraint s) <- Map.toList (rwConstraints rw)
                    ]
-     bad <- doIO $ Cry.inNewFrame solver
-       do tvars <- Cry.declareVars solver (map Cry.tpVar tparams)
-          Cry.unsolvable solver tvars (props2 ++ props1)
+     doIO (k solver tparams (props2 ++ props1))
+
+
+-- | Check if the current set of properties are consistent.
+checkPossible :: SpecM ()
+checkPossible =
+  do bad <- prepSolver \solver tparams props ->
+              Cry.inNewFrame solver
+                 do tvars <- Cry.declareVars solver (map Cry.tpVar tparams)
+                    Cry.unsolvable solver tvars props
      when bad empty
+
+
+-- | Check if the given variable can have only one possible value.
+checkSingleValue :: Cry.TParam -> SpecM (Maybe Cry.Nat')
+checkSingleValue x' =
+  prepSolver \solver tparams props ->
+    do let as = map Cry.tpVar tparams
+           x  = Cry.tpVar x'
+       model1 <- Cry.tryGetModel solver as props
+       case model1 of
+         Just mo | Just v <- lookup x mo ->
+           do let notThis = Cry.TVar x Cry.=/= Cry.tNat' v
+              model2 <- Cry.tryGetModel solver as (notThis : props)
+              case model2 of
+                Nothing -> pure (Just v)
+                _       -> pure Nothing
+         _ -> pure Nothing
+
+--------------------------------------------------------------------------------
+
 
 sizeProp :: SizeConstraint -> Cry.Type -> Cry.Prop
 sizeProp s t =
@@ -134,10 +179,8 @@ caseSize ty = tryCase IsInf <|> tryCase IsFin
 unsupported :: Text -> SpecM a
 unsupported x = doCryC (M.unsupported x)
 
-runSpecM :: SpecM a -> M.CryC [(a, Map Cry.TParam TConstraint)]
-runSpecM (SpecM m) =
-  do res <- findAll (runStateT rw0 m)
-     pure [ (a, rwConstraints b) | (a,b) <- res ]
+runSpecM :: SpecM a -> M.CryC [a]
+runSpecM (SpecM m) = map fst <$> findAll (runStateT rw0 m)
   where
   rw0 = RW { roTParams = mempty, rwProps = mempty, rwConstraints = mempty }
 --------------------------------------------------------------------------------
@@ -156,6 +199,26 @@ ppSpecMap m = vcat [ ppC x c | (x,c) <- Map.toList m ]
     case c of
       IsFin -> "fin" <+> pp x
       IsInf -> pp x <+> "==" <+> "inf"
+
+
+--------------------------------------------------------------------------------
+checkFixedSize :: SpecM (Map Cry.TParam StreamSize)
+checkFixedSize =
+  do vs <- roTParams <$> SpecM get
+     let nums = filter ((== Cry.KNum) . Cry.kindOf) vs
+     foldM checkVar mempty nums
+  where
+  checkVar done x =
+    do mb <- getConstraint x
+       case mb of
+         Just (SizeConstraint IsInf) -> pure (Map.insert x IRInfSize done)
+         _ -> do mb1 <- checkSingleValue x
+                 case mb1 of
+                   Nothing -> pure done
+                   Just v  -> pure (Map.insert x t done)
+                     where t = case v of
+                                 Cry.Inf   -> IRInfSize
+                                 Cry.Nat n -> IRSize (IRFixedSize n)
 
 
 --------------------------------------------------------------------------------
@@ -286,21 +349,7 @@ compileStreamSizeType ty =
 
         Cry.TF tf ->
           do args <- mapM compileStreamSizeType ts
-             let dflt = IRSize (IRComputedSize tf args)
-             pure case tf of
-                    Cry.TCAdd           -> liftInfNat dflt args Cry.nAdd
-                    Cry.TCSub           -> liftInfNat dflt args Cry.nSub
-                    Cry.TCMul           -> liftInfNat dflt args Cry.nMul
-                    Cry.TCDiv           -> liftInfNat dflt args Cry.nDiv
-                    Cry.TCMod           -> liftInfNat dflt args Cry.nMod
-                    Cry.TCExp           -> liftInfNat dflt args Cry.nExp
-                    Cry.TCWidth         -> liftInfNat dflt args Cry.nWidth
-                    Cry.TCMin           -> liftInfNat dflt args Cry.nMin
-                    Cry.TCMax           -> liftInfNat dflt args Cry.nMax
-                    Cry.TCCeilDiv       -> liftInfNat dflt args Cry.nCeilDiv
-                    Cry.TCCeilMod       -> liftInfNat dflt args Cry.nCeilMod
-                    Cry.TCLenFromThenTo ->
-                       liftInfNat dflt args Cry.nLenFromThenTo
+             pure (evalSizeType tf args)
 
         Cry.PC {}       -> unexpected "PC"
         Cry.TError {}   -> unexpected "TError"
@@ -309,33 +358,3 @@ compileStreamSizeType ty =
     Cry.TNewtype {}     -> unexpected "TNewtype"
   where
   unexpected x = panic "compileStreamSizeType" [x]
-
-
-class LiftInfNat a where
-  liftInfNat :: StreamSize -> [StreamSize] -> a -> StreamSize
-
-instance LiftInfNat a => LiftInfNat (Maybe a) where
-  liftInfNat dflt xs a =
-    case a of
-      Just v  -> liftInfNat dflt xs v
-      Nothing -> panic "liftInfNat" ["Malformed size type: partial"]
-
-instance LiftInfNat Cry.Nat' where
-  liftInfNat _ xs a =
-    case xs of
-      [] ->
-        case a of
-          Cry.Inf   -> IRInfSize
-          Cry.Nat n -> IRSize (IRFixedSize n)
-      _  -> panic "liftInfNat" ["Malformed size type: extra arguments"]
-
-instance LiftInfNat a => LiftInfNat (Cry.Nat' -> a) where
-  liftInfNat dflt xs f =
-    case xs of
-      y : ys ->
-        case y of
-          IRInfSize              -> liftInfNat dflt ys (f Cry.Inf)
-          IRSize (IRFixedSize i) -> liftInfNat dflt ys (f (Cry.Nat i))
-          _                      -> dflt
-
-      [] -> panic "liftInfNat" ["Malformed size type: missing arguments"]

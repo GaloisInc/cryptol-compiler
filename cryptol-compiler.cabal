@@ -26,6 +26,7 @@ common extensions
       DeriveTraversable,
       DerivingVia,
       FlexibleInstances,
+      FlexibleContexts,
       TypeFamilies,
       DataKinds,
       MultiParamTypeClasses,
@@ -37,6 +38,7 @@ library
     exposed-modules:
       Cryptol.Compiler.IR
       Cryptol.Compiler.IR.Type
+      Cryptol.Compiler.IR.Subst
       Cryptol.Compiler.Monad
       Cryptol.Compiler.Error
       Cryptol.Compiler.PP
