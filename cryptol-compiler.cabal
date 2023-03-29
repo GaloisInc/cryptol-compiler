@@ -47,6 +47,8 @@ library
       Cryptol.Compiler.Interval
       Cryptol.Compiler.SeqReps
       Cryptol.Compiler.Specialize
+
+      Cryptol.Compiler.Rust.CodeGen
     -- other-modules:
     build-depends:
       base,

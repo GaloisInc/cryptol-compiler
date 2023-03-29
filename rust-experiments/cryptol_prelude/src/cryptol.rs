@@ -3,20 +3,20 @@ use num::{self};
 
 // -- basic types -------------------------------------------------------------
 
-type Bit = bool;
-type BitVector = ApInt;
-type Integer = num::BigInt;
-type Natural = num::BigUint;
-type Rational = num::BigRational;
+pub type Bit = bool;
+pub type BitVector = ApInt;
+pub type Integer = num::BigInt;
+pub type Natural = num::BigUint;
+pub type Rational = num::BigRational;
 #[derive(Clone, Copy)]
-enum Size {
+pub enum Size {
   Finite(usize),
   Infinite
 }
 
 // -- tools to help normalize representations ---------------------------------
 // maybe this is word specific?
-trait Bits {
+pub trait Bits {
   fn mod2n(&self, n: u32) -> Self;
 }
 
@@ -46,7 +46,7 @@ impl Bits for BitVector {
 
 // -- Logic -------------------------------------------------------------------
 
-trait Logic {
+pub trait Logic {
   fn land(&self, rhs: &Self) -> Self;
   fn lor(&self, rhs: &Self) -> Self;
   fn lxor(&self, rhs: &Self) -> Self;
@@ -90,7 +90,7 @@ impl Logic for u64 {
 }
 
 // -- ring ------------------------------------------------------------------
-trait Ring {
+pub trait Ring {
   fn from_integer(i: &Integer) -> Self;
   fn radd(&self, rhs: &Self) -> Self;
   fn rmul(&self, rhs: &Self) -> Self;
@@ -99,6 +99,14 @@ trait Ring {
 }
 
 impl Ring for u8 {
+  fn from_integer(i: &Integer) -> Self { todo!() }
+  fn radd(&self, rhs: &Self) -> Self { self.wrapping_add(*rhs) }
+  fn rmul(&self, rhs: &Self) -> Self { self.wrapping_mul(*rhs) }
+  fn rsub(&self, rhs: &Self) -> Self { self.wrapping_sub(*rhs) }
+  fn rneg(&self) -> Self { self.wrapping_neg() }
+}
+
+impl Ring for u32 {
   fn from_integer(i: &Integer) -> Self { todo!() }
   fn radd(&self, rhs: &Self) -> Self { self.wrapping_add(*rhs) }
   fn rmul(&self, rhs: &Self) -> Self { self.wrapping_mul(*rhs) }
@@ -130,7 +138,7 @@ impl Ring for BitVector {
 
 // -- Integral ----------------------------------------------------------------
 
-trait Integral: Sized {
+pub trait Integral: Sized {
   type RangeIter: Array<Self>;
   fn idiv(&self, rhs: &Self) -> Self;
   fn irem(&self, rhs: &Self) -> Self;
@@ -142,14 +150,14 @@ trait Integral: Sized {
 
 // -- Field -------------------------------------------------------------------
 
-trait Field {
+pub trait Field {
   fn recip(&self) -> Self;
   fn fdiv(&self, rhs: &Self) -> Self;
 }
 
 // -- Round -------------------------------------------------------------------
 
-trait Round {
+pub trait Round {
   fn ceil(&self) -> Self;
   fn floor(&self) -> Self;
   fn trunc(&self) -> Self;
@@ -158,7 +166,7 @@ trait Round {
 }
 
 // -- Eq and Cmp can be handled with the builtin classes for Eq, Ord?
-trait SignedCmp {
+pub trait SignedCmp {
   fn slt(&self, rhs: &Self) -> Bit;
   fn sgt(&self, rhs: &Self) -> Bit {
     rhs.slt(self)
@@ -175,7 +183,7 @@ trait SignedCmp {
 
 // -- BitVector ---------------------------------------------------------------
 
-trait BV {
+pub trait BV {
   fn sdiv(&self, rhs: &Self) -> Self;
   fn srem(&self, rhs: &Self) -> Self;
   fn carry(&self, rhs: &Self) -> Bit;
@@ -200,6 +208,6 @@ fn ratio(numer: Integer, denom: Integer) -> Rational {
 // -- arrays ------------------------------------------------------------------
 
 // TODO: placeholder
-trait Array<E> {
+pub trait Array<E> {
   fn length(&self) -> Size;
 }
