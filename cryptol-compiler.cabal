@@ -39,16 +39,16 @@ library
       Cryptol.Compiler.IR
       Cryptol.Compiler.IR.Type
       Cryptol.Compiler.IR.Subst
+      Cryptol.Compiler.IR.TypePattern
       Cryptol.Compiler.Monad
       Cryptol.Compiler.Error
       Cryptol.Compiler.PP
       Cryptol.Compiler.Simple
       Cryptol.Compiler.CompileType
       Cryptol.Compiler.Interval
-      Cryptol.Compiler.SeqReps
       Cryptol.Compiler.Specialize
 
-      Cryptol.Compiler.Rust.CodeGen
+      -- Cryptol.Compiler.Rust.CodeGen
     -- other-modules:
     build-depends:
       base,

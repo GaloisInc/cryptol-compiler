@@ -40,11 +40,11 @@ main =
 doTestSpec :: CryC ()
 doTestSpec =
   do tys <- getTopTypes
-     let isPrel x = Cry.nameTopModule x == Cry.preludeName
+     let isPrel x = False && Cry.nameTopModule x == Cry.preludeName
          nonPrel  = Map.filterWithKey (\k _ -> not (isPrel k)) tys
      forM_ (Map.toList nonPrel) \(x,t) ->
        do doIO (print (cryPP x $$ nest 2 (cryPP t)))
-          xs <- testSpec t
+          xs <- catchError (testSpec t)
           let ppOpt (su,as,b) =
                 vcat [ commaSep (map pp as)
                      , pp b
@@ -53,7 +53,10 @@ doTestSpec =
                                  else "where" $$ pp su)
                      , "---"
                      ]
-          let doc = nest 2 (vcat [ "---", vcat (map ppOpt xs) ])
+          let doc = nest 2
+                      case xs of
+                        Right ok -> vcat [ "---", vcat (map ppOpt ok) ]
+                        Left err -> pp err
           doIO (print doc)
 
 

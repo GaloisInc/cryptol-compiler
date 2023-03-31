@@ -18,6 +18,7 @@ import Cryptol.Compiler.Monad (panic)
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.Subst
 
+
 testSpec :: Cry.Schema -> M.CryC [ (Subst,[Type],Type) ]
 testSpec sch =
   runSpecM
@@ -159,7 +160,10 @@ caseBool x =
          (setConstraint x IsNotBool >> pure False)
 
 addProp :: Cry.Prop -> SpecM ()
-addProp p = SpecM $ sets_ \s -> s { rwProps = p : rwProps s }
+addProp p =
+  case Cry.tIsError p of
+    Just _ -> empty
+    _      -> SpecM $ sets_ \s -> s { rwProps = p : rwProps s }
 
 caseSize :: Cry.Type -> SpecM SizeConstraint
 caseSize ty = tryCase IsInf <|> tryCase IsFin
@@ -243,12 +247,12 @@ compileValType ty =
       case tc of
         Cry.TC tcon ->
           case tcon of
-            Cry.TCNum {}         -> unexpected "TCNum"
-            Cry.TCInf            -> unexpected "TCInf"
+            Cry.TCNum {}   -> unexpected "TCNum"
+            Cry.TCInf      -> unexpected "TCInf"
 
-            Cry.TCBit            -> pure TBool
-            Cry.TCInteger        -> pure TInteger
-            Cry.TCRational       -> pure TRational
+            Cry.TCBit      -> pure TBool
+            Cry.TCInteger  -> pure TInteger
+            Cry.TCRational -> pure TRational
 
             Cry.TCFloat ->
               case ts of
@@ -321,12 +325,14 @@ compileValType ty =
 -- | Compile a Cryptol size type to an IR type.
 compileStreamSizeType :: Cry.Type -> SpecM StreamSize
 compileStreamSizeType ty =
-  case ty of
-    Cry.TUser _ _ t     -> compileStreamSizeType t
 
-    Cry.TVar t          -> case t of
-                             Cry.TVBound v -> pure (IRSize (IRPolySize v))
-                             Cry.TVFree {} -> unexpected "TVFree"
+  case ty of
+    Cry.TUser _ _ t -> compileStreamSizeType t
+
+    Cry.TVar t ->
+      case t of
+        Cry.TVBound v -> checkInf (pure (IRSize (IRPolySize v)))
+        Cry.TVFree {} -> unexpected "TVFree"
 
     Cry.TCon tc ts ->
       case tc of
@@ -348,8 +354,9 @@ compileStreamSizeType ty =
 
 
         Cry.TF tf ->
-          do args <- mapM compileStreamSizeType ts
-             pure (evalSizeType tf args)
+          checkInf
+            do args <- mapM compileStreamSizeType ts
+               pure (evalSizeType tf args)
 
         Cry.PC {}       -> unexpected "PC"
         Cry.TError {}   -> unexpected "TError"
@@ -358,3 +365,10 @@ compileStreamSizeType ty =
     Cry.TNewtype {}     -> unexpected "TNewtype"
   where
   unexpected x = panic "compileStreamSizeType" [x]
+  checkInf k =
+    do ctr <- caseSize ty
+       case ctr of
+         IsInf -> pure IRInfSize
+         IsFin -> k
+
+

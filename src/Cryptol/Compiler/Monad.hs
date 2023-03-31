@@ -20,6 +20,7 @@ module Cryptol.Compiler.Monad
     -- * Errors and Warnings
   , addWarning
   , throwError
+  , catchError
   , unsupported
   , panic
 
@@ -43,6 +44,7 @@ import Data.Text(Text)
 import qualified Data.Text as Text
 import Control.Exception
 import MonadLib
+import MonadLib qualified as MLib
 import qualified Data.ByteString as BS
 import Data.Map(Map)
 import qualified Data.Map as Map
@@ -183,6 +185,10 @@ addWarning w =
 -- | Abort execution with this error
 throwError :: CompilerError -> CryC a
 throwError e = CryC (raise e)
+
+-- | Run the computation, returning any errors tagged with `Left`.
+catchError :: CryC a -> CryC (Either CompilerError a)
+catchError (CryC m) = CryC ((Right <$> m) `MLib.handle` (pure . Left))
 
 -- | Abort due to an unsupported feature.
 unsupported :: Text -> CryC a

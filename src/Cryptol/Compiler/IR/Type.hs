@@ -39,7 +39,13 @@ data IRSize tname =
   | IRComputedSize Cry.TFun [IRStreamSize tname]  -- ^ Computed size
     deriving Show
 
-
+data IRFunType tname = IRFunType
+  { ftTypeParams :: [tname]
+    -- XXX: some constraints on the tnames (e.g., Ring a)
+  , ftSizeParams :: [(tname, IRType tname)]
+  , ftParams     :: [IRType tname]
+  , ftResult     :: IRType tname
+  }
 --------------------------------------------------------------------------------
 -- Pretty Printing
 
