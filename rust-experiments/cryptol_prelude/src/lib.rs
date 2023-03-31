@@ -1,2 +1,5 @@
 mod cryptol;
-pub mod cryptol_seq;
+pub mod tnum;
+pub mod word;
+pub mod seq;
+pub mod stream;
