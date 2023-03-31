@@ -248,6 +248,32 @@ impl CryStream<u8> for CryNats {
   }
 }
 
+// ----------------------------------------------------------------------------
+
+trait CStream<'a, T>: Iterator<Item=T> {
+  fn sclone(&self) -> Box<dyn CStream<T> + 'a>;
+}
+
+impl<'a, T, I: Iterator<Item = T> + Clone + 'a> CStream<'a, T> for I {
+    fn sclone(&self) -> Box<dyn CStream<T> + 'a> {
+        Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod test2 {
+  use super::*;
+
+  #[test]
+  fn test() {
+    let i = vec![1,2,3];
+    let iter = i.iter().take(2);
+    let c1 = iter.sclone();
+
+    assert_eq!(c1.collect::<Vec<&i32>>(), vec![&1,&2]);
+    // assert_eq!(c3.collect(), vec![1,2]);
+  }
+}
 
 
 
