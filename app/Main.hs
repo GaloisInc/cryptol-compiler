@@ -40,7 +40,7 @@ main =
 doTestSpec :: CryC ()
 doTestSpec =
   do tys <- getTopTypes
-     let isPrel x = False && Cry.nameTopModule x == Cry.preludeName
+     let isPrel x = Cry.nameTopModule x == Cry.preludeName
          nonPrel  = Map.filterWithKey (\k _ -> not (isPrel k)) tys
      forM_ (Map.toList nonPrel) \(x,t) ->
        do doIO (print (cryPP x $$ nest 2 (cryPP t)))

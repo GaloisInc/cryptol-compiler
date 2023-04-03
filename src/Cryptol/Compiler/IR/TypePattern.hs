@@ -4,6 +4,7 @@ import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 
 import Cryptol.Compiler.Monad(panic)
 import Cryptol.Compiler.IR.Type
+import Cryptol.Compiler.Specialize
 
 
 data IRTypePattern =
@@ -22,10 +23,11 @@ data IRStreamSizePattern =
 
 
 {-
--- matchIRStreamSizePattern :: IRStreamSizePattern -> IRStreamSize tname ->
 matchIRStreamSizePattern pat ty =
   case pat of
     ExactNumType k ->
+      
+
       case ty of
         IRInfSize ->
         IRSize sz ->
@@ -33,6 +35,7 @@ matchIRStreamSizePattern pat ty =
             IRFixedSize k1 ->
             _
 -}
+
 
 
 --------------------------------------------------------------------------------

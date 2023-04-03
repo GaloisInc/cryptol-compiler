@@ -35,8 +35,13 @@ data IRStreamSize tname =
 -- | Size types
 data IRSize tname =
     IRFixedSize Integer                           -- ^ A specific size
-  | IRPolySize  tname                             -- ^ Polymorphic size; finite
+  | IRPolySize SizeVarSize tname                  -- ^ Polymorphic size; finite
   | IRComputedSize Cry.TFun [IRStreamSize tname]  -- ^ Computed size
+    deriving Show
+
+data SizeVarSize =
+    MemSize         -- ^ value will fit in usize
+  | LargeSize       -- ^ value may be large, use BigInt
     deriving Show
 
 data IRFunType tname = IRFunType
@@ -76,7 +81,10 @@ instance PP tname => PP (IRSize tname) where
   pp ty =
     case ty of
       IRFixedSize size    -> pp size
-      IRPolySize a        -> pp a
+      IRPolySize sz a     ->
+        case sz of
+          MemSize   -> pp a
+          LargeSize -> "!" <> pp a
       IRComputedSize fu ts ->
         case fu of
           Cry.TCAdd            -> ppInfix 1 1 1 "+"

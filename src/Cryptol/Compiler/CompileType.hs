@@ -102,7 +102,7 @@ compileStreamSizeType ty =
     Cry.TUser _ _ t     -> compileStreamSizeType t
 
     Cry.TVar t          -> case t of
-                             Cry.TVBound v -> pure (IRSize (IRPolySize v))
+                             Cry.TVBound v -> pure (IRSize (IRPolySize LargeSize v))  -- XXX
                              Cry.TVFree {} -> unexpected "TVFree"
 
     Cry.TCon tc ts ->

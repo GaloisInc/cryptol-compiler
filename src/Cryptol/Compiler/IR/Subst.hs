@@ -150,8 +150,8 @@ apSubstSizeMaybe ::
   Ord tname => IRSubst tname -> IRSize tname -> Maybe (IRStreamSize tname)
 apSubstSizeMaybe su size =
   case size of
-    IRFixedSize {} -> Nothing
-    IRPolySize x   -> suLookupSize x su
+    IRFixedSize {}        -> Nothing
+    IRPolySize _ x        -> suLookupSize x su
     IRComputedSize fun as -> evalSizeType fun <$> apSubstMaybe su as
 
 instance Ord tname => ApSubst (IRSize tname) where

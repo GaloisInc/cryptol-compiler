@@ -1,10 +1,11 @@
 module Cryptol.Compiler.Specialize (testSpec, TConstraint(..), ppSpecMap) where
 
+import Debug.Trace
+
 import Data.Text(Text)
 import Data.Map(Map)
 import Data.Map qualified as Map
-import Data.Maybe(mapMaybe)
-import Control.Applicative(Alternative(..))
+import Control.Applicative(Alternative(..),asum)
 import MonadLib
 
 import Cryptol.TypeCheck.TCon qualified as Cry
@@ -21,22 +22,24 @@ import Cryptol.Compiler.IR.Subst
 
 testSpec :: Cry.Schema -> M.CryC [ (Subst,[Type],Type) ]
 testSpec sch =
-  runSpecM
-    do SpecM $ set RW { roTParams = Cry.sVars sch
-                      , rwProps = mapMaybe toNumP (Cry.sProps sch)
-                      , rwConstraints = mempty
-                      }
-       (args,res) <- compileFunType (Cry.sType sch)
-       su  <- getSubst
-       pure (su, apSubst su args, apSubst su res)
+  case extraInfo of
+    Nothing -> pure []
+    Just (extraProps,null_conds) ->
+      let (notBool,conds) = Map.partition null null_conds
+      in
+      runSpecM
+        do SpecM $ set RW { roTParams = Cry.sVars sch
+                          , rwProps = extraProps ++
+                                      filter Cry.isNumeric (Cry.sProps sch)
+                          , rwBoolProps = conds
+                          , rwConstraints = IsNotBool <$ notBool
+                          }
+           (args,res) <- compileFunType (Cry.sType sch)
+           su  <- getSubst
+           pure (su, apSubst su args, apSubst su res)
 
   where
-  toNumP p =
-    case p of
-      Cry.TUser _ _ t -> toNumP t
-      Cry.TCon (Cry.PC Cry.PLiteral) [val,_] -> Just (Cry.pFin val)
-      _ | Cry.isNumeric p -> Just p
-        | otherwise -> Nothing
+  extraInfo = ctrProps (infoFromConstraints (Cry.sProps sch))
 
 getSubst :: SpecM Subst
 getSubst =
@@ -66,6 +69,7 @@ type SpecImpl =
 data RW = RW
   { roTParams     :: [Cry.TParam]
   , rwProps       :: [Cry.Prop]
+  , rwBoolProps   :: Map Cry.TParam [Cry.Prop] -- on paths when this is bool
   , rwConstraints :: Map Cry.TParam TConstraint
   }
 
@@ -86,6 +90,7 @@ data TConstraint =
 
 data SizeConstraint =
     IsFin
+  | IsFinSize
   | IsInf
     deriving Eq
 
@@ -98,8 +103,9 @@ prepSolver k =
      rw      <- SpecM get
      let tparams = roTParams rw
          props1  = rwProps rw
-         props2  = [ sizeProp s (Cry.TVar (Cry.tpVar x))
+         props2  = [ p
                    | (x,SizeConstraint s) <- Map.toList (rwConstraints rw)
+                   , p <- sizeProp s (Cry.TVar (Cry.tpVar x))
                    ]
      doIO (k solver tparams (props2 ++ props1))
 
@@ -133,11 +139,14 @@ checkSingleValue x' =
 --------------------------------------------------------------------------------
 
 
-sizeProp :: SizeConstraint -> Cry.Type -> Cry.Prop
+sizeProp :: SizeConstraint -> Cry.Type -> [Cry.Prop]
 sizeProp s t =
   case s of
-    IsFin -> Cry.pFin t
-    IsInf -> t Cry.=#= Cry.tInf
+    IsFinSize -> [Cry.pFin t, Cry.tNum (lim - 1) Cry.>== t ]
+    IsFin     -> [Cry.pFin t, t Cry.>== Cry.tNum lim ]
+    IsInf     -> [t Cry.=#= Cry.tInf]
+  where
+  lim = 2^(64::Int) - 1 :: Integer
 
 getConstraint :: Cry.TParam -> SpecM (Maybe TConstraint)
 getConstraint x = SpecM (Map.lookup x . rwConstraints <$> get)
@@ -147,7 +156,15 @@ isBool x = fmap (IsBool ==) <$> getConstraint x
 
 setConstraint :: Cry.TParam -> TConstraint -> SpecM ()
 setConstraint x t =
-  SpecM (sets_ \rw -> rw { rwConstraints = Map.insert x t (rwConstraints rw) })
+  do check <-
+       SpecM $
+         sets \rw ->
+           let rw1 = rw { rwConstraints = Map.insert x t (rwConstraints rw) }
+           in case t of
+                IsBool | Just ps <- Map.lookup x (rwBoolProps rw1) ->
+                  (True, rw1 { rwProps = ps ++ rwProps rw1 })
+                _ -> (False, rw1)
+     when check checkPossible
 
 caseBool :: Cry.TParam -> SpecM Bool
 caseBool x =
@@ -159,14 +176,14 @@ caseBool x =
          <|>
          (setConstraint x IsNotBool >> pure False)
 
-addProp :: Cry.Prop -> SpecM ()
+addProp :: [Cry.Prop] -> SpecM ()
 addProp p =
-  case Cry.tIsError p of
+  case asum (map Cry.tIsError p) of
     Just _ -> empty
-    _      -> SpecM $ sets_ \s -> s { rwProps = p : rwProps s }
+    _      -> SpecM $ sets_ \s -> s { rwProps = p ++ rwProps s }
 
 caseSize :: Cry.Type -> SpecM SizeConstraint
-caseSize ty = tryCase IsInf <|> tryCase IsFin
+caseSize ty = tryCase IsInf <|> tryCase IsFin <|> tryCase IsFinSize
   where
   tryCase p =
     do case Cry.tNoUser ty of
@@ -179,6 +196,16 @@ caseSize ty = tryCase IsInf <|> tryCase IsFin
        checkPossible
        pure p
 
+caseIsInf :: Cry.Type -> SpecM Bool
+caseIsInf ty = tryCase True <|> tryCase False
+  where
+  tryCase isInf =
+    do addProp [ if isInf then ty Cry.=#= Cry.tInf else Cry.pFin ty ]
+       checkPossible
+       pure isInf
+
+
+
 
 unsupported :: Text -> SpecM a
 unsupported x = doCryC (M.unsupported x)
@@ -186,7 +213,10 @@ unsupported x = doCryC (M.unsupported x)
 runSpecM :: SpecM a -> M.CryC [a]
 runSpecM (SpecM m) = map fst <$> findAll (runStateT rw0 m)
   where
-  rw0 = RW { roTParams = mempty, rwProps = mempty, rwConstraints = mempty }
+  rw0 = RW { roTParams = mempty
+           , rwProps = mempty, rwBoolProps = mempty
+           , rwConstraints = mempty
+           }
 --------------------------------------------------------------------------------
 
 
@@ -201,8 +231,9 @@ ppSpecMap m = vcat [ ppC x c | (x,c) <- Map.toList m ]
 
   ppSizeC x c =
     case c of
-      IsFin -> "fin" <+> pp x
-      IsInf -> pp x <+> "==" <+> "inf"
+      IsFin     -> "fin" <+> pp x
+      IsFinSize -> "fin_size" <+> pp x
+      IsInf     -> pp x <+> "==" <+> "inf"
 
 
 --------------------------------------------------------------------------------
@@ -237,7 +268,7 @@ compileFunType = go []
            go (a' : args) b
       _ ->
         do r <- compileValType ty
-           pure (args,r)
+           pure (reverse args,r)
 
 
 compileValType :: Cry.Type -> SpecM Type
@@ -280,20 +311,21 @@ compileValType ty =
               case ts of
                 [tlen,tel] ->
                   do szf <- caseSize tlen
-                     isize <- compileStreamSizeType tlen
-                     vt    <- compileValType tel
                      case szf of
-                       IsInf -> pure (TStream IRInfSize vt)
-                       IsFin ->
-                         case isize of
-                           IRInfSize -> panic "InfSize when Fin" []
-                           IRSize sz ->
-                             case vt of
-                               TBool -> pure (TWord sz)
-                               TPoly x ->
-                                 do yes <- caseBool x
-                                    pure (if yes then TWord sz else TArray sz vt)
-                               _  -> pure (TArray sz vt)
+                       IsInf -> TStream IRInfSize <$> compileValType tel
+                       IsFin -> empty
+                       IsFinSize ->
+                         do isize <- compileStreamSizeType tlen
+                            vt    <- compileValType tel
+                            case isize of
+                              IRInfSize -> panic "InfSize when Fin" []
+                              IRSize sz ->
+                                case vt of
+                                  TBool -> pure (TWord sz)
+                                  TPoly x ->
+                                    do yes <- caseBool x
+                                       pure (if yes then TWord sz else TArray sz vt)
+                                  _  -> pure (TArray sz vt)
 
                 _ -> unexpected "Malformed TSeq"
 
@@ -331,8 +363,13 @@ compileStreamSizeType ty =
 
     Cry.TVar t ->
       case t of
-        Cry.TVBound v -> checkInf (pure (IRSize (IRPolySize v)))
-        Cry.TVFree {} -> unexpected "TVFree"
+        Cry.TVBound v ->
+          do ctr <- caseSize ty
+             case ctr of
+               IsInf     -> pure IRInfSize
+               IsFinSize -> pure (IRSize (IRPolySize MemSize v))
+               IsFin     -> pure (IRSize (IRPolySize LargeSize v))
+        Cry.TVFree {} -> unexpected "Free type variable"
 
     Cry.TCon tc ts ->
       case tc of
@@ -354,9 +391,12 @@ compileStreamSizeType ty =
 
 
         Cry.TF tf ->
-          checkInf
-            do args <- mapM compileStreamSizeType ts
-               pure (evalSizeType tf args)
+          do isInf <- caseIsInf ty
+             if isInf
+                then pure IRInfSize
+                else
+                  do args <- mapM compileStreamSizeType ts
+                     pure (evalSizeType tf args)
 
         Cry.PC {}       -> unexpected "PC"
         Cry.TError {}   -> unexpected "TError"
@@ -365,10 +405,105 @@ compileStreamSizeType ty =
     Cry.TNewtype {}     -> unexpected "TNewtype"
   where
   unexpected x = panic "compileStreamSizeType" [x]
-  checkInf k =
-    do ctr <- caseSize ty
-       case ctr of
-         IsInf -> pure IRInfSize
-         IsFin -> k
+
+
+
+--------------------------------------------------------------------------------
+infoFromConstraints :: [Cry.Prop] -> ConstraintInfo
+infoFromConstraints = foldr CtrAnd CtrTrue . map infoFromConstraint
+
+infoFromConstraint :: Cry.Prop -> ConstraintInfo
+infoFromConstraint prop =
+  case Cry.tNoUser prop of
+    Cry.TCon (Cry.PC c) ts ->
+      case c of
+        Cry.PEqual           -> CtrTrue
+        Cry.PNeq             -> CtrTrue
+        Cry.PGeq             -> CtrTrue
+        Cry.PFin             -> CtrTrue
+        Cry.PPrime           -> CtrTrue
+
+        Cry.PHas {}          -> CtrTrue
+
+        Cry.PZero            -> CtrTrue
+        Cry.PLogic           -> CtrTrue
+        Cry.PRing            -> notBool (op 0)
+        Cry.PIntegral        -> notBool (op 0)
+        Cry.PField           -> notBool (op 0)
+        Cry.PRound           -> notBool (op 0)
+
+        Cry.PEq              -> CtrTrue
+        Cry.PCmp             -> CtrTrue
+        Cry.PSignedCmp       -> notBool (op 0)
+
+        Cry.PLiteral ->
+          let n = op 0
+          in CtrAnd
+               (CtrProp (Cry.pFin n))
+               (ifBool (op 1) (CtrProp (Cry.tNum (1::Integer) Cry.>== n)))
+
+        Cry.PLiteralLessThan ->
+          ifBool (op 1) (CtrProp (Cry.tNum (2::Integer) Cry.>== op 0))
+
+        Cry.PFLiteral        -> notBool (op 2)
+
+        Cry.PValidFloat {}   -> CtrTrue
+        Cry.PAnd             -> infoFromConstraints ts
+        Cry.PTrue            -> CtrTrue
+      where
+      op n =
+        case splitAt n ts of
+          (_,t:_) -> t
+          _       -> panic "infoFromConstraint" ["Expected 1 argument"]
+
+
+    _ -> CtrTrue
+
+  where
+  ifBool t k =
+    case Cry.tNoUser t of
+      Cry.TVar (Cry.TVBound x)      -> CtrIfBool x k
+      Cry.TCon (Cry.TC Cry.TCBit) _ -> k
+      _                             -> CtrTrue
+
+  notBool t = ifBool t CtrFalse
+
+--------------------------------------------------------------------------------
+
+data ConstraintInfo =
+    CtrFalse
+  | CtrTrue
+  | CtrAnd ConstraintInfo ConstraintInfo
+  | CtrProp Cry.Prop
+  | CtrIfBool Cry.TParam ConstraintInfo
+
+-- | Returns unconditional assumptions, and ones that depend on the given
+-- parameter being bool.  If the entry is `[]`, than the parameter must
+-- not be bool.  If it we have some props, then they can be assumed but
+-- only when the parameter *is* bool.
+ctrProps ::
+  ConstraintInfo -> Maybe ([Cry.Prop], Map Cry.TParam [Cry.Prop])
+ctrProps = go (mempty,mempty)
+  where
+  go props@(pu,pc) ci =
+    case ci of
+      CtrFalse   -> Nothing
+      CtrTrue    -> pure props
+      CtrAnd x y ->
+        do p1 <- go props x
+           go p1 y
+
+      CtrProp p -> pure (p : pu, pc)
+
+      CtrIfBool x pr ->
+        pure
+          case pr of
+            CtrFalse  -> (pu, Map.insert x [] pc)
+            CtrProp p ->
+              case Map.lookup x pc of
+                Just [] -> props
+                _       -> (pu, Map.insertWith (++) x [p] pc)
+            _ -> panic "ctrProps" ["Unexpected nested prop"]
+
 
 
