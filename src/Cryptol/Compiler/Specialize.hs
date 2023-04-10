@@ -1,7 +1,5 @@
 module Cryptol.Compiler.Specialize (testSpec, TConstraint(..), ppSpecMap) where
 
-import Debug.Trace
-
 import Data.Text(Text)
 import Data.Map(Map)
 import Data.Map qualified as Map
@@ -22,24 +20,22 @@ import Cryptol.Compiler.IR.Subst
 
 testSpec :: Cry.Schema -> M.CryC [ (Subst,[Type],Type) ]
 testSpec sch =
-  case extraInfo of
+  case ctrProps (infoFromConstraints (Cry.sProps sch)) of
+    -- inconsistent
     Nothing -> pure []
-    Just (extraProps,null_conds) ->
+    Just (props,null_conds) ->
       let (notBool,conds) = Map.partition null null_conds
       in
       runSpecM
-        do SpecM $ set RW { roTParams = Cry.sVars sch
-                          , rwProps = extraProps ++
-                                      filter Cry.isNumeric (Cry.sProps sch)
-                          , rwBoolProps = conds
+        do SpecM $ set RW { roTParams     = Cry.sVars sch
+                          , rwProps       = props
+                          , rwBoolProps   = conds
                           , rwConstraints = IsNotBool <$ notBool
                           }
            (args,res) <- compileFunType (Cry.sType sch)
            su  <- getSubst
            pure (su, apSubst su args, apSubst su res)
 
-  where
-  extraInfo = ctrProps (infoFromConstraints (Cry.sProps sch))
 
 getSubst :: SpecM Subst
 getSubst =
@@ -410,18 +406,18 @@ compileStreamSizeType ty =
 
 --------------------------------------------------------------------------------
 infoFromConstraints :: [Cry.Prop] -> ConstraintInfo
-infoFromConstraints = foldr CtrAnd CtrTrue . map infoFromConstraint
+infoFromConstraints = foldr (CtrAnd . infoFromConstraint) CtrTrue
 
 infoFromConstraint :: Cry.Prop -> ConstraintInfo
 infoFromConstraint prop =
   case Cry.tNoUser prop of
     Cry.TCon (Cry.PC c) ts ->
       case c of
-        Cry.PEqual           -> CtrTrue
-        Cry.PNeq             -> CtrTrue
-        Cry.PGeq             -> CtrTrue
-        Cry.PFin             -> CtrTrue
-        Cry.PPrime           -> CtrTrue
+        Cry.PEqual           -> CtrProp prop
+        Cry.PNeq             -> CtrProp prop
+        Cry.PGeq             -> CtrProp prop
+        Cry.PFin             -> CtrProp prop
+        Cry.PPrime           -> CtrProp prop
 
         Cry.PHas {}          -> CtrTrue
 
@@ -447,7 +443,7 @@ infoFromConstraint prop =
 
         Cry.PFLiteral        -> notBool (op 2)
 
-        Cry.PValidFloat {}   -> CtrTrue
+        Cry.PValidFloat {}   -> CtrTrue -- XXX: restrict to supported ones?
         Cry.PAnd             -> infoFromConstraints ts
         Cry.PTrue            -> CtrTrue
       where
@@ -476,6 +472,8 @@ data ConstraintInfo =
   | CtrAnd ConstraintInfo ConstraintInfo
   | CtrProp Cry.Prop
   | CtrIfBool Cry.TParam ConstraintInfo
+    -- ^ Currently we do not support arbitrary nested things here,
+    -- see `ctrProps`.
 
 -- | Returns unconditional assumptions, and ones that depend on the given
 -- parameter being bool.  If the entry is `[]`, than the parameter must
