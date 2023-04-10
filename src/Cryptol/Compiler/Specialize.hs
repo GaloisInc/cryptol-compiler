@@ -283,15 +283,14 @@ compileValType ty =
 
             Cry.TCFloat ->
               case ts of
-                [ e, p ] ->
-                  do ce <- compileStreamSizeType e
-                     cp <- compileStreamSizeType p
-                     case (ce,cp) of
-                       (IRSize (IRFixedSize pr), IRSize (IRFixedSize ex))
-                          | pr == 8  && ex == 24 -> pure TFloat
-                          | pr == 11 && ex == 53 -> pure TDouble
-                       _ -> unsupported "floating point type"
-                _ -> unexpected "Malformed TFCFloat"
+                   [ e, p ] -> opt 8 24 TFloat <|> opt 11 53 TDouble
+                     where
+                     isK a n = a Cry.=#= Cry.tNum (n :: Int)
+                     opt a b r =
+                       do addProp [ isK e a, isK p b ]
+                          checkPossible
+                          pure  r
+                   _ -> unexpected "Malformed TFCFloat"
 
             Cry.TCIntMod ->
               case ts of
