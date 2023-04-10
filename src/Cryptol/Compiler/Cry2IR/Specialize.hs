@@ -1,221 +1,42 @@
-module Cryptol.Compiler.Specialize (testSpec, TConstraint(..), ppSpecMap) where
+module Cryptol.Compiler.Cry2IR.Specialize
+  (testSpec
+  ) where
 
-import Data.Text(Text)
 import Data.Map(Map)
 import Data.Map qualified as Map
-import Control.Applicative(Alternative(..),asum)
-import MonadLib
+import Control.Applicative(Alternative(..))
+import Control.Monad(forM_)
 
 import Cryptol.TypeCheck.TCon qualified as Cry
-import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.TypeCheck.Type qualified as Cry
-import Cryptol.TypeCheck.Solver.SMT qualified as Cry
 
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.Monad qualified as M
-import Cryptol.Compiler.Monad (panic)
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.Subst
 
+import Cryptol.Compiler.Cry2IR.Monad
 
 testSpec :: Cry.Schema -> M.CryC [ (Subst,[Type],Type) ]
 testSpec sch =
   case ctrProps (infoFromConstraints (Cry.sProps sch)) of
     -- inconsistent
     Nothing -> pure []
-    Just (props,null_conds) ->
-      let (notBool,conds) = Map.partition null null_conds
-      in
+    Just (props,boolProps) ->
       runSpecM
-        do SpecM $ set RW { roTParams     = Cry.sVars sch
-                          , rwProps       = props
-                          , rwBoolProps   = conds
-                          , rwConstraints = IsNotBool <$ notBool
-                          }
+        do addTParams (Cry.sVars sch)
+           addNumProps props
+           forM_ (Map.toList boolProps) \(x,ps) ->
+             case ps of
+               [] -> addIsBoolProp x (Known False)
+               ps -> addIsBoolProp x (Unknown ps)
+
            (args,res) <- compileFunType (Cry.sType sch)
            su  <- getSubst
            pure (su, apSubst su args, apSubst su res)
 
 
-getSubst :: SpecM Subst
-getSubst =
-  do fi <- checkFixedSize
-     let su1 = Map.foldrWithKey suAddSize suEmpty fi
-     cs <- rwConstraints <$> SpecM get
-     pure (Map.foldrWithKey addT su1 cs)
-  where
-  addT x c su =
-    case c of
-      IsBool -> suAddType x TBool su
-      _      -> su
-
-
-
---------------------------------------------------------------------------------
-newtype SpecM a = SpecM (SpecImpl a)
-  deriving (Functor,Applicative,Monad,Alternative) via SpecImpl
-
--- | This is the implementation of the monad
-type SpecImpl =
-  WithBase M.CryC
-    '[ StateT RW
-     , ChoiceT
-     ]
-
-data RW = RW
-  { roTParams     :: [Cry.TParam]
-  , rwProps       :: [Cry.Prop]
-  , rwBoolProps   :: Map Cry.TParam [Cry.Prop] -- on paths when this is bool
-  , rwConstraints :: Map Cry.TParam TConstraint
-  }
-
-instance BaseM SpecM SpecM where
-  inBase = id
-
-doIO :: IO a -> SpecM a
-doIO m = doCryC (M.doIO m)
-
-doCryC :: M.CryC a -> SpecM a
-doCryC m = SpecM (inBase m)
-
-data TConstraint =
-    IsBool
-  | IsNotBool
-  | SizeConstraint SizeConstraint
-    deriving Eq
-
-data SizeConstraint =
-    IsFin
-  | IsFinSize
-  | IsInf
-    deriving Eq
-
-
-
---------------------------------------------------------------------------------
-prepSolver :: (Cry.Solver -> [Cry.TParam] -> [Cry.Prop] -> IO a) -> SpecM a
-prepSolver k =
-  do solver  <- doCryC M.getSolver
-     rw      <- SpecM get
-     let tparams = roTParams rw
-         props1  = rwProps rw
-         props2  = [ p
-                   | (x,SizeConstraint s) <- Map.toList (rwConstraints rw)
-                   , p <- sizeProp s (Cry.TVar (Cry.tpVar x))
-                   ]
-     doIO (k solver tparams (props2 ++ props1))
-
-
--- | Check if the current set of properties are consistent.
-checkPossible :: SpecM ()
-checkPossible =
-  do bad <- prepSolver \solver tparams props ->
-              Cry.inNewFrame solver
-                 do tvars <- Cry.declareVars solver (map Cry.tpVar tparams)
-                    Cry.unsolvable solver tvars props
-     when bad empty
-
-
--- | Check if the given variable can have only one possible value.
-checkSingleValue :: Cry.TParam -> SpecM (Maybe Cry.Nat')
-checkSingleValue x' =
-  prepSolver \solver tparams props ->
-    do let as = map Cry.tpVar tparams
-           x  = Cry.tpVar x'
-       model1 <- Cry.tryGetModel solver as props
-       case model1 of
-         Just mo | Just v <- lookup x mo ->
-           do let notThis = Cry.TVar x Cry.=/= Cry.tNat' v
-              model2 <- Cry.tryGetModel solver as (notThis : props)
-              case model2 of
-                Nothing -> pure (Just v)
-                _       -> pure Nothing
-         _ -> pure Nothing
-
---------------------------------------------------------------------------------
-
-
-sizeProp :: SizeConstraint -> Cry.Type -> [Cry.Prop]
-sizeProp s t =
-  case s of
-    IsFinSize -> [Cry.pFin t, Cry.tNum (lim - 1) Cry.>== t ]
-    IsFin     -> [Cry.pFin t, t Cry.>== Cry.tNum lim ]
-    IsInf     -> [t Cry.=#= Cry.tInf]
-  where
-  lim = 2^(64::Int) - 1 :: Integer
-
-getConstraint :: Cry.TParam -> SpecM (Maybe TConstraint)
-getConstraint x = SpecM (Map.lookup x . rwConstraints <$> get)
-
-isBool :: Cry.TParam -> SpecM (Maybe Bool)
-isBool x = fmap (IsBool ==) <$> getConstraint x
-
-setConstraint :: Cry.TParam -> TConstraint -> SpecM ()
-setConstraint x t =
-  do check <-
-       SpecM $
-         sets \rw ->
-           let rw1 = rw { rwConstraints = Map.insert x t (rwConstraints rw) }
-           in case t of
-                IsBool | Just ps <- Map.lookup x (rwBoolProps rw1) ->
-                  (True, rw1 { rwProps = ps ++ rwProps rw1 })
-                _ -> (False, rw1)
-     when check checkPossible
-
-caseBool :: Cry.TParam -> SpecM Bool
-caseBool x =
-  do mb <- isBool x
-     case mb of
-       Just yes -> pure yes
-       Nothing ->
-         (setConstraint x IsBool >> pure True)
-         <|>
-         (setConstraint x IsNotBool >> pure False)
-
-addProp :: [Cry.Prop] -> SpecM ()
-addProp p =
-  case asum (map Cry.tIsError p) of
-    Just _ -> empty
-    _      -> SpecM $ sets_ \s -> s { rwProps = p ++ rwProps s }
-
-caseSize :: Cry.Type -> SpecM SizeConstraint
-caseSize ty = tryCase IsInf <|> tryCase IsFin <|> tryCase IsFinSize
-  where
-  tryCase p =
-    do case Cry.tNoUser ty of
-         Cry.TVar (Cry.TVBound x) ->
-           do mb <- getConstraint x
-              case mb of
-                Nothing -> setConstraint x (SizeConstraint p)
-                Just ct -> unless (SizeConstraint p == ct) empty
-         _ -> addProp (sizeProp p ty)
-       checkPossible
-       pure p
-
-caseIsInf :: Cry.Type -> SpecM Bool
-caseIsInf ty = tryCase True <|> tryCase False
-  where
-  tryCase isInf =
-    do addProp [ if isInf then ty Cry.=#= Cry.tInf else Cry.pFin ty ]
-       checkPossible
-       pure isInf
-
-
-
-
-unsupported :: Text -> SpecM a
-unsupported x = doCryC (M.unsupported x)
-
-runSpecM :: SpecM a -> M.CryC [a]
-runSpecM (SpecM m) = map fst <$> findAll (runStateT rw0 m)
-  where
-  rw0 = RW { roTParams = mempty
-           , rwProps = mempty, rwBoolProps = mempty
-           , rwConstraints = mempty
-           }
---------------------------------------------------------------------------------
-
-
+{-
 ppSpecMap :: Map Cry.TParam TConstraint -> Doc
 ppSpecMap m = vcat [ ppC x c | (x,c) <- Map.toList m ]
   where
@@ -230,29 +51,10 @@ ppSpecMap m = vcat [ ppC x c | (x,c) <- Map.toList m ]
       IsFin     -> "fin" <+> pp x
       IsFinSize -> "fin_size" <+> pp x
       IsInf     -> pp x <+> "==" <+> "inf"
+-}
 
 
---------------------------------------------------------------------------------
-checkFixedSize :: SpecM (Map Cry.TParam StreamSize)
-checkFixedSize =
-  do vs <- roTParams <$> SpecM get
-     let nums = filter ((== Cry.KNum) . Cry.kindOf) vs
-     foldM checkVar mempty nums
-  where
-  checkVar done x =
-    do mb <- getConstraint x
-       case mb of
-         Just (SizeConstraint IsInf) -> pure (Map.insert x IRInfSize done)
-         _ -> do mb1 <- checkSingleValue x
-                 case mb1 of
-                   Nothing -> pure done
-                   Just v  -> pure (Map.insert x t done)
-                     where t = case v of
-                                 Cry.Inf   -> IRInfSize
-                                 Cry.Nat n -> IRSize (IRFixedSize n)
 
-
---------------------------------------------------------------------------------
 compileFunType :: Cry.Type -> SpecM ([Type],Type)
 compileFunType = go []
   where
@@ -287,8 +89,7 @@ compileValType ty =
                      where
                      isK a n = a Cry.=#= Cry.tNum (n :: Int)
                      opt a b r =
-                       do addProp [ isK e a, isK p b ]
-                          checkPossible
+                       do addNumProps [ isK e a, isK p b ]
                           pure  r
                    _ -> unexpected "Malformed TFCFloat"
 

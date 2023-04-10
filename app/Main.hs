@@ -16,7 +16,7 @@ import Cryptol.Compiler.Monad
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.Simple
 import Cryptol.Compiler.Interval
-import Cryptol.Compiler.Specialize
+import Cryptol.Compiler.Cry2IR.Specialize
 import Cryptol.Compiler.IR.Subst
 
 
@@ -40,8 +40,7 @@ main =
 doTestSpec :: CryC ()
 doTestSpec =
   do tys <- getTopTypes
-     let isPrel x = Cry.nameTopModule x == Cry.preludeName
-         nonPrel  = Map.filterWithKey (\k _ -> not (isPrel k)) tys
+     let nonPrel  = Map.filterWithKey (\k _ -> not (isPrel k)) tys
      forM_ (Map.toList nonPrel) \(x,t) ->
        do doIO (print (cryPP x $$ nest 2 (cryPP t)))
           xs <- catchError (testSpec t)
@@ -59,13 +58,13 @@ doTestSpec =
                         Left err -> pp err
           doIO (print doc)
 
+isPrel x = Cry.nameTopModule x `elem` [Cry.preludeName, Cry.floatName]
 
 
 doTypeAnalysis :: CryC ()
 doTypeAnalysis =
   do tys <- getTopTypes
-     let isPrel x = False -- Cry.nameTopModule x == Cry.preludeName
-         nonPrel  = Map.filterWithKey (\k _ -> not (isPrel k)) tys
+     let nonPrel  = Map.filterWithKey (\k _ -> not (isPrel k)) tys
      forM_ (Map.toList nonPrel) \(x,t) ->
        do let nm = Cry.addTNames (Cry.sVars t) Cry.emptyNameMap
           it <- schemaIntervals (2^(64::Int) - 1) t

@@ -14,7 +14,7 @@ extra-doc-files:    CHANGELOG.md
 -- extra-source-files:
 
 common warnings
-    ghc-options: -Wall -threaded -rtsopts "-with-rtsopts=-N1 -A64m" -O2
+    ghc-options: -Wall -O2
 
 common extensions
     default-extensions:
@@ -32,21 +32,31 @@ common extensions
       MultiParamTypeClasses,
       FunctionalDependencies
 
+common executable
+    import: warnings, extensions
+    ghc-options: -threaded -rtsopts "-with-rtsopts=-N1 -A64m"
+
+
+
 
 library
-    import:           warnings, extensions
+    import: warnings, extensions
     exposed-modules:
       Cryptol.Compiler.IR
       Cryptol.Compiler.IR.Type
       Cryptol.Compiler.IR.Subst
       Cryptol.Compiler.IR.TypePattern
+
+      Cryptol.Compiler.Cry2IR.Monad
+      Cryptol.Compiler.Cry2IR.Specialize
+
+
       Cryptol.Compiler.Monad
       Cryptol.Compiler.Error
       Cryptol.Compiler.PP
       Cryptol.Compiler.Simple
       Cryptol.Compiler.CompileType
       Cryptol.Compiler.Interval
-      Cryptol.Compiler.Specialize
 
       -- Cryptol.Compiler.Rust.CodeGen
     -- other-modules:
@@ -64,7 +74,7 @@ library
     default-language: Haskell2010
 
 executable cryptol-compiler
-    import:           warnings, extensions
+    import:           executable
     main-is:          Main.hs
     other-modules:
       Options
@@ -79,7 +89,7 @@ executable cryptol-compiler
     default-language: Haskell2010
 
 test-suite cryptol-compiler-test
-    import:           warnings, extensions
+    import:           executable
     default-language: Haskell2010
     -- other-modules:
     type:             exitcode-stdio-1.0

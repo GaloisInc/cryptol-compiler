@@ -4,7 +4,7 @@ import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 
 import Cryptol.Compiler.Monad(panic)
 import Cryptol.Compiler.IR.Type
-import Cryptol.Compiler.Specialize
+import Cryptol.Compiler.Cry2IR.Specialize
 
 
 data IRTypePattern =
