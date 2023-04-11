@@ -6,19 +6,21 @@ Rust's type system does not allow one to easily express some concepts that exist
 As an example consider a Cryptol function with this type:
 
 ```
-concat : {front, back, a} (fin front) => [front]a -> [back]a -> [front + back] a
+append : {front, back, a} (fin front) => [front]a -> [back]a -> [front + back] a
 ```
 
 If we try to express this idea in Rust, we might be tempted to use arrays:
 
 ```rust
-fn concat<A, const usize: FRONT, const usize: BACK>
+fn append<A, const usize: FRONT, const usize: BACK>
   (front: [A; FRONT], back: [A; BACK]) -> [A; ???]
 ```
 
-Essentially, there is no easy way for us replace `???` with to make this a legal Rust program that will work such that the resulting array will be have the statically-known length `FRONT + BACK`.  This is putting aside the fact that the specification of `concat` above does not require that `back` is finite.
+Essentially, there is no easy way for us replace `???` with to make this a legal Rust program that will work such that the resulting array will be have the statically-known length `FRONT + BACK`.  This is putting aside the fact that the specification of `append` above does not require that `back` is finite.
 
-To solve this, there are two major (complimentary) approaches we can consider - over-approximation and specialization.
+A related problem is how we efficiently represent some types such as words.  Ideally, we would use the built-in integer types when appropriate but and a bitvector specific type for larger sequences of bits which may be a different representation than a sequence of integers or tuples.  This document is intended as a sketch dealing with part of the problem, and won't deal with the problem of efficient representation specifically but there is some related thinking going on along these lines.
+
+We'll examine the problem of how to express and implement `append` - there are two major (complimentary) approaches we can consider - over-approximation and specialization.
 
 
 Over-approximation
@@ -34,20 +36,20 @@ enum Seq<A> {
 }
 ```
 
-While this type is a simplification lacking some of the nuance we might like - what about finite sequences that are longer than `usize`?  Putting that aside for the moment, we can write a pretty plausible signature for `concat`:
+While this type is a simplification lacking some of the nuance we might like - what about finite sequences that are longer than `usize`?  Putting that aside for the moment, we can write a pretty plausible signature for `append`:
 
 ```rust
-fn concat<A>(front: &Seq<A>, back: &Seq<A>) -> Seq<A>
+fn append<A>(front: &Seq<A>, back: &Seq<A>) -> Seq<A>
 ```
 
 The resulting function has fewer static guarantees and might do a bit more work at run-time to figure things out - for example, its implementation might proceed in separate cases after determining if `back` is finite or infinite - an example implementation might look like:
 
 ```rust
-fn concat_seq<A: Clone>(front: &Seq<A>, back: &Seq<A>) -> Seq<A> {
+fn append_seq<A: Clone>(front: &Seq<A>, back: &Seq<A>) -> Seq<A> {
   if let Seq::Finite(a_vec) = front {
     match back {
       Seq::Infinite(b_str) =>
-        Seq::Infinite(stream_concat(&vec_as_stream(a_vec), b_str)),
+        Seq::Infinite(stream_append(&vec_as_stream(a_vec), b_str)),
       Seq::Finite(b_vec) => {
         let mut result = Vec::with_capacity(a_vec.len() + b_vec.len());
         result.extend(a_vec.iter().cloned());
@@ -56,7 +58,7 @@ fn concat_seq<A: Clone>(front: &Seq<A>, back: &Seq<A>) -> Seq<A> {
       }
     }
   } else {
-    panic!("concat: expecting `front` to be finite")
+    panic!("append: expecting `front` to be finite")
   }
 }
 ```
@@ -68,44 +70,44 @@ Specialization
 --------------
 
 Instead of over-approximating, we can instead specialize - essentially breaking the function into cases statically and doing some form of type-directed resolution during the compilation process.  For example,
-we might produce several functions corresponding to `concat`:
+we might produce several functions corresponding to `append`:
 
 ```rust
-fn concat_fin<A: Clone>(a_vec: &Vec<A>, b_vec: &Vec<A>) -> Vec<A> {
+fn append_fin<A: Clone>(a_vec: &Vec<A>, b_vec: &Vec<A>) -> Vec<A> {
   let mut result = Vec::with_capacity(a_vec.len() + b_vec.len());
   result.extend(a_vec.iter().cloned());
   result.extend(b_vec.iter().cloned());
   result
 }
 
-fn concat_infin<A: Clone>(a_vec: &Vec<A>, b_str: &Stream<A>) -> Stream<A> {
-  stream_concat(&vec_as_stream(a_vec), b_str)
+fn append_infin<A: Clone>(a_vec: &Vec<A>, b_str: &Stream<A>) -> Stream<A> {
+  stream_append(&vec_as_stream(a_vec), b_str)
 }
 ```
 
-Note the similarity to the cases in the example implementation of `concat` using `Seq<A>`.  The Cryptol-to-Rust compiler might be able to keep track of these possible implementations of this concept of sequences and also to generate all the necessary specializations (see the `SpecializingOnSizes.md` document for more details).  
+Note the similarity to the cases in the example implementation of `append` using `Seq<A>`.  The Cryptol-to-Rust compiler might be able to keep track of these possible implementations of this concept of sequences and also to generate all the necessary specializations (see the `SpecializingOnSizes.md` document for more details).
 
 This approach may make things a little more complicated to deal with at the interface level as a user may need to figure out which version of a function to call.  This can be ameliorated somewhat by implementing overloaded interface functions using traits:
 
 ```rust
-trait Concat<Back> {
-  type ConcatResult;
+trait Append<Back> {
+  type AppendResult;
   // here, &self plays the role of `front`
-  fn concat(&self, back: &Back) -> Self::ConcatResult;
+  fn append(&self, back: &Back) -> Self::AppendResult;
 }
 
-impl<A: Clone> Concat<Vec<A>> for Vec<A> {
-  type ConcatResult = Vec<A>;
-  fn concat(&self, back: &Vec<A>) -> Self::ConcatResult {
-    concat_fin(self, back)
+impl<A: Clone> Append<Vec<A>> for Vec<A> {
+  type AppendResult = Vec<A>;
+  fn append(&self, back: &Vec<A>) -> Self::AppendResult {
+    append_fin(self, back)
   }
 }
 
-impl<A: Clone> Concat<Stream<A>> for Vec<A> {
-  type ConcatResult = Stream<A>;
+impl<A: Clone> Append<Stream<A>> for Vec<A> {
+  type AppendResult = Stream<A>;
 
-  fn concat(&self, back: &Stream<A>) -> Self::ConcatResult {
-    concat_infin(self, back)
+  fn append(&self, back: &Stream<A>) -> Self::AppendResult {
+    append_infin(self, back)
   }
 }
 ```
@@ -113,11 +115,11 @@ impl<A: Clone> Concat<Stream<A>> for Vec<A> {
 With this approach there's no longer a type representing sequences of _arbitrary_ length - everything must be handled case by case at specific types.  However there is nothing stopping us from adding another `impl` for `Seq`:
 
 ```rust
-impl<A: Clone> Concat<Seq<A>> for Seq<A> {
-  type ConcatResult = Seq<A>;
+impl<A: Clone> Append<Seq<A>> for Seq<A> {
+  type AppendResult = Seq<A>;
 
-  fn concat(&self, back: &Seq<A>) -> Self::ConcatResult {
-    concat_seq(self, back)
+  fn append(&self, back: &Seq<A>) -> Self::AppendResult {
+    append_seq(self, back)
   }
 }
 ```
@@ -159,7 +161,7 @@ type Stream<A> = Box<dyn AsIterator<Iter=Box<dyn Iterator<A>>>>
 Traits-Only Approach
 --------------------
 
-Rather than try to make `Stream` a type, we could try to just use traits everywhere - similar to how Rust implements many of the operations on `Iterator` in its standard library - for example, the Rust version of `concat` that works on iterators is:
+Rather than try to make `Stream` a type, we could try to just use traits everywhere - similar to how Rust implements many of the operations on `Iterator` in its standard library - for example, the Rust version of `append` that works on iterators is:
 
 ```rust
 // note that `self` here is the type implementing `Iterator`
@@ -175,20 +177,20 @@ where
 Which is to say it creates a value of type `Chain` that represents the iteration across two values.  We could imagine employing a similar approach in the translation from Cryptol and using traits to model sequences instead of having a particular rust type.
 
 
-This suggests that we _could_ write `concat` in a similar way - by first specifying a `Concat` type:
+This suggests that we _could_ write `append` in a similar way - by first specifying a `Append` type:
 
 ```rust
-struct Concat<A, F: AsIterator<A>, B: AsIterator<A>> {
+struct Append<A, F: AsIterator<A>, B: AsIterator<A>> {
   front: F,
   back: B,
   a: PhantomData<A>
 }
 ```
 
-And subsequently implementing `AsIterator<A>` on `Concat` to make it fulfill the requirements of a sequence:
+And subsequently implementing `AsIterator<A>` on `Append` to make it fulfill the requirements of a sequence:
 
 ```rust
-impl<A, F: AsIterator<A>, B: AsIterator<A>> AsIterator<A> for Concat<A,F, B> {
+impl<A, F: AsIterator<A>, B: AsIterator<A>> AsIterator<A> for Append<A,F, B> {
     type Iter = std::iter::Chain<F::Iter, B::Iter>;
 
     fn iterate(&self) -> Self::Iter {
