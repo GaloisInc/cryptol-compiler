@@ -44,8 +44,10 @@ doTestSpec =
      forM_ (Map.toList nonPrel) \(x,t) ->
        do doIO (print (cryPP x $$ nest 2 (cryPP t)))
           xs <- catchError (testSpec t)
-          let ppOpt (su,as,b) =
-                vcat [ commaSep (map pp as)
+          let ppOpt (su,ts,as,b) =
+                vcat [ if null ts then mempty
+                                  else parens (commaSep (map pp ts))
+                     , commaSep (map pp as)
                      , pp b
                      , nest 2 (if suIsEmpty su
                                  then ""
@@ -58,7 +60,7 @@ doTestSpec =
                         Left err -> pp err
           doIO (print doc)
 
-isPrel x = Cry.nameTopModule x `elem` [Cry.preludeName, Cry.floatName]
+isPrel x = False -- Cry.nameTopModule x `elem` [Cry.preludeName, Cry.floatName]
 
 
 doTypeAnalysis :: CryC ()

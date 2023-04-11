@@ -15,6 +15,10 @@ import Cryptol.Compiler.IR.Type
 --------------------------------------------------------------------------------
 -- Specialization for Cryptol names
 
+
+-- | Value types, specialized to Cryptol names
+type Trait = IRTrait Cry.TParam
+
 -- | Value types, specialized to Cryptol names
 type Type = IRType Cry.TParam
 

@@ -114,7 +114,11 @@ addIsBoolProp x t =
        Unknown ps ->
          case t of
            Known yes  -> when yes (addNumProps ps) >> setI t
-           Unknown qs -> setI (Unknown (qs ++ ps))
+           Unknown qs ->
+             do let new = qs ++ ps
+                ok <- couldAddNumProps new
+                if ok then setI (Unknown (qs ++ ps))
+                      else setI (Known False)
   where
   setI i =
     SpecM $ sets_ \s -> s { rwBoolProps = Map.insert x i (rwBoolProps s) }
@@ -122,6 +126,21 @@ addIsBoolProp x t =
 
 --------------------------------------------------------------------------------
 -- Numeric constraints
+
+couldAddNumProps :: [Cry.Prop] -> SpecM Bool
+couldAddNumProps ps =
+  case ps of
+    [] -> pure True
+    _  -> case asum (map Cry.tIsError ps) of
+            Just _ -> pure False
+            _  ->
+              do props <- SpecM (rwProps <$> get)
+                 SpecM $ sets_ \s -> s { rwProps = ps ++ props }
+                 imp <- checkImpossibleBool
+                 SpecM $ sets_ \s -> s { rwProps = props }
+                 pure (not imp)
+
+
 
 -- | Add some numeric properties to the current thread.
 addNumProps :: [Cry.Prop] -> SpecM ()
@@ -265,7 +284,5 @@ checkFixedSize =
            where t = case v of
                        Cry.Inf   -> IRInfSize
                        Cry.Nat n -> IRSize (IRFixedSize n)
-
-
 
 

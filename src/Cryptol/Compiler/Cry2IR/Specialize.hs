@@ -2,6 +2,7 @@ module Cryptol.Compiler.Cry2IR.Specialize
   (testSpec
   ) where
 
+import Data.Maybe(mapMaybe)
 import Data.Map(Map)
 import Data.Map qualified as Map
 import Control.Applicative(Alternative(..))
@@ -9,52 +10,41 @@ import Control.Monad(forM_)
 
 import Cryptol.TypeCheck.TCon qualified as Cry
 import Cryptol.TypeCheck.Type qualified as Cry
+import Cryptol.TypeCheck.Solver.Class qualified as Cry
+import Cryptol.TypeCheck.Solver.Types qualified as Cry
 
-import Cryptol.Compiler.PP
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.Subst
 
 import Cryptol.Compiler.Cry2IR.Monad
 
-testSpec :: Cry.Schema -> M.CryC [ (Subst,[Type],Type) ]
+testSpec :: Cry.Schema -> M.CryC [ (Subst,[Trait],[Type],Type) ]
 testSpec sch =
   case ctrProps (infoFromConstraints (Cry.sProps sch)) of
     -- inconsistent
     Nothing -> pure []
-    Just (props,boolProps) ->
+    Just (traits,props,boolProps) ->
       runSpecM
         do addTParams (Cry.sVars sch)
            addNumProps props
            forM_ (Map.toList boolProps) \(x,ps) ->
              case ps of
                [] -> addIsBoolProp x (Known False)
-               ps -> addIsBoolProp x (Unknown ps)
+               _  -> addIsBoolProp x (Unknown ps)
 
            (args,res) <- compileFunType (Cry.sType sch)
            su  <- getSubst
-           pure (su, apSubst su args, apSubst su res)
+           let apSuTrait (IRTrait t x) =
+                 case suLookupType x su of
+                   Nothing -> Just (IRTrait t x)
+                   Just _  -> Nothing
 
-
-{-
-ppSpecMap :: Map Cry.TParam TConstraint -> Doc
-ppSpecMap m = vcat [ ppC x c | (x,c) <- Map.toList m ]
-  where
-  ppC x c =
-    case c of
-      IsBool    -> pp x <+> "==" <+> "Bool"
-      IsNotBool -> pp x <+> "!=" <+> "Bool"
-      SizeConstraint sc -> ppSizeC x sc
-
-  ppSizeC x c =
-    case c of
-      IsFin     -> "fin" <+> pp x
-      IsFinSize -> "fin_size" <+> pp x
-      IsInf     -> pp x <+> "==" <+> "inf"
--}
+           pure (su, mapMaybe apSuTrait traits, apSubst su args, apSubst su res)
 
 
 
+-- XXX: Traits
 compileFunType :: Cry.Type -> SpecM ([Type],Type)
 compileFunType = go []
   where
@@ -109,7 +99,7 @@ compileValType ty =
                   do szf <- caseSize tlen
                      case szf of
                        IsInf -> TStream IRInfSize <$> compileValType tel
-                       IsFin -> empty
+                       IsFin -> empty   -- too large
                        IsFinSize ->
                          do isize <- compileStreamSizeType tlen
                             vt    <- compileValType tel
@@ -120,7 +110,8 @@ compileValType ty =
                                   TBool -> pure (TWord sz)
                                   TPoly x ->
                                     do yes <- caseBool x
-                                       pure (if yes then TWord sz else TArray sz vt)
+                                       pure (if yes then TWord sz
+                                                    else TArray sz vt)
                                   _  -> pure (TArray sz vt)
 
                 _ -> unexpected "Malformed TSeq"
@@ -146,8 +137,6 @@ compileValType ty =
 
   where
   unexpected msg = panic "compileValType" [msg]
-
-
 
 
 -- | Compile a Cryptol size type to an IR type.
@@ -203,8 +192,9 @@ compileStreamSizeType ty =
   unexpected x = panic "compileStreamSizeType" [x]
 
 
-
 --------------------------------------------------------------------------------
+-- Information we learn from existing constraints
+
 infoFromConstraints :: [Cry.Prop] -> ConstraintInfo
 infoFromConstraints = foldr (CtrAnd . infoFromConstraint) CtrTrue
 
@@ -213,45 +203,62 @@ infoFromConstraint prop =
   case Cry.tNoUser prop of
     Cry.TCon (Cry.PC c) ts ->
       case c of
+        Cry.PAnd             -> infoFromConstraints ts
+        Cry.PTrue            -> CtrTrue
+
         Cry.PEqual           -> CtrProp prop
         Cry.PNeq             -> CtrProp prop
         Cry.PGeq             -> CtrProp prop
         Cry.PFin             -> CtrProp prop
         Cry.PPrime           -> CtrProp prop
 
-        Cry.PHas {}          -> CtrTrue
+        Cry.PHas {}          -> unexpected "PHas"
 
-        Cry.PZero            -> CtrTrue
-        Cry.PLogic           -> CtrTrue
-        Cry.PRing            -> notBool (op 0)
-        Cry.PIntegral        -> notBool (op 0)
-        Cry.PField           -> notBool (op 0)
-        Cry.PRound           -> notBool (op 0)
+        Cry.PZero            -> trySolve1 (op 0) Cry.solveZeroInst PZero
 
-        Cry.PEq              -> CtrTrue
-        Cry.PCmp             -> CtrTrue
-        Cry.PSignedCmp       -> notBool (op 0)
+        Cry.PLogic           -> trySolve1 (op 0) Cry.solveLogicInst PLogic
+
+        Cry.PRing            -> notBool (op 0) `CtrAnd`
+                                trySolve1 (op 0) Cry.solveRingInst  PRing
+        Cry.PIntegral        -> notBool (op 0) `CtrAnd`
+                                trySolve1 (op 0) Cry.solveIntegralInst PIntegral
+        Cry.PField           -> notBool (op 0) `CtrAnd`
+                                trySolve1 (op 0) Cry.solveFieldInst PField
+        Cry.PRound           -> notBool (op 0) `CtrAnd`
+                                trySolve1 (op 0) Cry.solveFieldInst PField
+
+        Cry.PEq              -> trySolve1 (op 0) Cry.solveEqInst PEq
+
+        Cry.PCmp             -> trySolve1 (op 0) Cry.solveCmpInst PCmp
+        Cry.PSignedCmp       -> notBool (op 0) `CtrAnd`
+                                trySolve1 (op 0) Cry.solveCmpInst PCmp
 
         Cry.PLiteral ->
           let n = op 0
-          in CtrAnd
-               (CtrProp (Cry.pFin n))
-               (ifBool (op 1) (CtrProp (Cry.tNum (1::Integer) Cry.>== n)))
+              a = op 1
+          in CtrProp (Cry.pFin n)
+             `CtrAnd`
+             ifBool a (CtrProp (Cry.tNum (1::Integer) Cry.>== n))
+             `CtrAnd`
+             trySolveLit n a Cry.solveLiteralInst PLiteral
 
         Cry.PLiteralLessThan ->
           ifBool (op 1) (CtrProp (Cry.tNum (2::Integer) Cry.>== op 0))
+          `CtrAnd`
+          trySolveLit (op 0) (op 1) Cry.solveLiteralLessThanInst PLiteral
 
-        Cry.PFLiteral        -> notBool (op 2)
+        Cry.PFLiteral ->
+          notBool (op 3)
+          `CtrAnd`
+          trySolve (op 3) PFLiteral
+            (Cry.solveFLiteralInst (op 0) (op 1) (op 2) (op 3))
 
-        Cry.PValidFloat {}   -> CtrTrue -- XXX: restrict to supported ones?
-        Cry.PAnd             -> infoFromConstraints ts
-        Cry.PTrue            -> CtrTrue
+        Cry.PValidFloat {} -> CtrTrue -- XXX: restrict to supported ones?
       where
       op n =
         case splitAt n ts of
           (_,t:_) -> t
-          _       -> panic "infoFromConstraint" ["Expected 1 argument"]
-
+          _       -> unexpected "Expected 1 argument"
 
     _ -> CtrTrue
 
@@ -264,13 +271,31 @@ infoFromConstraint prop =
 
   notBool t = ifBool t CtrFalse
 
---------------------------------------------------------------------------------
+  trySolve t nm res =
+    case res of
+      Cry.Unsolvable  -> CtrFalse
+      Cry.SolvedIf xs -> infoFromConstraints xs
+      Cry.Unsolved ->
+        case Cry.tNoUser t of
+          Cry.TVar (Cry.TVBound x) -> CtrTrait (IRTrait nm x)
+          _ -> unexpected "Unsolved not TVar"
 
+  trySolve1 t sol nm     = trySolve t nm (sol t)
+  trySolveLit n a sol nm = trySolve a nm (sol n a)
+
+
+
+
+  unexpected msg = panic "infoFromConstraint" [msg]
+
+
+--------------------------------------------------------------------------------
 data ConstraintInfo =
     CtrFalse
   | CtrTrue
   | CtrAnd ConstraintInfo ConstraintInfo
   | CtrProp Cry.Prop
+  | CtrTrait Trait
   | CtrIfBool Cry.TParam ConstraintInfo
     -- ^ Currently we do not support arbitrary nested things here,
     -- see `ctrProps`.
@@ -280,10 +305,10 @@ data ConstraintInfo =
 -- not be bool.  If it we have some props, then they can be assumed but
 -- only when the parameter *is* bool.
 ctrProps ::
-  ConstraintInfo -> Maybe ([Cry.Prop], Map Cry.TParam [Cry.Prop])
-ctrProps = go (mempty,mempty)
+  ConstraintInfo -> Maybe ([Trait], [Cry.Prop], Map Cry.TParam [Cry.Prop])
+ctrProps = go (mempty,mempty,mempty)
   where
-  go props@(pu,pc) ci =
+  go props@(ts,pu,pc) ci =
     case ci of
       CtrFalse   -> Nothing
       CtrTrue    -> pure props
@@ -291,16 +316,18 @@ ctrProps = go (mempty,mempty)
         do p1 <- go props x
            go p1 y
 
-      CtrProp p -> pure (p : pu, pc)
+      CtrProp p -> pure (ts, p : pu, pc)
+
+      CtrTrait t -> pure (t : ts, pu, pc)
 
       CtrIfBool x pr ->
         pure
           case pr of
-            CtrFalse  -> (pu, Map.insert x [] pc)
+            CtrFalse  -> (ts, pu, Map.insert x [] pc)
             CtrProp p ->
               case Map.lookup x pc of
                 Just [] -> props
-                _       -> (pu, Map.insertWith (++) x [p] pc)
+                _       -> (ts, pu, Map.insertWith (++) x [p] pc)
             _ -> panic "ctrProps" ["Unexpected nested prop"]
 
 

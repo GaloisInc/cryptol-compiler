@@ -9,6 +9,24 @@ import Cryptol.Compiler.Error
 import Cryptol.Compiler.PP
 
 
+data IRTrait tname = IRTrait IRTraitName tname
+
+data IRTraitName =
+    PZero
+  | PLogic
+  | PRing
+  | PIntegral
+  | PField
+  | PRound
+
+  | PEq
+  | PCmp
+  | PSignedCmp
+
+  | PLiteral
+  | PFLiteral
+
+
 -- | Value types
 data IRType tname =
     TBool                                         -- ^ Boolean
@@ -46,7 +64,7 @@ data SizeVarSize =
 
 data IRFunType tname = IRFunType
   { ftTypeParams :: [tname]
-    -- XXX: some constraints on the tnames (e.g., Ring a)
+  , ftTraits     :: [IRTrait tname]
   , ftSizeParams :: [(tname, IRType tname)]
   , ftParams     :: [IRType tname]
   , ftResult     :: IRType tname
@@ -108,4 +126,26 @@ instance PP tname => PP (IRSize tname) where
             [t1,t2] -> parensAfter n
                          (withPrec l (pp t1) <+> op <+> withPrec r (pp t2))
             _ -> panic "pp@IRSize" ["Malformed infix"]
+
+
+instance (PP tname) => PP (IRTrait tname) where
+  pp (IRTrait t x) = pp t <+> pp x
+
+instance PP IRTraitName where
+  pp name =
+    case name of
+      PZero         -> "Zero"
+      PLogic        -> "Logic"
+      PRing         -> "Ring"
+      PIntegral     -> "Integral"
+      PField        -> "Field"
+      PRound        -> "Round"
+
+      PEq           -> "Eq"
+      PCmp          -> "Cmp"
+      PSignedCmp    -> "SignedCmp"
+
+      PLiteral      -> "Literal"
+      PFLiteral     -> "FLiteral"
+
 

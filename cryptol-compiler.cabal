@@ -45,11 +45,10 @@ library
       Cryptol.Compiler.IR
       Cryptol.Compiler.IR.Type
       Cryptol.Compiler.IR.Subst
-      Cryptol.Compiler.IR.TypePattern
 
       Cryptol.Compiler.Cry2IR.Monad
       Cryptol.Compiler.Cry2IR.Specialize
-
+      Cryptol.Compiler.Cry2IR.TypePattern
 
       Cryptol.Compiler.Monad
       Cryptol.Compiler.Error
