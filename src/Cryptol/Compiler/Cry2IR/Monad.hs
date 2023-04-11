@@ -17,6 +17,7 @@ module Cryptol.Compiler.Cry2IR.Monad
   , BoolInfo(..)
   , SizeConstraint(..)
   , addTParams
+  , addTrait
   , addIsBoolProp
   , addNumProps
   , caseSize
@@ -24,6 +25,9 @@ module Cryptol.Compiler.Cry2IR.Monad
   , caseBool
 
     -- * Queries
+  , getTParams
+  , getTraits
+  , getBoolConstraint
   , getSubst
 
   ) where
@@ -58,6 +62,7 @@ type SpecImpl =
 
 data RW = RW
   { roTParams     :: [Cry.TParam]
+  , roTraits      :: Map Cry.TParam [Trait]  -- indexed by variable
   , rwProps       :: [Cry.Prop]
   , rwBoolProps   :: Map Cry.TParam BoolInfo
   }
@@ -74,6 +79,7 @@ runSpecM :: SpecM a -> M.CryC [a]
 runSpecM (SpecM m) = map fst <$> findAll (runStateT rw0 m)
   where
   rw0 = RW { roTParams     = mempty
+           , roTraits      = mempty
            , rwProps       = mempty
            , rwBoolProps   = mempty
            }
@@ -121,7 +127,11 @@ addIsBoolProp x t =
                       else setI (Known False)
   where
   setI i =
-    SpecM $ sets_ \s -> s { rwBoolProps = Map.insert x i (rwBoolProps s) }
+    do case i of
+         Known True ->
+           SpecM $ sets_ \s -> s { roTraits = Map.delete x (roTraits s) }
+         _ -> pure ()
+       SpecM $ sets_ \s -> s { rwBoolProps = Map.insert x i (rwBoolProps s) }
 
 
 --------------------------------------------------------------------------------
@@ -160,7 +170,7 @@ data SizeConstraint =
   | IsInf
     deriving Eq
 
--- | Convert a size constraint to a property.
+-- | Convert a size constraint to a property on a type.
 sizeProp :: SizeConstraint -> Cry.Type -> [Cry.Prop]
 sizeProp s t =
   case s of
@@ -169,8 +179,6 @@ sizeProp s t =
     IsInf     -> [t Cry.=#= Cry.tInf]
   where
   lim = 2^(64::Int) - 1 :: Integer
-
-
 
 
 --------------------------------------------------------------------------------
@@ -221,6 +229,15 @@ checkSingleValue x' =
 addTParams :: [Cry.TParam] -> SpecM ()
 addTParams as = SpecM $ sets_ \s -> s { roTParams = as ++ roTParams s }
 
+getTParams :: SpecM [Cry.TParam]
+getTParams = SpecM (roTParams <$> get)
+
+addTrait :: Trait -> SpecM ()
+addTrait t@(IRTrait _ x) =
+  SpecM $ sets_ \s -> s { roTraits = Map.insertWith (++) x [t] (roTraits s) }
+
+getTraits :: SpecM [Trait]
+getTraits = SpecM (concat . Map.elems . roTraits <$> get)
 
 
 
@@ -254,7 +271,6 @@ caseIsInf ty = tryCase True <|> tryCase False
 
 
 --------------------------------------------------------------------------------
-
 
 -- | Find type parameters that can have only a single value.
 -- Note that this is not cached, so it will do the work each time it is called.

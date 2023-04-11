@@ -3,7 +3,8 @@ module Cryptol.Compiler.IR.Type
   , Cry.TFun(..)
   ) where
 
-import qualified Cryptol.TypeCheck.TCon as Cry
+import Cryptol.TypeCheck.TCon qualified as Cry
+import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 
 import Cryptol.Compiler.Error
 import Cryptol.Compiler.PP
@@ -62,6 +63,15 @@ data SizeVarSize =
   | LargeSize       -- ^ value may be large, use BigInt
     deriving Show
 
+data ParamInfo =
+    NumFixed Cry.Nat'
+  | NumVar   SizeVarSize
+  | TyBool
+  | TyNotBool
+  | TyAny
+
+newtype FunInstance = FunInstance [ParamInfo]
+
 data IRFunType tname = IRFunType
   { ftTypeParams :: [tname]
   , ftTraits     :: [IRTrait tname]
@@ -71,6 +81,37 @@ data IRFunType tname = IRFunType
   }
 --------------------------------------------------------------------------------
 -- Pretty Printing
+
+instance PP FunInstance where
+  pp (FunInstance xs) = brackets (commaSep (map pp xs))
+
+instance PP ParamInfo where
+  pp info =
+    case info of
+      NumFixed Cry.Inf     -> "inf"
+      NumFixed (Cry.Nat n) -> pp n
+      NumVar sz            -> case sz of
+                                MemSize   -> "size"
+                                LargeSize -> "integer"
+      TyBool               -> "bit"
+      TyNotBool            -> "!bit"
+      TyAny                -> "_"
+
+instance PP tname => PP (IRFunType tname) where
+  pp ft = fall <+> quall <+> args <+> "->" <+> res
+    where
+    fall = case ftTypeParams ft of
+             [] -> mempty
+             as -> braces (commaSep (map pp as))
+    quall = case ftTraits ft of
+              [] -> mempty
+              cs -> parens (commaSep (map pp cs)) <+> "=>"
+    args = parens $ commaSep
+                  $ map ppNumArg (ftSizeParams ft) ++ map pp (ftParams ft)
+    res  = pp (ftResult ft)
+    ppNumArg (x,t) = pp x <+> ":" <+> pp t
+
+
 
 instance PP tname => PP (IRType tname) where
   pp ty =

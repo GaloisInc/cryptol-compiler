@@ -1,4 +1,4 @@
-module Cryptol.Compiler.IR.TypePattern where
+module Cryptol.Compiler.Cry2IR.TypePattern where
 
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 
@@ -8,8 +8,8 @@ import Cryptol.Compiler.Cry2IR.Specialize
 
 
 data IRTypePattern =
-    ExactlyBool
-  | AnyType
+    IfBool
+  | IfNotBool
     deriving (Eq,Ord)
     -- The ord instance should have more specific patterns first
 

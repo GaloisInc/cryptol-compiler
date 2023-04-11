@@ -14,7 +14,7 @@ module Cryptol.Compiler.PP
     -- * Combinators
   , (<+>), (<.>), hsep, hcat
   , ($$), vcat, vsep
-  , commaSep, parens, parensAfter, brackets
+  , commaSep, parens, parensAfter, brackets, braces
   , nest
   , showPP
 
@@ -187,6 +187,10 @@ parensAfter n d =
 -- | Wrap in brackets
 brackets :: Doc -> Doc
 brackets = lift1 PP.brackets
+
+-- | Wrap in braces
+braces :: Doc -> Doc
+braces = lift1 PP.braces
 
 -- | Separate with commas
 commaSep :: [Doc] -> Doc
