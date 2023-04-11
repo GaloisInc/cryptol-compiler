@@ -54,7 +54,6 @@ library
       Cryptol.Compiler.PP
       Cryptol.Compiler.Simple
       Cryptol.Compiler.CompileType
-      Cryptol.Compiler.Interval
 
       -- Cryptol.Compiler.Rust.CodeGen
     -- other-modules:

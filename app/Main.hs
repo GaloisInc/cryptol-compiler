@@ -7,17 +7,13 @@ import System.IO(hPrint,stderr)
 import System.Exit
 
 import Cryptol.Utils.Ident    qualified as Cry
-import Cryptol.TypeCheck.PP qualified as Cry
-import Cryptol.TypeCheck.Type qualified as Cry
 import Cryptol.ModuleSystem.Name qualified as Cry
 
 import Cryptol.Compiler.Error
 import Cryptol.Compiler.Monad
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.Simple
-import Cryptol.Compiler.Interval
 import Cryptol.Compiler.Cry2IR.Specialize
-import Cryptol.Compiler.IR.Subst
 
 
 import Options
@@ -29,7 +25,6 @@ main =
      runCryC
        do mapM_ loadModuleByPath (optFiles opts)
           -- doSimpleCompile
-          -- doTypeAnalysis
           doTestSpec
 
   `catch` \e ->
@@ -51,18 +46,8 @@ doTestSpec =
                         Left err -> pp err
           doIO (print doc)
 
+isPrel :: Cry.Name -> Bool
 isPrel x = Cry.nameTopModule x `elem` [Cry.preludeName, Cry.floatName]
-
-
-doTypeAnalysis :: CryC ()
-doTypeAnalysis =
-  do tys <- getTopTypes
-     let nonPrel  = Map.filterWithKey (\k _ -> not (isPrel k)) tys
-     forM_ (Map.toList nonPrel) \(x,t) ->
-       do let nm = Cry.addTNames (Cry.sVars t) Cry.emptyNameMap
-          it <- schemaIntervals (2^(64::Int) - 1) t
-          doIO (print (cryPP x $$ nest 2 (vcat [ cryPP t, ppSizeMap nm it ])))
-
 
 doSimpleCompile :: CryC ()
 doSimpleCompile =
