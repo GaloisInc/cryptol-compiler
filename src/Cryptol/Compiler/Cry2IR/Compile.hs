@@ -1,4 +1,4 @@
-module Cryptol.Compiler.Simple where
+module Cryptol.Compiler.Cry2IR.Compile where
 
 import Data.Text(Text)
 import Data.Text qualified as Text
