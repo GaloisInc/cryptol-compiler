@@ -85,6 +85,7 @@ instance BaseM CryC CryC where
 data CompilerContext = CompilerContext
   { roLocalTypes    :: Map Cry.Name Cry.Schema
   , roLocalIRNames  :: Map Cry.Name Name
+    -- ^ Maps Cryptol name to an IR name
   }
 
 -- | State of the compiler.
@@ -164,6 +165,7 @@ doModuleCmd cmd =
        Right (a,newEnv) ->
          do mapM_ (addWarning . LoadWarning) warnings
             CryC (sets_ \s -> s { rwTypes = Nothing
+                                , rwPrims = Nothing
                                 , rwModuleInput =
                                     (rwModuleInput s)
                                        { Cry.minpModuleEnv = newEnv }})
