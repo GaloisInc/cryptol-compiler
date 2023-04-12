@@ -15,22 +15,9 @@ import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.Monad(panic)
+import Cryptol.Compiler.IR.Common
 import Cryptol.Compiler.IR.EvalType
 
-
--- | A pattern in a function instance.
--- NOTE: Ordering of constructors is important.
--- More specific ones should come *before* less specific ones
-data ParamInfo =
-    NumFixed Cry.Nat'
-  | NumVar   SizeVarSize
-  | TyBool
-  | TyNotBool
-  | TyAny
-    deriving (Eq,Ord)
-
--- | A specific instance of a Cryptol function.
-newtype FunInstance = FunInstance [ ParamInfo ]
 
 -- | A map where the keys are function instances.
 data InstanceMap a =
@@ -216,22 +203,6 @@ matchSize parami ty =
 
 --------------------------------------------------------------------------------
 -- Pretty printing
-
-instance PP FunInstance where
-  pp (FunInstance xs) = brackets (commaSep (map pp xs))
-
-instance PP ParamInfo where
-  pp info =
-    case info of
-      NumFixed Cry.Inf     -> "inf"
-      NumFixed (Cry.Nat n) -> pp n
-      NumVar sz            -> case sz of
-                                MemSize   -> "size"
-                                LargeSize -> "integer"
-      TyBool               -> "bit"
-      TyNotBool            -> "!bit"
-      TyAny                -> "_"
-
 
 instance PP tname => PP (Guard tname) where
   pp gu =

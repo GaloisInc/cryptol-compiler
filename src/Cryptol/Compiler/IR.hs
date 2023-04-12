@@ -10,6 +10,7 @@ import Cryptol.Utils.Panic(panic)
 import Cryptol.TypeCheck.AST qualified as Cry
 
 import Cryptol.Compiler.PP
+import Cryptol.Compiler.IR.Common
 import Cryptol.Compiler.IR.Type
 
 --------------------------------------------------------------------------------
@@ -33,6 +34,9 @@ type Size = IRSize Cry.TParam
 -- | Names, specialized to Cryptol names
 type Name = IRName Cry.TParam Cry.Name
 
+-- | Function names, specialized to Cryptol names
+type FunName = IRFunName Cry.Name
+
 -- | Declarations, specialized to Cryptol names
 type Decl = IRDecl Cry.TParam Cry.Name
 
@@ -45,14 +49,26 @@ type Prim = IRExpr Cry.TParam
 
 --------------------------------------------------------------------------------
 
+-- | Function name.  Stores the type of the result.
+data IRFunName tname name = IRFunName name (IRType tname) FunInstance
 
 -- | Typed names
 data IRName tname name = IRName name (IRType tname)
 
 -- | Declarations
 data IRDecl tname name =
-    IRFun (IRName tname name) [IRName tname name] (IRExpr tname name)
-    -- ^ The function's result type is in the function's name.
+    IRFun (IRFunDecl tname name)
+
+-- | A function declaration
+data IRFunDecl tname name =
+  IRFunDecl
+    { irfName       :: IRFunName tname name
+    , irfTParams    :: [tname]
+    , irfTraits     :: [IRTrait tname]
+    , irfSizeParams :: [IRName tname name]
+    , irfParams     :: [IRName tname name]
+    , irfDef        :: IRExpr tname name
+    }
 
 
 -- | Expressions
@@ -63,7 +79,11 @@ newtype IRExpr tname name = IRExpr (IRExprF tname name (IRExpr tname name))
 -- write generic traversals.
 data IRExprF tname name expr =
     IRVar (IRName tname name)
-  | IRCall (IRName tname name) [expr] -- XXX: type parameters
+  | IRCall (IRFunName tname name) [IRType tname] [expr] [expr] -- size args, args
+    -- The type of the result is stored in the name.
+    -- Note that this should be the type, for this call site (i.e., type
+    -- parameters may affect it
+
   | IRPrim (IRPrim tname expr)
   | IRIf expr expr expr
     deriving (Functor,Foldable,Traversable)
@@ -102,13 +122,17 @@ class PP tname => HasType t tname | t -> tname where
 instance PP tname => HasType (IRName tname name) tname where
   typeOf (IRName _ t) = t
 
+instance PP tname => HasType (IRFunName tname name) tname where
+  typeOf (IRFunName _ t _) = t
+
 instance HasType expr tname => HasType (IRExprF tname name expr) tname where
   typeOf expr =
     case expr  of
-      IRVar x       -> typeOf x
-      IRCall f _    -> typeOf f
-      IRPrim p      -> typeOf p
-      IRIf _ x _    -> typeOf x
+      IRVar x         -> typeOf x
+      IRCall f _ _ _  -> typeOf f
+      IRPrim p        -> typeOf p
+      IRIf _ x _      -> typeOf x
+
 
 instance PP tname => HasType (IRExpr tname name) tname where
   typeOf (IRExpr e) = typeOf e
@@ -154,11 +178,24 @@ instance (PP tname, PP name) => PP (IRName tname name) where
         then parensAfter 0 (pp x <+> ":" <+> withPrec 0 (pp t))
         else pp x
 
+-- XXX: should we print the result type?
+instance (PP tname, PP name) => PP (IRFunName tname name) where
+  pp (IRFunName x _ i)
+    | isEmptyInstance i = pp x
+    | otherwise         = hcat [ pp x, "@", pp i ]
+
 instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
   pp expr =
     case expr of
-     IRVar x        -> pp x
-     IRCall f es    -> pp f <.> withPrec 0 (parens (commaSep (map pp es)))
+     IRVar x            -> pp x
+     IRCall f ts ss es  -> withPrec 0
+                         $ hcat [ pp f, targs, args ]
+        where
+        targs = case ts of
+                  [] -> mempty
+                  _  -> hcat [ "::<", commaSep (map pp ts), ">" ]
+        args = parens (commaSep (map pp (ss ++ es)))
+
      IRPrim prim    -> pp prim
      IRIf e1 e2 e3  ->
        parensAfter 0 $
@@ -200,9 +237,26 @@ instance (PP tname, PP expr) => PP (IRPrim tname expr) where
 
 
 instance (PP tname, PP name) => PP (IRDecl tname name) where
-  pp (IRFun f as e) =
-    vcat [ "fn" <+> pp f <+> withTypes (withPrec 1 (hsep (map pp as)))
-            <+> "->" <+> withPrec 0 (pp (typeOf f)) <+> "="
-         , nest 2 (pp e)
-         ]
+  pp (IRFun fd) = pp fd
+
+instance (PP tname, PP name) => PP (IRFunDecl tname name) where
+  pp fd =
+    vcat
+      [ "fn" <+> pp (irfName fd) <+> tps <+> args <+> "->" <+> resT <+> "{"
+      , nest 2 (pp (irfDef fd))
+      , "}"
+      ]
+    where
+    tps = case irfTParams fd of
+            [] -> mempty
+            ps -> hcat [ "<", commaSep (map pp ps), ">" ]
+
+    args = parens
+         $ withTypes
+         $ commaSep
+         $ map pp
+         $ irfSizeParams fd ++ irfParams fd
+
+    resT = withPrec 0 (pp (typeOf (irfDef fd)))
+
 

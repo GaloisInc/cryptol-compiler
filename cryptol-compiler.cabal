@@ -43,6 +43,7 @@ library
     import: warnings, extensions
     exposed-modules:
       Cryptol.Compiler.IR
+      Cryptol.Compiler.IR.Common
       Cryptol.Compiler.IR.Type
       Cryptol.Compiler.IR.EvalType
       Cryptol.Compiler.IR.Subst
@@ -54,8 +55,8 @@ library
       Cryptol.Compiler.Monad
       Cryptol.Compiler.Error
       Cryptol.Compiler.PP
-      Cryptol.Compiler.Simple
-      Cryptol.Compiler.CompileType
+      -- Cryptol.Compiler.Simple
+      -- Cryptol.Compiler.CompileType
 
       -- Cryptol.Compiler.Rust.CodeGen
     -- other-modules:
@@ -80,6 +81,7 @@ executable cryptol-compiler
     build-depends:
         base,
         containers,
+        text,
         simple-get-opt,
         cryptol-compiler,
         cryptol

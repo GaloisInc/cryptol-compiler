@@ -1,5 +1,6 @@
 module Cryptol.Compiler.IR.Type
   ( module Cryptol.Compiler.IR.Type
+  , SizeVarSize(..)
   , Cry.TFun(..)
   ) where
 
@@ -7,6 +8,8 @@ import Cryptol.TypeCheck.TCon qualified as Cry
 
 import Cryptol.Compiler.Error
 import Cryptol.Compiler.PP
+
+import Cryptol.Compiler.IR.Common
 
 
 data IRTrait tname = IRTrait IRTraitName tname
@@ -56,11 +59,6 @@ data IRSize tname =
   | IRPolySize SizeVarSize tname                  -- ^ Polymorphic size; finite
   | IRComputedSize Cry.TFun [IRStreamSize tname]  -- ^ Computed size
     deriving Show
-
-data SizeVarSize =
-    MemSize         -- ^ value will fit in usize
-  | LargeSize       -- ^ value may be large, use BigInt
-    deriving (Eq,Ord,Show)
 
 data IRFunType tname = IRFunType
   { ftTypeParams :: [tname]

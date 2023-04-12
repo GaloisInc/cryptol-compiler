@@ -1,5 +1,6 @@
 module Main where
 
+import Data.Text(Text)
 import Control.Exception
 import Control.Monad(forM_)
 import Data.Map qualified as Map
@@ -8,14 +9,15 @@ import System.Exit
 
 import Cryptol.Utils.Ident    qualified as Cry
 import Cryptol.ModuleSystem.Name qualified as Cry
+import Cryptol.TypeCheck.TCon qualified as Cry
 
 import Cryptol.Compiler.Error
 import Cryptol.Compiler.Monad
 import Cryptol.Compiler.PP
-import Cryptol.Compiler.Simple
+-- import Cryptol.Compiler.Simple
+import Cryptol.Compiler.IR
 import Cryptol.Compiler.Cry2IR.Specialize
 import Cryptol.Compiler.Cry2IR.InstanceMap
-import Cryptol.Compiler.IR
 
 
 import Options
@@ -46,11 +48,16 @@ doTestSpec =
                       case xs of
                         Right ok ->
                           let im = instanceMapFromList ok
-                              nu :: Integer -> Either a StreamSize
+                              nu :: Integer -> Either a (IRStreamSize Text)
                               nu = Right . IRSize . IRFixedSize
-                              inf :: Either a StreamSize
-                              inf = Right IRInfSize
-                              args = [ inf, nu 16, Left TInteger ]
+
+                              va :: Text -> IRStreamSize Text
+                              va = IRSize . IRPolySize MemSize
+
+                              hard :: IRStreamSize Text
+                              hard = IRSize (IRComputedSize Cry.TCSub [ va "X", va "Y" ])
+
+                              args = [ Right IRInfSize, Right hard, Left TInteger ]
                               ans = lookupInstance args im
                           in pp ans
                         Left err -> pp err
@@ -59,6 +66,7 @@ doTestSpec =
 isPrel :: Cry.Name -> Bool
 isPrel x = Cry.nameTopModule x `elem` [Cry.preludeName, Cry.floatName]
 
+{-
 doSimpleCompile :: CryC ()
 doSimpleCompile =
   do ms <- getLoadedModules
@@ -66,3 +74,4 @@ doSimpleCompile =
         do ds <- compileModule m
            forM_ ds \d ->
              doIO (print (pp d))
+-}
