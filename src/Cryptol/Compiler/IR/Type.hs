@@ -4,7 +4,6 @@ module Cryptol.Compiler.IR.Type
   ) where
 
 import Cryptol.TypeCheck.TCon qualified as Cry
-import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 
 import Cryptol.Compiler.Error
 import Cryptol.Compiler.PP
@@ -61,16 +60,7 @@ data IRSize tname =
 data SizeVarSize =
     MemSize         -- ^ value will fit in usize
   | LargeSize       -- ^ value may be large, use BigInt
-    deriving Show
-
-data ParamInfo =
-    NumFixed Cry.Nat'
-  | NumVar   SizeVarSize
-  | TyBool
-  | TyNotBool
-  | TyAny
-
-newtype FunInstance = FunInstance [ParamInfo]
+    deriving (Eq,Ord,Show)
 
 data IRFunType tname = IRFunType
   { ftTypeParams :: [tname]
@@ -81,21 +71,6 @@ data IRFunType tname = IRFunType
   }
 --------------------------------------------------------------------------------
 -- Pretty Printing
-
-instance PP FunInstance where
-  pp (FunInstance xs) = brackets (commaSep (map pp xs))
-
-instance PP ParamInfo where
-  pp info =
-    case info of
-      NumFixed Cry.Inf     -> "inf"
-      NumFixed (Cry.Nat n) -> pp n
-      NumVar sz            -> case sz of
-                                MemSize   -> "size"
-                                LargeSize -> "integer"
-      TyBool               -> "bit"
-      TyNotBool            -> "!bit"
-      TyAny                -> "_"
 
 instance PP tname => PP (IRFunType tname) where
   pp ft = fall <+> quall <+> args <+> "->" <+> res

@@ -20,7 +20,7 @@ module Cryptol.Compiler.Cry2IR.Monad
   , addTrait
   , addIsBoolProp
   , addNumProps
-  , caseSize
+  , caseSize, maxSizeVal
   , caseIsInf
   , caseBool
 
@@ -29,6 +29,7 @@ module Cryptol.Compiler.Cry2IR.Monad
   , getTraits
   , getBoolConstraint
   , getSubst
+  , checkSingleValue
 
   ) where
 
@@ -46,6 +47,7 @@ import Cryptol.TypeCheck.Solver.SMT qualified as Cry
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.Subst
+import Cryptol.Compiler.IR.EvalType
 
 
 
@@ -174,11 +176,9 @@ data SizeConstraint =
 sizeProp :: SizeConstraint -> Cry.Type -> [Cry.Prop]
 sizeProp s t =
   case s of
-    IsFinSize -> [Cry.pFin t, Cry.tNum (lim - 1) Cry.>== t ]
-    IsFin     -> [Cry.pFin t, t Cry.>== Cry.tNum lim ]
+    IsFinSize -> [Cry.pFin t, Cry.tNum (maxSizeVal - 1) Cry.>== t ]
+    IsFin     -> [Cry.pFin t, t Cry.>== Cry.tNum maxSizeVal ]
     IsInf     -> [t Cry.=#= Cry.tInf]
-  where
-  lim = 2^(64::Int) - 1 :: Integer
 
 
 --------------------------------------------------------------------------------

@@ -14,6 +14,8 @@ import Cryptol.Compiler.Monad
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.Simple
 import Cryptol.Compiler.Cry2IR.Specialize
+import Cryptol.Compiler.Cry2IR.InstanceMap
+import Cryptol.Compiler.IR
 
 
 import Options
@@ -42,7 +44,15 @@ doTestSpec =
           let ppOpt (inst, ft) = vcat [ pp inst, pp ft, "---" ]
           let doc = nest 2
                       case xs of
-                        Right ok -> vcat [ "---", vcat (map ppOpt ok) ]
+                        Right ok ->
+                          let im = instanceMapFromList ok
+                              nu :: Integer -> Either a StreamSize
+                              nu = Right . IRSize . IRFixedSize
+                              inf :: Either a StreamSize
+                              inf = Right IRInfSize
+                              args = [ inf, nu 16, Left TInteger ]
+                              ans = lookupInstance args im
+                          in pp ans
                         Left err -> pp err
           doIO (print doc)
 

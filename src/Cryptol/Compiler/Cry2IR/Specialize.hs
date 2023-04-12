@@ -17,8 +17,10 @@ import Cryptol.TypeCheck.Solver.Types qualified as Cry
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.Subst
+import Cryptol.Compiler.IR.EvalType
 
 import Cryptol.Compiler.Cry2IR.Monad
+import Cryptol.Compiler.Cry2IR.InstanceMap
 
 testSpec :: Cry.Schema -> M.CryC [ (FunInstance, FunType) ]
 testSpec sch =
@@ -86,19 +88,22 @@ compileFunType ty0 =
       [] -> pure (su, reverse info)
       x : xs
         | Cry.kindOf x == Cry.KNum ->
-          do sz <- compileStreamSizeType (Cry.TVar (Cry.TVBound x))
-             case sz of
-               IRInfSize ->
-                 doTParams (suAddSize x sz su) (NumFixed Cry.Inf : info) xs
+          do mbYes <- checkSingleValue x
+             case mbYes of
+               Just v ->
+                 doTParams (suAddSize x sz su)
+                           (NumFixed v : info)
+                           xs
+                 where sz = case v of
+                              Cry.Inf -> IRInfSize
+                              Cry.Nat n -> IRSize (IRFixedSize n)
 
-               IRSize fsz ->
-                 case fsz of
-                   IRFixedSize n ->
-                     doTParams (suAddSize x sz su)
-                              (NumFixed (Cry.Nat n) : info)
-                              xs
-                   IRPolySize ssz _ -> doTParams su (NumVar ssz : info) xs
-                   IRComputedSize {} -> panic "compileFunType" ["ComputedSize"]
+               Nothing ->
+                 do s <- caseSize (Cry.TVar (Cry.TVBound x))
+                    case s of
+                      IsFin     -> doTParams su (NumVar LargeSize : info) xs
+                      IsFinSize -> doTParams su (NumVar MemSize : info) xs
+                      IsInf     -> panic "compileFunType" ["IsInf"]
 
         | otherwise ->
           do i <- getBoolConstraint x
