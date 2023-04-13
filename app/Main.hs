@@ -42,7 +42,7 @@ doTestSpec =
      let nonPrel  = Map.filterWithKey (\k _ -> not (isPrel k)) tys
      forM_ (Map.toList nonPrel) \(x,t) ->
        do doIO (print (cryPP x $$ nest 2 (cryPP t)))
-          xs <- catchError (testSpec t)
+          xs <- catchError (compilePrimDecl t)
           let ppOpt (inst, ft) = vcat [ pp inst, pp ft, "---" ]
           let doc = nest 2
                       case xs of

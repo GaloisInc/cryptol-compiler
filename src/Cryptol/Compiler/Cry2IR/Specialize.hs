@@ -1,8 +1,8 @@
 module Cryptol.Compiler.Cry2IR.Specialize
   ( compileFunDecl
+  , compilePrimDecl
   , compileValType
   , compileStreamSizeType
-  , testSpec
   ) where
 
 import Data.Map(Map)
@@ -24,27 +24,19 @@ import Cryptol.Compiler.IR.EvalType
 import Cryptol.Compiler.Cry2IR.Monad
 import Cryptol.Compiler.Cry2IR.InstanceMap
 
-testSpec :: Cry.Schema -> M.CryC [(FunInstance, FunType)]
-testSpec s =
+compilePrimDecl :: Cry.Schema -> M.CryC [(FunInstance, FunType)]
+compilePrimDecl s =
   do ans <- compileFunDecl (Cry.sVars s) (Cry.sProps s) args res k
      pure [ (a,b) | (a,b,_) <- ans ]
   where
   (args,res) = go [] (Cry.sType s)
-  k _ _ = pure Dummy
+  k _ _ = pure IRFunPrim
 
   go as ty =
     case ty of
       Cry.TUser _ _ ty1                 -> go as ty1
       Cry.TCon (Cry.TC Cry.TCFun) [a,b] -> go (a : as) b
       _                                 -> (reverse as, ty)
-
-data Dummy = Dummy
-
-instance ApSubst Dummy where
-  type TName Dummy = Cry.TParam
-  apSubstMaybe _ _ = Nothing
-
---------------------------------------------------------------------------------
 
 compileFunDecl ::
   (ApSubst a, TName a ~ Cry.TParam)  =>

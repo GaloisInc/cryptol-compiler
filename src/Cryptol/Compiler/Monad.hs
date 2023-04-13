@@ -107,6 +107,8 @@ data CompilerState = CompilerState
     -- cleared if new modules are loaded.
     -- The mapping is used to determined the Cryptol names assigned to
     -- various primitives.
+
+--  , rwInstances   :: Map Cry.Name (InstanceMap 
   }
 
 -- | Information about primitives

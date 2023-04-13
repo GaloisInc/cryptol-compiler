@@ -4,9 +4,7 @@ module Cryptol.Compiler.IR
   , module Cryptol.Compiler.IR.Type
   ) where
 
-import Data.Ratio(numerator,denominator)
 
-import Cryptol.Utils.Panic(panic)
 import Cryptol.TypeCheck.AST qualified as Cry
 
 import Cryptol.Compiler.PP
@@ -50,7 +48,7 @@ type Prim = IRExpr Cry.TParam
 --------------------------------------------------------------------------------
 
 -- | Function name.  Stores the type of the result.
-data IRFunName tname name = IRFunName name (IRType tname) FunInstance
+data IRFunName tname name = IRFunName name FunInstance (IRType tname)
 
 -- | Typed names
 data IRName tname name = IRName name (IRType tname)
@@ -67,9 +65,12 @@ data IRFunDecl tname name =
     , irfTraits     :: [IRTrait tname]
     , irfSizeParams :: [IRName tname name]
     , irfParams     :: [IRName tname name]
-    , irfDef        :: IRExpr tname name
+    , irfDef        :: IRFunDef tname name
     }
 
+data IRFunDef tname name =
+    IRFunPrim
+  | IRFunDef (IRExpr tname name)
 
 -- | Expressions
 newtype IRExpr tname name = IRExpr (IRExprF tname name (IRExpr tname name))
@@ -79,35 +80,14 @@ newtype IRExpr tname name = IRExpr (IRExprF tname name (IRExpr tname name))
 -- write generic traversals.
 data IRExprF tname name expr =
     IRVar (IRName tname name)
-  | IRCall (IRFunName tname name) [IRType tname] [expr] [expr] -- size args, args
+  | IRCall (IRFunName tname name) [IRType tname] [expr] [expr]
+    -- size args, args
     -- The type of the result is stored in the name.
     -- Note that this should be the type, for this call site (i.e., type
     -- parameters may affect it
 
-  | IRPrim (IRPrim tname expr)
   | IRIf expr expr expr
     deriving (Functor,Foldable,Traversable)
-
-
--- | Primitives.
-data IRPrim tname e =
-    IntegerLit  Integer  (IRType tname)
-  | RationalLit Rational (IRType tname)
-  | BoolLit Bool
-
-  | Add e e
-  | Sub e e
-  | Mul e e
-  | Div e e
-  | Mod e e
-
-  | Tuple [e]
-  | Select e Int
-
-  | Array (IRType tname) [e]
-  | IndexIn e e           -- ^ array, index
-    deriving (Functor,Foldable,Traversable)
-
 
 
 --------------------------------------------------------------------------------
@@ -123,20 +103,21 @@ instance PP tname => HasType (IRName tname name) tname where
   typeOf (IRName _ t) = t
 
 instance PP tname => HasType (IRFunName tname name) tname where
-  typeOf (IRFunName _ t _) = t
+  typeOf (IRFunName _ _ t) = t
 
 instance HasType expr tname => HasType (IRExprF tname name expr) tname where
   typeOf expr =
     case expr  of
       IRVar x         -> typeOf x
       IRCall f _ _ _  -> typeOf f
-      IRPrim p        -> typeOf p
+      -- IRPrim p        -> typeOf p
       IRIf _ x _      -> typeOf x
 
 
 instance PP tname => HasType (IRExpr tname name) tname where
   typeOf (IRExpr e) = typeOf e
 
+{-
 instance HasType e tname => HasType (IRPrim tname e) tname where
   typeOf prim =
     case prim of
@@ -166,7 +147,7 @@ instance HasType e tname => HasType (IRPrim tname e) tname where
           TStream _sz t -> t
           TWord   _sz   -> TBool
           t             -> panic "typeOf" [ "IndexIn", show (pp t) ]
-
+-}
 
 --------------------------------------------------------------------------------
 -- Pretty Printing
@@ -180,7 +161,7 @@ instance (PP tname, PP name) => PP (IRName tname name) where
 
 -- XXX: should we print the result type?
 instance (PP tname, PP name) => PP (IRFunName tname name) where
-  pp (IRFunName x _ i)
+  pp (IRFunName x i _)
     | isEmptyInstance i = pp x
     | otherwise         = hcat [ pp x, "@", pp i ]
 
@@ -196,7 +177,7 @@ instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
                   _  -> hcat [ "::<", commaSep (map pp ts), ">" ]
         args = parens (commaSep (map pp (ss ++ es)))
 
-     IRPrim prim    -> pp prim
+--     IRPrim prim    -> pp prim
      IRIf e1 e2 e3  ->
        parensAfter 0 $
        withPrec 0 $
@@ -208,36 +189,14 @@ instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
 instance (PP tname, PP name) => PP (IRExpr tname name) where
   pp (IRExpr e) = pp e
 
-instance (PP tname, PP expr) => PP (IRPrim tname expr) where
-  pp prim =
-    case prim of
-      IntegerLit n t  -> parensAfter 0 (pp n <+> ":" <+> pp t)
-      RationalLit n t -> parensAfter 0 (pp (numerator n) <.> "/" <.>
-                                        pp (denominator n) <+> ":" <+> pp t)
-      BoolLit b       -> if b then "true" else "false"
-
-      Add e1 e2   -> ppInfix 1 1 1 "+" e1 e2
-      Sub e1 e2   -> ppInfix 1 1 2 "-" e1 e2
-      Mul e1 e2   -> ppInfix 2 2 2 "*" e1 e2
-      Div e1 e2   -> ppInfix 2 2 3 "/" e1 e2
-      Mod e1 e2   -> ppInfix 2 2 3 "%" e1 e2
-
-      Tuple es    -> parens (withPrec 0 (commaSep (map pp es)))
-      Select e n  -> withPrec 1 (pp e) <.> pp n
-
-      Array t es
-        | null es -> parensAfter 0 ("[] :" <+> pp (TArray (IRFixedSize 0) t))
-        | otherwise -> withPrec 0 (brackets (commaSep (map pp es)))
-
-      IndexIn a i -> withPrec 1 (pp a) <.> brackets (withPrec 0 (pp i))
-
-    where
-    ppInfix n l r op e1 e2 =
-      parensAfter n (withPrec l (pp e1) <+> op <+> withPrec r (pp e2))
-
-
 instance (PP tname, PP name) => PP (IRDecl tname name) where
   pp (IRFun fd) = pp fd
+
+instance (PP tname, PP name) => PP (IRFunDef tname name) where
+  pp def =
+    case def of
+     IRFunPrim  -> "/* external */"
+     IRFunDef e -> pp e
 
 instance (PP tname, PP name) => PP (IRFunDecl tname name) where
   pp fd =
@@ -257,6 +216,6 @@ instance (PP tname, PP name) => PP (IRFunDecl tname name) where
          $ map pp
          $ irfSizeParams fd ++ irfParams fd
 
-    resT = withPrec 0 (pp (typeOf (irfDef fd)))
+    resT = withPrec 0 (pp (typeOf (irfName fd)))
 
 

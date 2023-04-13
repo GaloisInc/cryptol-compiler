@@ -24,7 +24,7 @@ import Cryptol.Utils.Misc(anyJust,anyJust2)
 
 import Cryptol.Compiler.Monad(panic)
 import Cryptol.Compiler.PP
-import Cryptol.Compiler.IR.Type
+import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.EvalType
 
 type Subst = IRSubst TParam
@@ -84,6 +84,10 @@ instance ApSubst a => ApSubst [a] where
   type TName [a] = TName a
   apSubstMaybe su = anyJust (apSubstMaybe su)
 
+instance (ApSubst a, ApSubst b, TName a ~ TName b) => ApSubst (a,b) where
+  type TName (a,b) = TName a
+  apSubstMaybe su = anyJust2 (apSubstMaybe su) (apSubstMaybe su)
+
 instance Ord tname => ApSubst (IRType tname) where
   type TName (IRType tname) = tname
   apSubstMaybe su irType =
@@ -96,11 +100,9 @@ instance Ord tname => ApSubst (IRType tname) where
       TDouble         -> Nothing
       TSize           -> Nothing
       TWord sz        -> TWord <$> apSubstMaybe su sz
-      TArray sz ty    -> uncurry TArray <$>
-                           anyJust2 (apSubstMaybe su) (apSubstMaybe su) (sz,ty)
-      TStream sz ty   -> uncurry TStream <$>
-                           anyJust2 (apSubstMaybe su) (apSubstMaybe su) (sz,ty)
-      TTuple ts       -> TTuple <$> anyJust (apSubstMaybe su) ts
+      TArray sz ty    -> uncurry TArray <$> apSubstMaybe su (sz,ty)
+      TStream sz ty   -> uncurry TStream <$> apSubstMaybe su (sz,ty)
+      TTuple ts       -> TTuple <$> apSubstMaybe su ts
       TPoly x         -> suLookupType x su
 
 instance Ord tname => ApSubst (IRStreamSize tname) where
@@ -125,6 +127,40 @@ instance Ord tname => ApSubst (IRSize tname) where
        case isize of
          IRSize s     -> pure s
          IRInfSize {} -> panic "apSubstMaybe@IRSize" ["Unexpecetd IRInfSize"]
+
+instance Ord tname => ApSubst (IRName tname name) where
+  type TName (IRName tname name) = tname
+  apSubstMaybe su (IRName x t) = IRName x <$> apSubstMaybe su t
+
+instance Ord tname => ApSubst (IRFunName tname name) where
+  type TName (IRFunName tname name) = tname
+  apSubstMaybe su (IRFunName x i t) = IRFunName x i <$> apSubstMaybe su t
+
+
+
+instance Ord tname => ApSubst (IRExpr tname name) where
+  type TName (IRExpr tname name) = tname
+  apSubstMaybe su (IRExpr e) = IRExpr <$> apSubstMaybe su e
+
+instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
+   ApSubst (IRExprF tname name expr) where
+  type TName (IRExprF tname name expr) = tname
+  apSubstMaybe su expr =
+    case expr of
+       IRVar nm -> IRVar <$> apSubstMaybe su nm
+       IRCall f ts sz es ->
+         do (f',(ts',(sz',es'))) <- apSubstMaybe su (f,(ts,(sz,es)))
+            pure (IRCall f' ts' sz' es')
+       IRIf e1 e2 e3 ->
+         do (e1',(e2',e3')) <- apSubstMaybe su (e1,(e2,e3))
+            pure (IRIf e1' e2' e3')
+
+instance (Ord tname) => ApSubst (IRFunDef tname name) where
+  type TName (IRFunDef tname name) = tname
+  apSubstMaybe su def =
+    case def of
+      IRFunPrim  -> Nothing
+      IRFunDef e -> IRFunDef <$> apSubstMaybe su e
 
 --------------------------------------------------------------------------------
 
