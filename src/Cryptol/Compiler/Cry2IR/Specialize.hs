@@ -1,6 +1,8 @@
 module Cryptol.Compiler.Cry2IR.Specialize
-  (testSpec
-  , ParamInfo(..)
+  ( compileFunDecl
+  , compileValType
+  , compileStreamSizeType
+  , testSpec
   ) where
 
 import Data.Map(Map)
@@ -22,14 +24,45 @@ import Cryptol.Compiler.IR.EvalType
 import Cryptol.Compiler.Cry2IR.Monad
 import Cryptol.Compiler.Cry2IR.InstanceMap
 
-testSpec :: Cry.Schema -> M.CryC [ (FunInstance, FunType) ]
-testSpec sch =
-  case ctrProps (infoFromConstraints (Cry.sProps sch)) of
+testSpec :: Cry.Schema -> M.CryC [(FunInstance, FunType)]
+testSpec s =
+  do ans <- compileFunDecl (Cry.sVars s) (Cry.sProps s) args res k
+     pure [ (a,b) | (a,b,_) <- ans ]
+  where
+  (args,res) = go [] (Cry.sType s)
+  k _ _ = pure Dummy
+
+  go as ty =
+    case ty of
+      Cry.TUser _ _ ty1                 -> go as ty1
+      Cry.TCon (Cry.TC Cry.TCFun) [a,b] -> go (a : as) b
+      _                                 -> (reverse as, ty)
+
+data Dummy = Dummy
+
+instance ApSubst Dummy where
+  type TName Dummy = Cry.TParam
+  apSubstMaybe _ _ = Nothing
+
+--------------------------------------------------------------------------------
+
+compileFunDecl ::
+  (ApSubst a, TName a ~ Cry.TParam)  =>
+  [Cry.TParam]                          {- ^ Type parameters -} ->
+  [Cry.Prop]                            {- ^ Type qualifiers -} ->
+  [Cry.Type]                            {- ^ Types of arguments -} ->
+  Cry.Type                              {- ^ Type of result -} ->
+  ([Type] -> Type -> SpecM a)           {- ^ Do actual work -} ->
+  M.CryC [(FunInstance, FunType, a)]
+compileFunDecl as quals args result k =
+  case ctrProps (infoFromConstraints quals) of
+
     -- inconsistent
     Nothing -> pure []
+
     Just (traits,props,boolProps) ->
       runSpecM
-        do addTParams (Cry.sVars sch)
+        do addTParams as
            mapM_ addTrait traits
            addNumProps props
            forM_ (Map.toList boolProps) \(x,ps) ->
@@ -37,52 +70,38 @@ testSpec sch =
                [] -> addIsBoolProp x (Known False)
                _  -> addIsBoolProp x (Unknown ps)
 
-           compileFunType (Cry.sType sch)
+           argTs <- mapM compileValType args
+           resT  <- compileValType result
+           body  <- k argTs resT
+           (su,info) <- doTParams suEmpty [] as
+           ts <- getTraits
+           let tparams = [ x
+                         | (x,ty) <- zip as info
+                         , case ty of
+                             TyNotBool -> True
+                             TyAny     -> True
+                             _         -> False
+                         ]
 
-
-compileFunType :: Cry.Type -> SpecM (FunInstance, FunType)
-compileFunType ty0 =
-  do (args,result) <- go [] ty0
-     as <- getTParams
-     ts <- getTraits
-     (su,info) <- doTParams suEmpty [] as
-     let tparams = [ x
-                   | (x,ty) <- zip as info
-                   , case ty of
-                       TyNotBool -> True
-                       TyAny     -> True
-                       _         -> False
-                   ]
-
-     let sparams = [ (x, case s of
-                           MemSize   -> TSize
-                           LargeSize -> TInteger
-                     )
-                   | (x, NumVar s) <- zip as info ]
+           let sparams = [ (x, case s of
+                                 MemSize   -> TSize
+                                 LargeSize -> TInteger
+                           )
+                         | (x, NumVar s) <- zip as info ]
 
 
 
-     pure ( FunInstance info
-          , IRFunType
-              { ftTypeParams = tparams
-              , ftTraits     = ts
-              , ftSizeParams = sparams
-              , ftParams     = apSubst su args
-              , ftResult     = apSubst su result
-              }
-          )
-
+           pure ( FunInstance info
+                , IRFunType
+                    { ftTypeParams = tparams
+                    , ftTraits     = ts
+                    , ftSizeParams = sparams
+                    , ftParams     = apSubst su argTs
+                    , ftResult     = apSubst su resT
+                    }
+                , apSubst su body
+                )
   where
-  go args ty =
-    case ty of
-      Cry.TUser _ _ ty1 -> go args ty1
-      Cry.TCon (Cry.TC Cry.TCFun) [a,b] ->
-        do a' <- compileValType a
-           go (a' : args) b
-      _ ->
-        do r <- compileValType ty
-           pure (reverse args,r)
-
   doTParams su info todo =
     case todo of
       [] -> pure (su, reverse info)
@@ -111,6 +130,9 @@ compileFunType ty0 =
                Known True -> doTParams (suAddType x TBool su) (TyBool : info) xs
                Known False -> doTParams su (TyNotBool : info) xs
                Unknown {} -> doTParams su (TyAny : info) xs
+
+
+
 
 
 compileValType :: Cry.Type -> SpecM Type

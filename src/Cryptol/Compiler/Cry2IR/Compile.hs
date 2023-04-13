@@ -1,23 +1,13 @@
 module Cryptol.Compiler.Cry2IR.Compile where
 
-import Data.Text(Text)
-import Data.Text qualified as Text
-import Data.Map (Map)
-import Data.Map qualified as Map
+import Cryptol.TypeCheck.AST qualified as Cry
 
-import Control.Monad(unless)
-
-import qualified Cryptol.Utils.Ident as Cry
-import qualified Cryptol.TypeCheck.AST as Cry
-
-import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR
-import Cryptol.Compiler.Monad
-import Cryptol.Compiler.CompileType
-import qualified Cryptol.ModuleSystem.Name as Cry
-import Cryptol.Compiler.Monad (unsupported)
+import Cryptol.Compiler.Monad qualified as M
+import Cryptol.Compiler.Cry2IR.Monad qualified as S
+import Cryptol.Compiler.Cry2IR.Specialize
 
-
+{-
 compileModule :: Cry.Module -> CryC [Decl]
 compileModule m
 
@@ -33,11 +23,13 @@ compileDeclGroup dg =
   case dg of
     Cry.NonRecursive d -> compileDecl d
     Cry.Recursive ds   -> compileRecDecls ds
+-}
 
-compileDecl :: Cry.Decl -> CryC [Decl]
-compileDecl d =
+{-
+compileTopDecl :: Cry.Decl -> M.CryC IRFunDecl
+compileTopDecl d =
   case Cry.dDefinition d of
-    Cry.DPrim       -> pure []
+    Cry.DPrim -> pure []
     Cry.DForeign {} -> unsupported "Foregin declaration" -- XXX: Revisit
     Cry.DExpr e ->
       do let (as,ps,xs,body) = prepExprDecl e
@@ -49,7 +41,9 @@ compileDecl d =
          def <- withLocals ps (compileExpr body)
          let t = typeOf def
          pure [ IRFun (IRName nm t) [ x | (_,_,x) <- ps ] def ]
+-}
 
+{-
 compileRecDecls :: [Cry.Decl] -> CryC [Decl]
 compileRecDecls _ = pure [] -- XXX
 
@@ -58,8 +52,9 @@ compileParam (x,t) =
   do irt <- compileValType t
      let s = Cry.tMono t
      pure (x, s, IRName x irt)
+-}
 
-
+-- | Identify expressions that are functions
 prepExprDecl ::
   Cry.Expr -> ([Cry.TParam], [Cry.Prop], [(Cry.Name,Cry.Type)],Cry.Expr)
 prepExprDecl expr = (tparams, quals, args, body)
@@ -67,6 +62,9 @@ prepExprDecl expr = (tparams, quals, args, body)
   (tparams,expr1) = Cry.splitWhile Cry.splitTAbs     expr
   (quals,expr2)   = Cry.splitWhile Cry.splitProofAbs expr1
   (args,body)     = Cry.splitWhile Cry.splitAbs      expr2
+
+
+{-
 
 compileExpr :: Cry.Expr -> CryC Expr
 compileExpr expr0 =
@@ -191,7 +189,7 @@ floatPrims = Map.fromList
   ]
 
 
-
+-}
 
 
 

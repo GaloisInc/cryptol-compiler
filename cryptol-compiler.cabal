@@ -48,17 +48,17 @@ library
       Cryptol.Compiler.IR.EvalType
       Cryptol.Compiler.IR.Subst
 
-      Cryptol.Compiler.Cry2IR.Monad
-      Cryptol.Compiler.Cry2IR.Specialize
-      Cryptol.Compiler.Cry2IR.InstanceMap
-
       Cryptol.Compiler.Monad
       Cryptol.Compiler.Error
       Cryptol.Compiler.PP
-      -- Cryptol.Compiler.Simple
-      -- Cryptol.Compiler.CompileType
+
+      Cryptol.Compiler.Cry2IR.Monad
+      Cryptol.Compiler.Cry2IR.Specialize
+      Cryptol.Compiler.Cry2IR.InstanceMap
+      Cryptol.Compiler.Cry2IR.Compile
 
       -- Cryptol.Compiler.Rust.CodeGen
+
     -- other-modules:
     build-depends:
       base,

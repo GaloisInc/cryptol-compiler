@@ -59,7 +59,7 @@ doTestSpec =
 
                               args = [ Right IRInfSize, Right hard, Left TInteger ]
                               ans = lookupInstance args im
-                          in pp ans
+                          in pp im
                         Left err -> pp err
           doIO (print doc)
 

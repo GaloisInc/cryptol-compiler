@@ -84,8 +84,11 @@ instance BaseM CryC CryC where
 -- | Context for compiler computations
 data CompilerContext = CompilerContext
   { roLocalTypes    :: Map Cry.Name Cry.Schema
+    -- ^ Cryptol types of local variables.
+    -- We need this to compute the Cryptol types of things.
+
   , roLocalIRNames  :: Map Cry.Name Name
-    -- ^ Maps Cryptol name to an IR name
+    -- ^ Maps Cryptol name to an IR name, which has the IRType of the local
   }
 
 -- | State of the compiler.
