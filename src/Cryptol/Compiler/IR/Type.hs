@@ -94,6 +94,12 @@ sizeVarSizeType sz =
     MemSize   -> TSize
     LargeSize -> TInteger
 
+-- | A convenience wrapper that ties the type of the variable to the
+-- returned type
+sizeVarSizeTypeFor :: tname -> SizeVarSize -> IRType tname
+sizeVarSizeTypeFor _ = sizeVarSizeType
+
+
 
 
 --------------------------------------------------------------------------------
@@ -140,11 +146,8 @@ instance (PP tname) => PP (IRSizeName tname) where
                  MemSize   -> pp x
                  LargeSize -> "!" <> pp x
       in if ppShowTypes cfg
-              then parensAfter 0 (nm <+> ":" <+> pp (ty x))
+              then parensAfter 0 (nm <+> ":" <+> pp (sizeVarSizeTypeFor x t))
               else nm
-    where
-    ty :: tname -> IRType tname
-    ty _ = sizeVarSizeType t
 
 instance PP tname => PP (IRStreamSize tname) where
   pp ty =

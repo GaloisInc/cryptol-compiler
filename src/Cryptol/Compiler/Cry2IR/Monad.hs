@@ -21,6 +21,7 @@ module Cryptol.Compiler.Cry2IR.Monad
   , addIsBoolProp
   , addNumProps
   , caseSize, maxSizeVal
+  , caseConst
   , caseIsInf
   , caseBool
 
@@ -256,6 +257,21 @@ caseSize :: Cry.Type -> SpecM SizeConstraint
 caseSize ty = tryCase IsInf <|> tryCase IsFin <|> tryCase IsFinSize
   where
   tryCase p = addNumProps (sizeProp p ty) >> pure p
+
+caseConst :: Cry.Type -> Ordering -> Integer -> SpecM Bool
+caseConst t rel n = tryCase propYes True <|> tryCase propNo False
+  where
+  tryCase a b = addNumProps [a] >> pure b
+
+  k v = Cry.tNum (v :: Integer)
+
+  (propYes,propNo) =
+    case rel of
+      EQ -> (t Cry.=#= k n, t Cry.=/= k n)
+      LT | n == 0    -> (k 0 Cry.=#= k 1, Cry.pTrue)
+         | otherwise -> (k (n - 1) Cry.>== t, t Cry.>== k n)
+      GT -> (t Cry.>== k (n+1), k n Cry.>== t)
+
 
 -- | Returns `True` if the given type is `inf`.
 -- May split the world.

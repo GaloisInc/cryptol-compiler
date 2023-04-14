@@ -33,7 +33,7 @@ type Size = IRSize Cry.TParam
 type Name = IRName Cry.TParam Cry.Name
 
 -- | Function names, specialized to Cryptol names
-type FunName = IRFunName Cry.Name
+type FunName = IRFunName Cry.TParam Cry.Name
 
 -- | Declarations, specialized to Cryptol names
 type FunDecl = IRFunDecl Cry.TParam Cry.Name
@@ -48,7 +48,11 @@ type Prim = IRExpr Cry.TParam
 --------------------------------------------------------------------------------
 
 -- | Function name.  Stores the type of the result.
-data IRFunName tname name = IRFunName name FunInstance (IRType tname)
+data IRFunName tname name = IRFunName
+  { irfnName     :: name
+  , irfnInstance :: FunInstance
+  , irfnResult   :: IRType tname
+  }
 
 -- | Typed names
 data IRName tname name = IRName name (IRType tname)
@@ -77,7 +81,10 @@ newtype IRExpr tname name = IRExpr (IRExprF tname name (IRExpr tname name))
 data IRExprF tname name expr =
     IRVar     (IRName tname name)
 
-  | IRCall (IRFunName tname name) [IRType tname] [IRSize tname] [expr]
+  | IRCall (IRFunName tname name)       -- function to call
+           [IRType tname]               -- type arguments
+           [(IRSize tname,SizeVarSize)] -- size type arugments
+           [expr]                       -- normal arguments
     -- size args, args
     -- The type of the result is stored in the name.
     -- Note that this should be the type, for this call site (i.e., type
@@ -163,7 +170,8 @@ instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
          targs = case ts of
                    [] -> mempty
                    _  -> hcat [ "::<", commaSep (map pp ts), ">" ]
-         args = parens (commaSep (map pp ss ++ map pp es))
+         args = parens (commaSep (map ppSize ss ++ map pp es))
+         ppSize (x,s) = pp x <+> "as" <+> pp (sizeVarSizeTypeFor x s)
 
       IRIf e1 e2 e3  ->
         parensAfter 0 $

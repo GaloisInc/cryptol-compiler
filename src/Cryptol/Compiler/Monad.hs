@@ -35,6 +35,10 @@ module Cryptol.Compiler.Monad
   , getTypeOf
   , getSchemaOf
   , getTopTypes
+  , getFun
+
+    -- * IR generations
+  , addCompiled
 
     -- * SMT solver
   , getSolver
@@ -109,7 +113,7 @@ data CompilerState = CompilerState
     -- The mapping is used to determined the Cryptol names assigned to
     -- various primitives.
 
-  , rwCompiled    :: Map Cry.Name (InstanceMap FunDecl)
+  , rwCompiled :: Map Cry.Name (InstanceMap FunDecl)
   }
 
 -- | Information about primitives
@@ -150,7 +154,7 @@ runCryC (CryC m) =
        Right a  -> pure a
 
   where
-  tcSolverConfig  = (Cry.defaultSolverConfig []) -- { Cry.solverVerbose = 5 }
+  tcSolverConfig  = Cry.defaultSolverConfig []
   evalConfig      = pure Cry.EvalOpts
                            { Cry.evalLogger  = Cry.quietLogger
                            , Cry.evalPPOpts  = Cry.defaultPPOpts
@@ -315,8 +319,21 @@ getSchemaOf expr =
 getLocal :: Cry.Name -> CryC (Maybe Name)
 getLocal x = Map.lookup x . roLocalIRNames <$> CryC ask
 
---getFunType :: Cry.Name -> CryC FunType
---getFunType :: Cry.Name -> CryC FunType
+
+addCompiled :: Cry.Name -> InstanceMap FunDecl -> CryC ()
+addCompiled x def =
+  CryC $ sets_ \s -> s { rwCompiled = Map.insert x def (rwCompiled s) }
+
+getFun :: Cry.Name -> CryC (InstanceMap (FunName,FunType))
+getFun x =
+  do comp <- CryC (rwCompiled <$> get)
+     let info d = (irfName d, funDeclType d)
+     case Map.lookup x comp of
+       Just fu -> pure (info <$> fu)
+       Nothing -> panic "getFunType" [ "Missing function"
+                                     , show (pp x)
+                                     ]
+
 
 --------------------------------------------------------------------------------
 

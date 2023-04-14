@@ -7,6 +7,7 @@ module Cryptol.Compiler.Cry2IR.InstanceMap
   , instanceMapFromList
   , lookupInstance
   , ITE(..)
+  , Guard(..)
   ) where
 
 import Cryptol.TypeCheck.TCon qualified as Cry
@@ -23,6 +24,7 @@ import Cryptol.Compiler.IR.EvalType
 data InstanceMap a =
     InstanceMap [ (ParamInfo, InstanceMap a) ]
   | Result a
+    deriving Functor
 
 instanceMapFromList :: PP a => [(FunInstance,a)] -> InstanceMap a
 instanceMapFromList ins =
