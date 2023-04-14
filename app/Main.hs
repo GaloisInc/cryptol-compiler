@@ -52,7 +52,7 @@ doTestSpec =
                               nu = Right . IRSize . IRFixedSize
 
                               va :: Text -> IRStreamSize Text
-                              va = IRSize . IRPolySize MemSize
+                              va = IRSize . IRPolySize . (`IRSizeName` MemSize)
 
                               hard :: IRStreamSize Text
                               hard = IRSize (IRComputedSize Cry.TCSub [ va "X", va "Y" ])

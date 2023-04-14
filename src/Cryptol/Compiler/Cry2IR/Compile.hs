@@ -116,86 +116,33 @@ compileExpr expr0 =
 
   where
   unexpected msg = panic "compileExpr" [msg]
-
-
-compileVar ::
-  Cry.Name -> [Cry.Type] -> [Expr] -> CryC Expr
-compileVar x ts args =
-  do mbPrim <- isPrimDecl x
-     case mbPrim of
-       Just p  -> compilePrim p ts args
-       Nothing ->
-          do mb <- getLocal x
-             case mb of
-               Nothing -> compileCall x ts args
-               Just n ->
-                 case (ts,args) of
-                   (_ : _, _) -> unsupported "Polymorphic locals"
-                   (_, _ : _) -> unsupported "Funciton local"
-                   ([],[])    -> pure (IRExpr (IRVar n))
-
-compileCall ::
-  Cry.Name -> [Cry.Type] -> [Expr] -> CryC Expr
-compileCall = undefined
-
-
---------------------------------------------------------------------------------
-compilePrim ::
-  Cry.PrimIdent -> [Cry.Type] -> [Expr] -> CryC Expr
-compilePrim (Cry.PrimIdent m p) ts args =
-  case Map.lookup p mprims of
-    Nothing   -> unsupported ("Unknwon primitve: " <> Text.pack (show (pp p)))
-    Just prim -> prim ts args
-  where
-  mprims = Map.findWithDefault Map.empty m allPrims
-
-
-type PrimC = [Cry.Type] -> [Expr] -> CryC Expr
-
-(|->) :: a -> b -> (a,b)
-x |-> y = (x,y)
-
-allPrims :: Map Cry.ModName (Map Text PrimC)
-allPrims = Map.fromList
-  [ (Cry.preludeName, preludePrims)
-  , (Cry.floatName, floatPrims)
-  ]
-
-preludePrims :: Map Text PrimC
-preludePrims = Map.fromList
-  [ "number" |-> \ts es ->
-      case ts of
-        [valT,repT] ->
-          do rep <- compileValType repT
-             val <- compileStreamSizeType valT
-             case val of
-               IRSize (IRFixedSize x) ->
-                 pure (IRExpr (IRPrim (IntegerLit x rep)))
-               _ -> unsupported "complicated number literal"
-
-        _ -> bad "number" ts es
-  ]
-  where
-  bad x ts es =
-    panic "preludePrims" $
-      [ "Malformed primitve"
-      , "Name: " ++ x
-      , "--- Type args:"
-      ] ++ map (show . cryPP) ts
-
-floatPrims :: Map Text PrimC
-floatPrims = Map.fromList
-  [
-  ]
-
-
 -}
 
 
+compileVar :: Cry.Name -> [Cry.Type] -> [Expr] -> S.SpecM Expr
+compileVar x ts args =
+  do mb <- S.doCryC (M.getLocal x)
+     case mb of
+       Nothing -> compileCall x ts args
+       Just n ->
+         case (ts,args) of
+           (_ : _, _) -> S.unsupported "Polymorphic locals"
+           (_, _ : _) -> S.unsupported "Funciton local"
+           ([],[])    -> pure (IRExpr (IRVar n))
 
 
+compileCall :: Cry.Name -> [Cry.Type] -> [Expr] -> S.SpecM Expr
+compileCall f ts es =
+  do tys <- mapM compileType ts
+     undefined
 
 
+compileType :: Cry.Type -> S.SpecM (Either Type StreamSize)
+compileType ty =
+  case Cry.kindOf ty of
+    Cry.KNum  -> Right <$> compileStreamSizeType ty
+    Cry.KType -> Left  <$> compileValType ty
+    _         -> S.panic "compileTypes" ["Unexpecte higher order kind"]
 
 
 

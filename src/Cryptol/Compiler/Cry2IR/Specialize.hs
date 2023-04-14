@@ -75,10 +75,7 @@ compileFunDecl as quals args result k =
                              _         -> False
                          ]
 
-           let sparams = [ (x, case s of
-                                 MemSize   -> TSize
-                                 LargeSize -> TInteger
-                           )
+           let sparams = [ IRSizeName x s
                          | (x, NumVar s) <- zip as info ]
 
 
@@ -220,8 +217,8 @@ compileStreamSizeType ty =
           do ctr <- caseSize ty
              case ctr of
                IsInf     -> pure IRInfSize
-               IsFinSize -> pure (IRSize (IRPolySize MemSize v))
-               IsFin     -> pure (IRSize (IRPolySize LargeSize v))
+               IsFinSize -> pure (IRSize (IRPolySize (IRSizeName v MemSize)))
+               IsFin     -> pure (IRSize (IRPolySize (IRSizeName v LargeSize)))
         Cry.TVFree {} -> unexpected "Free type variable"
 
     Cry.TCon tc ts ->

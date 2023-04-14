@@ -3,7 +3,7 @@ module Cryptol.Compiler.IR.EvalType where
 import Cryptol.TypeCheck.Type qualified as Cry
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 
-import Cryptol.Compiler.Monad(panic)
+import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR.Type
 
 -- | Largest value that will fit in a "size".
@@ -64,7 +64,7 @@ sizeTypeSize ty =
     IRFixedSize n
       | n <= maxSizeVal -> MemSize
       | otherwise       -> LargeSize
-    IRPolySize sz _     -> sz
+    IRPolySize x  -> irsSize x
     IRComputedSize f ts -> evalSizeTypeSize f (map infSizeTypeSize ts)
       where
       infSizeTypeSize x =

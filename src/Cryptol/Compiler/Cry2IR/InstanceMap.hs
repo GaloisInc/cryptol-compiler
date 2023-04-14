@@ -13,8 +13,8 @@ import Cryptol.TypeCheck.TCon qualified as Cry
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 
 import Cryptol.Compiler.PP
+import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR
-import Cryptol.Compiler.Monad(panic)
 import Cryptol.Compiler.IR.Common
 import Cryptol.Compiler.IR.EvalType
 
@@ -115,7 +115,7 @@ data ITE tname a =
 
 data Guard tname = GBool tname
                  | GNotBool tname
-                 | GNum tname Integer
+                 | GNum (IRSizeName tname) Integer
                  | GNumFun Cry.TFun [IRStreamSize tname] Ordering Integer
 
 data Match tname = NoMatch
@@ -156,11 +156,11 @@ matchSize parami ty =
           case s of
             IRFixedSize n ->
               if x == Cry.Nat n then MatchIf [] else NoMatch
-            IRPolySize sz v ->
+            IRPolySize v ->
               case x of
                 Cry.Inf -> NoMatch
                 Cry.Nat n ->
-                  case sz of
+                  case irsSize v of
                     MemSize -> if n <= maxSizeVal
                                   then MatchIf [ GNum v n ]
                                   else NoMatch
@@ -185,7 +185,7 @@ matchSize parami ty =
               case x of
                 MemSize   -> if n <= maxSizeVal then MatchIf [] else NoMatch
                 LargeSize -> if n > maxSizeVal then MatchIf [] else NoMatch
-            IRPolySize ssz _ -> if x == ssz then MatchIf [] else NoMatch
+            IRPolySize v -> if x == irsSize v then MatchIf [] else NoMatch
             IRComputedSize f ts ->
               case (x,sizeTypeSize sz) of
                 (MemSize,MemSize) -> MatchIf []

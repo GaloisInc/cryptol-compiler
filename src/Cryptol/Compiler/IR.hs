@@ -36,7 +36,7 @@ type Name = IRName Cry.TParam Cry.Name
 type FunName = IRFunName Cry.Name
 
 -- | Declarations, specialized to Cryptol names
-type Decl = IRDecl Cry.TParam Cry.Name
+type FunDecl = IRFunDecl Cry.TParam Cry.Name
 
 -- | Expressions, specialized to Cryptol names
 type Expr = IRExpr Cry.TParam Cry.Name
@@ -53,17 +53,13 @@ data IRFunName tname name = IRFunName name FunInstance (IRType tname)
 -- | Typed names
 data IRName tname name = IRName name (IRType tname)
 
--- | Declarations
-data IRDecl tname name =
-    IRFun (IRFunDecl tname name)
-
 -- | A function declaration
 data IRFunDecl tname name =
   IRFunDecl
     { irfName       :: IRFunName tname name
     , irfTParams    :: [tname]
     , irfTraits     :: [IRTrait tname]
-    , irfSizeParams :: [IRName tname name]
+    , irfSizeParams :: [IRSizeName tname]
     , irfParams     :: [IRName tname name]
     , irfDef        :: IRFunDef tname name
     }
@@ -79,75 +75,66 @@ newtype IRExpr tname name = IRExpr (IRExprF tname name (IRExpr tname name))
 -- Expressions are split in two parts because this makes it easier to
 -- write generic traversals.
 data IRExprF tname name expr =
-    IRVar (IRName tname name)
-  | IRCall (IRFunName tname name) [IRType tname] [expr] [expr]
+    IRVar     (IRName tname name)
+
+  | IRCall (IRFunName tname name) [IRType tname] [IRSize tname] [expr]
     -- size args, args
     -- The type of the result is stored in the name.
     -- Note that this should be the type, for this call site (i.e., type
     -- parameters may affect it
 
   | IRIf expr expr expr
-    deriving (Functor,Foldable,Traversable)
 
+    deriving (Functor,Foldable,Traversable)
 
 --------------------------------------------------------------------------------
 -- Computing Types
 
+type instance TName (IRFunName tname name) = tname
+type instance TName (IRName tname name) = tname
+type instance TName (IRFunDecl tname name) = tname
+type instance TName (IRFunDef tname name) = tname
+type instance TName (IRExpr tname name) = tname
+type instance TName (IRExprF tname name expr) = tname
+
+
 -- | Things that have a type.
-class PP tname => HasType t tname | t -> tname where
-
+class HasType t where
   -- | Compute the type of something.
-  typeOf :: t -> IRType tname
+  typeOf :: t -> IRType (TName t)
 
-instance PP tname => HasType (IRName tname name) tname where
+instance HasType (IRName tname name) where
   typeOf (IRName _ t) = t
 
-instance PP tname => HasType (IRFunName tname name) tname where
+instance HasType (IRSizeName tname) where
+  typeOf (IRSizeName _ t) = sizeVarSizeType t
+
+instance HasType (IRFunName tname name) where
   typeOf (IRFunName _ _ t) = t
 
-instance HasType expr tname => HasType (IRExprF tname name expr) tname where
+instance (HasType expr, TName expr ~ tname) =>
+  HasType (IRExprF tname name expr) where
   typeOf expr =
     case expr  of
       IRVar x         -> typeOf x
       IRCall f _ _ _  -> typeOf f
-      -- IRPrim p        -> typeOf p
       IRIf _ x _      -> typeOf x
 
-
-instance PP tname => HasType (IRExpr tname name) tname where
+instance HasType (IRExpr tname name) where
   typeOf (IRExpr e) = typeOf e
 
-{-
-instance HasType e tname => HasType (IRPrim tname e) tname where
-  typeOf prim =
-    case prim of
-      IntegerLit _ t  -> t
-      RationalLit _ t -> t
-      BoolLit _       -> TBool
 
-      Add x _ -> typeOf x
-      Sub x _ -> typeOf x
-      Mul x _ -> typeOf x
-      Div x _ -> typeOf x
-      Mod x _ -> typeOf x
+funDeclType :: IRFunDecl tname name -> IRFunType tname
+funDeclType fd =
+  IRFunType
+    { ftTypeParams = irfTParams fd
+    , ftTraits     = irfTraits fd
+    , ftSizeParams = irfSizeParams fd
+    , ftParams     = map typeOf (irfParams fd)
+    , ftResult     = typeOf (irfName fd)
+    }
 
-      Tuple es -> TTuple (map typeOf es)
 
-      Select e n ->
-        case typeOf e of
-          TTuple ts
-            | t : _ <- drop n ts -> t
-          t -> panic "typeOf" [ "Select", show (pp t) ]
-
-      Array t _ -> t
-
-      IndexIn arr _ ->
-        case typeOf arr of
-          TArray  _sz t -> t
-          TStream _sz t -> t
-          TWord   _sz   -> TBool
-          t             -> panic "typeOf" [ "IndexIn", show (pp t) ]
--}
 
 --------------------------------------------------------------------------------
 -- Pretty Printing
@@ -168,29 +155,27 @@ instance (PP tname, PP name) => PP (IRFunName tname name) where
 instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
   pp expr =
     case expr of
-     IRVar x            -> pp x
-     IRCall f ts ss es  -> withPrec 0
-                         $ hcat [ pp f, targs, args ]
-        where
-        targs = case ts of
-                  [] -> mempty
-                  _  -> hcat [ "::<", commaSep (map pp ts), ">" ]
-        args = parens (commaSep (map pp (ss ++ es)))
+      IRVar x -> pp x
 
---     IRPrim prim    -> pp prim
-     IRIf e1 e2 e3  ->
-       parensAfter 0 $
-       withPrec 0 $
-       vcat [ "if" <+> pp e1
-            , nest 2 "then" <+> pp e2
-            , nest 2 "else" <+> pp e3
-            ]
+      IRCall f ts ss es  -> withPrec 0
+                          $ hcat [ pp f, targs, args ]
+         where
+         targs = case ts of
+                   [] -> mempty
+                   _  -> hcat [ "::<", commaSep (map pp ts), ">" ]
+         args = parens (commaSep (map pp ss ++ map pp es))
+
+      IRIf e1 e2 e3  ->
+        parensAfter 0 $
+        withPrec 0 $
+        vcat [ "if" <+> pp e1
+             , nest 2 "then" <+> pp e2
+             , nest 2 "else" <+> pp e3
+             ]
+
 
 instance (PP tname, PP name) => PP (IRExpr tname name) where
   pp (IRExpr e) = pp e
-
-instance (PP tname, PP name) => PP (IRDecl tname name) where
-  pp (IRFun fd) = pp fd
 
 instance (PP tname, PP name) => PP (IRFunDef tname name) where
   pp def =
@@ -213,8 +198,7 @@ instance (PP tname, PP name) => PP (IRFunDecl tname name) where
     args = parens
          $ withTypes
          $ commaSep
-         $ map pp
-         $ irfSizeParams fd ++ irfParams fd
+         $ map pp (irfSizeParams fd) ++ map pp (irfParams fd)
 
     resT = withPrec 0 (pp (typeOf (irfName fd)))
 

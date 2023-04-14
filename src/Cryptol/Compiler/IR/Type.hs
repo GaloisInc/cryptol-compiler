@@ -45,28 +45,57 @@ data IRType tname =
   | TStream (IRStreamSize tname) (IRType tname)   -- ^ Iterator
   | TTuple [IRType tname]                         -- ^ Tuple
   | TPoly tname                                   -- ^ Polymorphic
-  deriving Show
 
 -- | Size types tha tcould be infinite.
 data IRStreamSize tname =
     IRInfSize                                     -- ^ Infinite size
   | IRSize (IRSize tname)                         -- ^ Finite size
-  deriving Show
+
+-- | The name of a size variable
+data IRSizeName tname = IRSizeName { irsName :: tname, irsSize :: SizeVarSize }
 
 -- | Size types
 data IRSize tname =
     IRFixedSize Integer                           -- ^ A specific size
-  | IRPolySize SizeVarSize tname                  -- ^ Polymorphic size; finite
+  | IRPolySize (IRSizeName tname)                 -- ^ Polymorphic size; finite
   | IRComputedSize Cry.TFun [IRStreamSize tname]  -- ^ Computed size
-    deriving Show
 
+
+-- | The type of a function declaration
 data IRFunType tname = IRFunType
   { ftTypeParams :: [tname]
   , ftTraits     :: [IRTrait tname]
-  , ftSizeParams :: [(tname, IRType tname)]
+  , ftSizeParams :: [IRSizeName tname]
   , ftParams     :: [IRType tname]
   , ftResult     :: IRType tname
   }
+
+
+--------------------------------------------------------------------------------
+-- Access to the tname parameter
+
+type family TName t
+
+type instance TName (IRType tname)       = tname
+type instance TName (IRSizeName tname) = tname
+type instance TName (IRSize tname)       = tname
+type instance TName (IRStreamSize tname) = tname
+type instance TName (IRFunType tname)    = tname
+
+-- These are a bit hacky, but are convenient for when the actual
+-- things are stored in one of these containers
+type instance TName [a]       = TName a
+type instance TName (Maybe a) = TName a
+type instance TName (a,b)     = TName b
+
+sizeVarSizeType :: SizeVarSize -> IRType tname
+sizeVarSizeType sz =
+  case sz of
+    MemSize   -> TSize
+    LargeSize -> TInteger
+
+
+
 --------------------------------------------------------------------------------
 -- Pretty Printing
 
@@ -79,10 +108,10 @@ instance PP tname => PP (IRFunType tname) where
     quall = case ftTraits ft of
               [] -> mempty
               cs -> parens (commaSep (map pp cs)) <+> "=>"
-    args = parens $ commaSep
-                  $ map ppNumArg (ftSizeParams ft) ++ map pp (ftParams ft)
+    args = withTypes
+         $ parens $ commaSep
+         $ map pp (ftSizeParams ft) ++ map pp (ftParams ft)
     res  = pp (ftResult ft)
-    ppNumArg (x,t) = pp x <+> ":" <+> pp t
 
 
 
@@ -103,6 +132,20 @@ instance PP tname => PP (IRType tname) where
       TPoly nm      -> pp nm
       TTuple ts     -> withPrec 0 (parens (commaSep (map pp ts)))
 
+
+instance (PP tname) => PP (IRSizeName tname) where
+  pp (IRSizeName x t) =
+    getPPCfg \cfg ->
+      let nm = case t of
+                 MemSize   -> pp x
+                 LargeSize -> "!" <> pp x
+      in if ppShowTypes cfg
+              then parensAfter 0 (nm <+> ":" <+> pp (ty x))
+              else nm
+    where
+    ty :: tname -> IRType tname
+    ty _ = sizeVarSizeType t
+
 instance PP tname => PP (IRStreamSize tname) where
   pp ty =
     case ty of
@@ -112,11 +155,8 @@ instance PP tname => PP (IRStreamSize tname) where
 instance PP tname => PP (IRSize tname) where
   pp ty =
     case ty of
-      IRFixedSize size    -> pp size
-      IRPolySize sz a     ->
-        case sz of
-          MemSize   -> pp a
-          LargeSize -> "!" <> pp a
+      IRFixedSize size -> pp size
+      IRPolySize x -> pp x
       IRComputedSize fu ts ->
         case fu of
           Cry.TCAdd            -> ppInfix 1 1 1 "+"

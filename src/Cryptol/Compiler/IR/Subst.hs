@@ -77,19 +77,15 @@ apSubst :: ApSubst a => IRSubst (TName a) -> a -> a
 apSubst su f = fromMaybe f (apSubstMaybe su f)
 
 class Ord (TName a) => ApSubst a where
-  type TName a
   apSubstMaybe :: IRSubst (TName a) -> a -> Maybe a
 
 instance ApSubst a => ApSubst [a] where
-  type TName [a] = TName a
   apSubstMaybe su = anyJust (apSubstMaybe su)
 
 instance (ApSubst a, ApSubst b, TName a ~ TName b) => ApSubst (a,b) where
-  type TName (a,b) = TName a
   apSubstMaybe su = anyJust2 (apSubstMaybe su) (apSubstMaybe su)
 
 instance Ord tname => ApSubst (IRType tname) where
-  type TName (IRType tname) = tname
   apSubstMaybe su irType =
     case irType of
       TBool           -> Nothing
@@ -106,7 +102,6 @@ instance Ord tname => ApSubst (IRType tname) where
       TPoly x         -> suLookupType x su
 
 instance Ord tname => ApSubst (IRStreamSize tname) where
-  type TName (IRStreamSize tname) = tname
   apSubstMaybe su size =
     case size of
       IRInfSize {}  -> Nothing
@@ -117,11 +112,10 @@ apSubstSizeMaybe ::
 apSubstSizeMaybe su size =
   case size of
     IRFixedSize {}        -> Nothing
-    IRPolySize _ x        -> suLookupSize x su
+    IRPolySize x          -> suLookupSize (irsName x) su
     IRComputedSize fun as -> evalSizeType fun <$> apSubstMaybe su as
 
 instance Ord tname => ApSubst (IRSize tname) where
-  type TName (IRSize tname) = tname
   apSubstMaybe su size =
     do isize <- apSubstSizeMaybe su size
        case isize of
@@ -129,22 +123,18 @@ instance Ord tname => ApSubst (IRSize tname) where
          IRInfSize {} -> panic "apSubstMaybe@IRSize" ["Unexpecetd IRInfSize"]
 
 instance Ord tname => ApSubst (IRName tname name) where
-  type TName (IRName tname name) = tname
   apSubstMaybe su (IRName x t) = IRName x <$> apSubstMaybe su t
 
 instance Ord tname => ApSubst (IRFunName tname name) where
-  type TName (IRFunName tname name) = tname
   apSubstMaybe su (IRFunName x i t) = IRFunName x i <$> apSubstMaybe su t
 
 
 
 instance Ord tname => ApSubst (IRExpr tname name) where
-  type TName (IRExpr tname name) = tname
   apSubstMaybe su (IRExpr e) = IRExpr <$> apSubstMaybe su e
 
 instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
    ApSubst (IRExprF tname name expr) where
-  type TName (IRExprF tname name expr) = tname
   apSubstMaybe su expr =
     case expr of
        IRVar nm -> IRVar <$> apSubstMaybe su nm
@@ -156,7 +146,6 @@ instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
             pure (IRIf e1' e2' e3')
 
 instance (Ord tname) => ApSubst (IRFunDef tname name) where
-  type TName (IRFunDef tname name) = tname
   apSubstMaybe su def =
     case def of
       IRFunPrim  -> Nothing

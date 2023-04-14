@@ -63,6 +63,7 @@ import qualified Cryptol.Eval.Value as Cry
 import Cryptol.Compiler.PP(pp)
 import Cryptol.Compiler.Error
 import Cryptol.Compiler.IR
+import Cryptol.Compiler.Cry2IR.InstanceMap
 
 -- | This is the implementation of the monad
 type M =
@@ -108,7 +109,7 @@ data CompilerState = CompilerState
     -- The mapping is used to determined the Cryptol names assigned to
     -- various primitives.
 
---  , rwInstances   :: Map Cry.Name (InstanceMap 
+  , rwCompiled    :: Map Cry.Name (InstanceMap FunDecl)
   }
 
 -- | Information about primitives
@@ -133,6 +134,7 @@ runCryC (CryC m) =
               { rwWarnings = Cry.stderrLogger
               , rwTypes = Nothing
               , rwPrims = Nothing
+              , rwCompiled = mempty
               , rwModuleInput =
                   Cry.ModuleInput
                      { Cry.minpCallStacks = False
@@ -171,6 +173,7 @@ doModuleCmd cmd =
          do mapM_ (addWarning . LoadWarning) warnings
             CryC (sets_ \s -> s { rwTypes = Nothing
                                 , rwPrims = Nothing
+                                , rwCompiled = mempty
                                 , rwModuleInput =
                                     (rwModuleInput s)
                                        { Cry.minpModuleEnv = newEnv }})
@@ -311,6 +314,9 @@ getSchemaOf expr =
 
 getLocal :: Cry.Name -> CryC (Maybe Name)
 getLocal x = Map.lookup x . roLocalIRNames <$> CryC ask
+
+--getFunType :: Cry.Name -> CryC FunType
+--getFunType :: Cry.Name -> CryC FunType
 
 --------------------------------------------------------------------------------
 
