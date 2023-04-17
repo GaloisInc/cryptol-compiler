@@ -29,41 +29,45 @@ compileDeclGroup dg =
     Cry.Recursive ds   -> compileRecDecls ds
 -}
 
-{-
-compileTopDecl :: Cry.Decl -> S.SpecM IRFunDecl
+compileTopDecl :: Cry.Decl -> M.CryC (InstanceMap FunDecl)
 compileTopDecl d =
   case Cry.dDefinition d of
-    Cry.DPrim -> S.unsupported "PRIM"
-    Cry.DForeign {} -> S.unsupported "Foregin declaration" -- XXX: Revisit
+    Cry.DPrim       -> M.unsupported "PRIM"
+    Cry.DForeign {} -> M.unsupported "Foregin declaration" -- XXX: Revisit
     Cry.DExpr e ->
       do let (as,ps,xs,body) = prepExprDecl e
-         (inst,funty, def) <- S.compileFunDecl as ps xs (typeOf e) \args res ->
+         resTcry <- M.getTypeOf body
+         insts <- compileFunDecl as ps (map snd xs) resTcry \args resT ->
+            do let nms = zipWith IRName (map fst xs) args
+               let locs = [ (x, Cry.tMono t, nm) | ((x,t),nm) <- zip xs nms ]
+               def <- S.doCryCWith (M.withLocals locs) (compileExpr body)
+               pure (def,(nms,resT))
+         let decls = map mkDecl insts
+             mbMap = instanceMapFromList
+                       [ (irfnInstance (irfName fd), fd) | fd <- decls ]
+         case mbMap of
+           Right a  -> pure a
+           Left err -> M.unsupported err
 
-            withLocals :: [(Cry.Name, Cry.Schema, Name)] -> CryC a -> CryC a
-            compileExpr
+  where
+  mkDecl (i,ty,(def,(nms,resT))) =
+    IRFunDecl
+      { irfName =
+          IRFunName
+            { irfnName     = Cry.dName d
+            , irfnInstance = i
+            , irfnResult   = resT
+            }
 
-compileFunDecl ::
-  (ApSubst a, TName a ~ Cry.TParam)  =>
-  [Cry.TParam]                          {- ^ Type parameters -} ->
-  [Cry.Prop]                            {- ^ Type qualifiers -} ->
-  [Cry.Type]                            {- ^ Types of arguments -} ->
-  Cry.Type                              {- ^ Type of result -} ->
-  ([Type] -> Type -> SpecM a)           {- ^ Do actual work -} ->
-  M.CryC [(FunInstance, FunType, a)]
-c
+      , irfTParams    = ftTypeParams ty
+      , irfTraits     = ftTraits ty
+      , irfSizeParams = ftSizeParams ty
+      , irfParams     = nms
+      , irfDef        = IRFunDef def
+      }
 
-         let nm = Cry.dName d
-         ps  <- mapM compileParam xs
-         def <- withLocals ps (compileExpr body)
-         let t = typeOf def
-         pure [ IRFun (IRName nm t) [ x | (_,_,x) <- ps ] def ]
 
-compileParam :: (Cry.Name, Cry.Type) -> CryC (Cry.Name, Cry.Schema, Name)
-compileParam (x,t) =
-  do irt <- compileValType t
-     let s = Cry.tMono t
-     pure (x, s, IRName x irt)
--}
+
 
 -- | Identify expressions that are functions
 prepExprDecl ::
@@ -139,6 +143,8 @@ compileVar x ts args =
            ([],[])    -> pure (IRExpr (IRVar n))
 
 
+-- XXX: Should lazy primitives (e.g., `\/') be handled specially here,
+-- or in a later pass?
 compileCall :: Cry.Name -> [Cry.Type] -> [Expr] -> S.SpecM Expr
 compileCall f ts es =
   do instDB <- S.doCryC (M.getFun f)
@@ -231,6 +237,7 @@ compileCall f ts es =
       ITE gs opt1 opt2 -> doITE gs opt1 opt2
 
   bad = panic "compileCall"
+
 
 compileType :: Cry.Type -> S.SpecM (Either Type StreamSize)
 compileType ty =

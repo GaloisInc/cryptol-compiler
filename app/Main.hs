@@ -47,7 +47,7 @@ doTestSpec =
           let doc = nest 2
                       case xs of
                         Right ok ->
-                          let im = instanceMapFromList ok
+                          let Right im = instanceMapFromList ok
                               nu :: Integer -> Either a (IRStreamSize Text)
                               nu = Right . IRSize . IRFixedSize
 

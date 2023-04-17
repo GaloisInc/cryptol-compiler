@@ -30,7 +30,8 @@ common extensions
       TypeFamilies,
       DataKinds,
       MultiParamTypeClasses,
-      FunctionalDependencies
+      FunctionalDependencies,
+      RankNTypes
 
 common executable
     import: warnings, extensions

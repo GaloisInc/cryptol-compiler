@@ -10,6 +10,9 @@ module Cryptol.Compiler.Cry2IR.InstanceMap
   , Guard(..)
   ) where
 
+import Data.Text(Text)
+import Control.Monad(foldM)
+
 import Cryptol.TypeCheck.TCon qualified as Cry
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 
@@ -26,11 +29,17 @@ data InstanceMap a =
   | Result a
     deriving Functor
 
-instanceMapFromList :: PP a => [(FunInstance,a)] -> InstanceMap a
+instanceMapFromList ::
+  PP a => [(FunInstance,a)] -> Either Text (InstanceMap a)
 instanceMapFromList ins =
   case ins of
-    [] -> panic "instanceMapFromList" ["empty list"]
-    _  -> foldr1 mergeInstanceMap (map (uncurry singletonInstanceMap) ins)
+    [] -> Left "instance map: empty"
+    a : as ->
+      foldM (\i b -> mergeInstanceMap (uncurry singletonInstanceMap b) i)
+            (uncurry singletonInstanceMap a)
+            as
+
+
 
 -- | A singleton map associating the given instance with the value.
 singletonInstanceMap :: FunInstance -> a -> InstanceMap a
@@ -41,26 +50,27 @@ singletonInstanceMap (FunInstance pis) a =
 
 -- | Merge two isntance maps.
 -- More specific instances shadow less specific ones.
-mergeInstanceMap :: PP a => InstanceMap a -> InstanceMap a -> InstanceMap a
+mergeInstanceMap ::
+  PP a => InstanceMap a -> InstanceMap a -> Either Text (InstanceMap a)
 mergeInstanceMap mp1 mp2 =
   case (mp1,mp2) of
     (InstanceMap opts1, InstanceMap opts2) ->
-      InstanceMap (mergeOpts opts1 opts2)
-    _ -> panic "mergeInstanceMap" ["Cannot merge"
-                                  , show ("Left"  $$ nest 2 (pp mp1))
-                                  , show ("Right" $$ nest 2 (pp mp2))
-                                  ]
+      InstanceMap <$> mergeOpts opts1 opts2
+    (Result {}, Result {}) -> Left "instance map: overlap"
+    _                      -> Left "isntance map: mistmatch"
 
   where
   mergeOpts opts1 opts2 =
     case (opts1,opts2) of
-      ([],_) -> opts2
-      (_,[]) -> opts1
+      ([],_) -> pure opts2
+      (_,[]) -> pure opts1
       ( (p1,k1) : more1, (p2,k2) : more2 ) ->
         case compare p1 p2 of
-          EQ -> (p1, mergeInstanceMap k1 k2) : mergeOpts more1 more2
-          LT -> (p1,k1) : mergeOpts more1 opts2
-          GT -> (p2,k2) : mergeOpts opts1 more2
+          EQ -> do r  <- mergeInstanceMap k1 k2
+                   rs <- mergeOpts more1 more2
+                   pure ((p1, r) : rs)
+          LT -> ((p1,k1) :) <$> mergeOpts more1 opts2
+          GT -> ((p2,k2) :) <$> mergeOpts opts1 more2
 
 
 -- | Lookup some types in an instance map.

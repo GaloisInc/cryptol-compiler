@@ -5,6 +5,7 @@ module Cryptol.Compiler.Cry2IR.Monad
     -- * Lifting
   , doIO
   , doCryC
+  , doCryCWith
 
     -- * Errors
   , unsupported
@@ -95,11 +96,23 @@ doIO m = doCryC (M.doIO m)
 doCryC :: M.CryC a -> SpecM a
 doCryC m = SpecM (inBase m)
 
+doCryCWith :: (forall a. M.CryC a -> M.CryC a) -> SpecM b -> SpecM b
+doCryCWith k (SpecM m) =
+  do st <- SpecM get
+     mb <- doCryC (k (runChoiceT (runStateT st m)))
+     case mb of
+       Nothing -> empty
+       Just ((a,st1), other) ->
+          do SpecM (set st1)
+             pure a
+          <|>
+          do (b,st2) <- SpecM (lift other)
+             SpecM (set st2)
+             pure b
+
 -- | Abort: we found something that's unsupported.
 unsupported :: Text -> SpecM a
 unsupported x = doCryC (M.unsupported x)
-
-
 
 --------------------------------------------------------------------------------
 -- Boolean constraint
