@@ -1,5 +1,8 @@
 module Cryptol.Compiler.Cry2IR.Compile where
 
+import Control.Monad(unless,zipWithM)
+import Control.Applicative(empty)
+
 import Cryptol.TypeCheck.AST qualified as Cry
 
 import Cryptol.Compiler.Error(panic)
@@ -18,7 +21,7 @@ compileModule m = mapM_ compileDeclGroup (Cry.mDecls m)
 compileDeclGroup :: Cry.DeclGroup -> M.CryC ()
 compileDeclGroup dg =
   case dg of
-    Cry.NonRecursive d -> compileTopDecl (toPrim d)
+    Cry.NonRecursive d -> compileTopDecl d -- (toPrim d)
     Cry.Recursive ds   -> mapM_ (compileTopDecl . toPrim) ds
   where
   toPrim d = d { Cry.dDefinition = Cry.DPrim }
@@ -27,7 +30,7 @@ compileTopDecl :: Cry.Decl -> M.CryC ()
 compileTopDecl d =
   debugWrap
 
-  do -- M.doIO (print (pp cname <+> ":" <+> cryPP (Cry.dSignature d)))
+  do M.doIO (print (pp cname <+> ":" <+> cryPP (Cry.dSignature d)))
      insts <-
        case Cry.dDefinition d of
          Cry.DPrim       ->
@@ -40,7 +43,8 @@ compileTopDecl d =
                 do resTcry <- M.getTypeOf body
                    compileFunDecl as ps (map snd xs) resTcry \args resT ->
                       do let nms = zipWith IRName (map fst xs) args
-                         def <- S.doCryCWith (M.withIRLocals nms) (compileExpr body)
+                         def <- S.doCryCWith (M.withIRLocals nms)
+                                             (compileExpr body resT)
                          pure (IRFunDef nms def)
 
      let decls = map mkDecl insts
@@ -87,74 +91,79 @@ prepExprDecl expr = (tparams, quals, args, body)
   (args,body)     = Cry.splitWhile Cry.splitAbs      expr2
 
 
-compileExpr :: Cry.Expr -> S.SpecM Expr
-compileExpr expr0 =
+compileExpr :: Cry.Expr -> Type -> S.SpecM Expr
+compileExpr expr0 tgtT =
 
-  do let (args,expr1)             = Cry.splitWhile Cry.splitApp expr0
+  do let (args',expr1)            = Cry.splitWhile Cry.splitApp expr0
+         args                     = reverse args'
          (expr2,tyArgs,_profApps) = Cry.splitExprInst expr1
          expr                     = Cry.dropLocs expr2
-
-     cargs <- mapM compileExpr args
-
      case expr of
 
-       Cry.EVar x -> compileVar x tyArgs cargs
+       Cry.EVar x -> compileVar x tyArgs args tgtT
 
        -- NOTE: if we are making a word, especially a small one
-       Cry.EList es t ->
+       Cry.EList {} -> S.unsupported "EList"
+{-
          do it  <- compileValType t
             ces <- mapM compileExpr es
             S.unsupported "list" -- pure (IRExpr (IRPrim (Array it ces)))
+-}
 
        Cry.ETuple es ->
-         do ces <- mapM compileExpr es
-            S.unsupported "tuple" -- pure (IRExpr (IRPrim (Tuple ces)))
+        case tgtT of
+          TTuple ts -> IRExpr . IRTuple <$> zipWithM compileExpr es ts
+          _         -> unexpected "ETuple of non-tuple type"
 
        -- XXX
-       Cry.ERec rm               -> S.unsupported "ERec"
-       Cry.ESel e sel            -> S.unsupported "ESel"
-       Cry.ESet ty recE sel valE -> S.unsupported "ESet"
+       Cry.ERec {} -> S.unsupported "ERec"
+       Cry.ESel {} -> S.unsupported "ESel"
+       Cry.ESet {} -> S.unsupported "ESet"
 
        Cry.EIf eCond eThen eElse ->
-         do ceCond <- compileExpr eCond
-            ceThen <- compileExpr eThen
-            ceElse <- compileExpr eElse
+         do ceCond <- compileExpr eCond TBool
+            ceThen <- compileExpr eThen tgtT
+            ceElse <- compileExpr eElse tgtT
             pure (IRExpr (IRIf ceCond ceThen ceElse))
 
-       Cry.EComp tyLen tyEl expr ms -> S.unsupported "EComp"
+       -- XXX
+       Cry.EComp {}              -> S.unsupported "EComp"
 
-       Cry.EApp efun earg        -> unexpected "EApp"
+       -- XXX
+       Cry.EWhere {}             -> S.unsupported "EWhere"
+       Cry.EPropGuards {}        -> S.unsupported "EPropGuards"
+
+       Cry.EApp {}               -> unexpected "EApp"
        Cry.EAbs {}               -> S.unsupported "EAbs"
 
-       Cry.ELocated rng e        -> unexpected "ELocated"
+       Cry.ELocated _rng e       -> compileExpr e tgtT
        Cry.ETAbs {}              -> unexpected "ETAbs"
        Cry.ETApp {}              -> unexpected "ETApp"
        Cry.EProofAbs {}          -> unexpected "EProofAbs"
        Cry.EProofApp {}          -> unexpected "EProofApp"
 
-       Cry.EWhere expr ds        -> S.unsupported "EWhere"
-       Cry.EPropGuards guars ty  -> S.unsupported "EPropGuards"
 
   where
   unexpected msg = panic "compileExpr" [msg]
 
 
-compileVar :: Cry.Name -> [Cry.Type] -> [Expr] -> S.SpecM Expr
-compileVar x ts args =
+compileVar :: Cry.Name -> [Cry.Type] -> [Cry.Expr] -> Type -> S.SpecM Expr
+compileVar x ts args tgtT =
   do mb <- S.doCryC (M.getLocal x)
      case mb of
-       Nothing -> compileCall x ts args
+       Nothing -> compileCall x ts args tgtT
        Just n ->
          case (ts,args) of
            (_ : _, _) -> S.unsupported "Polymorphic locals"
            (_, _ : _) -> S.unsupported "Funciton local"
-           ([],[])    -> pure (IRExpr (IRVar n))
+           ([],[]) -> pure (IRExpr (IRVar n))
+              -- XXX: assumes target type matches
 
 
 -- XXX: Should lazy primitives (e.g., `\/') be handled specially here,
 -- or in a later pass?
-compileCall :: Cry.Name -> [Cry.Type] -> [Expr] -> S.SpecM Expr
-compileCall f ts es =
+compileCall :: Cry.Name -> [Cry.Type] -> [Cry.Expr] -> Type -> S.SpecM Expr
+compileCall f ts es tgtT =
   do instDB <- S.doCryC (M.getFun f)
      tys    <- mapM compileType ts
      (funNameUninst,funTy) <-
@@ -170,10 +179,15 @@ compileCall f ts es =
      let (typeArgs,sizeArgs) = makeTArgs [] [] (irfnInstance funNameUninst) tys
          su = foldr (uncurry suAddType) suEmpty
             $ zip (ftTypeParams funTy) typeArgs
-         funName = funNameUninst { irfnResult =
-                                     apSubst su (irfnResult funNameUninst) }
+         argTs = apSubst su (ftParams funTy)
+         resT = apSubst su (irfnResult funNameUninst)
+         funName = funNameUninst { irfnResult = resT }
 
-     pure (IRExpr (IRCall funName typeArgs sizeArgs es))
+     tgtT' <- S.zonk tgtT
+     unless (resT == tgtT') empty
+     ces <- zipWithM compileExpr es argTs
+
+     pure (IRExpr (IRCall funName typeArgs sizeArgs ces))
   where
   bindNum sz ty args =
     case ty of

@@ -30,6 +30,7 @@ module Cryptol.Compiler.Cry2IR.Monad
   , getTParams
   , getTraits
   , getBoolConstraint
+  , zonk
   , getSubst
   , checkSingleValue
 
@@ -50,9 +51,6 @@ import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.Subst
 import Cryptol.Compiler.IR.EvalType
-import Cryptol.Compiler.PP
-
-
 
 
 newtype SpecM a = SpecM (SpecImpl a)
@@ -70,6 +68,10 @@ data RW = RW
   , roTraits      :: Map Cry.TParam [Trait]  -- indexed by variable
   , rwProps       :: [Cry.Prop]
   , rwBoolProps   :: Map Cry.TParam BoolInfo
+
+  , rwSubst       :: Maybe Subst
+    -- ^ This is a cache for the current substitution.
+    -- Adding properties invalidates it.
   }
 
 data BoolInfo =
@@ -89,6 +91,7 @@ runSpecM (SpecM m) = map fst <$> findAll (runStateT rw0 m)
            , roTraits      = mempty
            , rwProps       = mempty
            , rwBoolProps   = mempty
+           , rwSubst       = Nothing
            }
 
 -- | Do some IO.
@@ -152,7 +155,12 @@ addIsBoolProp x t =
   setI i =
     do case i of
          Known True ->
-           SpecM $ sets_ \s -> s { roTraits = Map.delete x (roTraits s) }
+           SpecM $ sets_ \s -> s { roTraits = Map.delete x (roTraits s)
+                                 , rwSubst =
+                                     case rwSubst s of
+                                       Nothing -> Nothing
+                                       Just su -> Just (suAddType x TBool su)
+                                 }
          _ -> pure ()
        SpecM $ sets_ \s -> s { rwBoolProps = Map.insert x i (rwBoolProps s) }
 
@@ -183,7 +191,8 @@ addNumProps ps =
     _  -> case asum (map Cry.tIsError ps) of
             Just _ -> empty
             _  ->
-              do SpecM $ sets_ \s -> s { rwProps = ps ++ rwProps s }
+              do SpecM $ sets_ \s -> s { rwProps = ps ++ rwProps s
+                                       , rwSubst = Nothing  }
                  checkPossible
 
 
@@ -308,14 +317,25 @@ caseIsInf ty = tryCase True <|> tryCase False
 
 --------------------------------------------------------------------------------
 
+zonk :: (ApSubst a, TName a ~ Cry.TParam) => a -> SpecM a
+zonk a =
+  do su <- getSubst
+     pure (apSubst su a)
+
+
 -- | Find type parameters that can have only a single value.
--- Note that this is not cached, so it will do the work each time it is called.
 getSubst :: SpecM Subst
 getSubst =
-  do fi <- checkFixedSize
-     let su1 = Map.foldrWithKey suAddSize suEmpty fi
-     cs <- rwBoolProps <$> SpecM get
-     pure (Map.foldrWithKey addT su1 cs)
+  do mb <- rwSubst <$> SpecM get
+     case mb of
+       Just yes -> pure yes
+       Nothing ->
+         do fi <- checkFixedSize
+            let su1 = Map.foldrWithKey suAddSize suEmpty fi
+            cs <- rwBoolProps <$> SpecM get
+            let su = Map.foldrWithKey addT su1 cs
+            SpecM $ sets_ \rw -> rw { rwSubst = Just su }
+            pure su
   where
   addT x info su =
     case info of

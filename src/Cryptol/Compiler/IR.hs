@@ -91,6 +91,8 @@ data IRExprF tname name expr =
 
   | IRIf expr expr expr
 
+  | IRTuple [expr]
+
     deriving (Functor,Foldable,Traversable)
 
 --------------------------------------------------------------------------------
@@ -125,6 +127,7 @@ instance (HasType expr, TName expr ~ tname) =>
       IRVar x         -> typeOf x
       IRCall f _ _ _  -> typeOf f
       IRIf _ x _      -> typeOf x
+      IRTuple es      -> TTuple (map typeOf es)
 
 instance HasType (IRExpr tname name) where
   typeOf (IRExpr e) = typeOf e
@@ -182,6 +185,8 @@ instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
              , nest 2 "else" <+> pp e3
              ]
 
+      IRTuple es -> withPrec 0 (parens (commaSep (map pp es)))
+
 
 instance (PP tname, PP name) => PP (IRExpr tname name) where
   pp (IRExpr e) = pp e
@@ -202,7 +207,7 @@ instance (PP tname, PP name) => PP (IRFunDecl tname name) where
 
     trts = case irfTraits fd of
              [] -> mempty
-             ts -> "where" <+> hsep (map pp ts)
+             ts -> "where" <+> commaSep (map pp ts)
 
 
     args = parens

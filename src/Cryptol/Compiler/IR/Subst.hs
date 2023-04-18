@@ -151,6 +151,8 @@ instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
          do (e1',(e2',e3')) <- apSubstMaybe su (e1,(e2,e3))
             pure (IRIf e1' e2' e3')
 
+       IRTuple es -> IRTuple <$> apSubstMaybe su es
+
 instance (Ord tname) => ApSubst (IRFunDef tname name) where
   apSubstMaybe su def =
     case def of

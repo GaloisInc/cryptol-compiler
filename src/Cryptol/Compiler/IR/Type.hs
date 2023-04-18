@@ -28,6 +28,7 @@ data IRTraitName =
 
   | PLiteral
   | PFLiteral
+    deriving (Eq,Ord)
 
 
 -- | Value types
@@ -45,20 +46,23 @@ data IRType tname =
   | TStream (IRStreamSize tname) (IRType tname)   -- ^ Iterator
   | TTuple [IRType tname]                         -- ^ Tuple
   | TPoly tname                                   -- ^ Polymorphic
+    deriving Eq
 
 -- | Size types tha tcould be infinite.
 data IRStreamSize tname =
     IRInfSize                                     -- ^ Infinite size
   | IRSize (IRSize tname)                         -- ^ Finite size
+    deriving Eq
 
 -- | The name of a size variable
 data IRSizeName tname = IRSizeName { irsName :: tname, irsSize :: SizeVarSize }
-
+  deriving Eq
 -- | Size types
 data IRSize tname =
     IRFixedSize Integer                           -- ^ A specific size
   | IRPolySize (IRSizeName tname)                 -- ^ Polymorphic size; finite
   | IRComputedSize Cry.TFun [IRStreamSize tname]  -- ^ Computed size
+    deriving Eq
 
 
 -- | The type of a function declaration
