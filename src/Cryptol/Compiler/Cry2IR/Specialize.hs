@@ -8,7 +8,6 @@ module Cryptol.Compiler.Cry2IR.Specialize
 import Data.Map(Map)
 import Data.Map qualified as Map
 import Control.Applicative(Alternative(..))
-import Control.Monad(forM_)
 
 import Cryptol.TypeCheck.TCon qualified as Cry
 import Cryptol.TypeCheck.Type qualified as Cry
@@ -16,6 +15,7 @@ import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.TypeCheck.Solver.Class qualified as Cry
 import Cryptol.TypeCheck.Solver.Types qualified as Cry
 
+import Cryptol.Compiler.PP(pp,cryPP)
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.Subst
@@ -30,7 +30,7 @@ compilePrimDecl s =
      pure [ (a,b) | (a,b,_) <- ans ]
   where
   (args,res) = go [] (Cry.sType s)
-  k _ _ = pure IRFunPrim
+  k ts _ = pure (IRFunPrim ts)
 
   go as ty =
     case ty of
@@ -57,10 +57,7 @@ compileFunDecl as quals args result k =
         do addTParams as
            mapM_ addTrait traits
            addNumProps props
-           forM_ (Map.toList boolProps) \(x,ps) ->
-             case ps of
-               [] -> addIsBoolProp x (Known False)
-               _  -> addIsBoolProp x (Unknown ps)
+           mapM_ (uncurry addIsBoolProp) (Map.toList boolProps)
 
            argTs <- mapM compileValType args
            resT  <- compileValType result
@@ -111,7 +108,7 @@ compileFunDecl as quals args result k =
                     case s of
                       IsFin     -> doTParams su (NumVar LargeSize : info) xs
                       IsFinSize -> doTParams su (NumVar MemSize : info) xs
-                      IsInf     -> panic "compileFunType" ["IsInf"]
+                      IsInf     -> doTParams su (NumFixed Cry.Inf : info) xs
 
         | otherwise ->
           do i <- getBoolConstraint x
@@ -313,6 +310,12 @@ infoFromConstraint prop =
           trySolveLit (op 0) (op 1) Cry.solveLiteralLessThanInst PLiteral
 
         Cry.PFLiteral ->
+          CtrProp (Cry.pFin (op 0))
+          `CtrAnd`
+          CtrProp (Cry.pFin (op 1))
+          `CtrAnd`
+          CtrProp (Cry.pFin (op 2))
+          `CtrAnd`
           notBool (op 3)
           `CtrAnd`
           trySolve (op 3) PFLiteral
@@ -330,9 +333,15 @@ infoFromConstraint prop =
   where
   ifBool t k =
     case Cry.tNoUser t of
-      Cry.TVar (Cry.TVBound x)      -> CtrIfBool x k
+      Cry.TVar (Cry.TVBound x)      -> CtrIfBool x k CtrTrue
       Cry.TCon (Cry.TC Cry.TCBit) _ -> k
       _                             -> CtrTrue
+
+  ifThenBool t k1 k2 =
+    case Cry.tNoUser t of
+      Cry.TVar (Cry.TVBound x)      -> CtrIfBool x k1 k2
+      Cry.TCon (Cry.TC Cry.TCBit) _ -> k1
+      _                             -> k2
 
   notBool t = ifBool t CtrFalse
 
@@ -343,7 +352,13 @@ infoFromConstraint prop =
       Cry.Unsolved ->
         case Cry.tNoUser t of
           Cry.TVar (Cry.TVBound x) -> CtrTrait (IRTrait nm x)
-          _ -> unexpected "Unsolved not TVar"
+          Cry.TCon (Cry.TC Cry.TCSeq) [n,a]
+            | PRing <- nm, Cry.TVar (Cry.TVBound x) <- Cry.tNoUser a ->
+              ifThenBool a (CtrProp (Cry.pFin n))
+                           (CtrTrait (IRTrait PRing x))
+          _ -> unexpected ("Unsolved not TVar: " ++ show (cryPP t))
+                -- XXX: Also: [nt] a,  and nt /= inf
+                -- can be solved either if `nt = inf` or `fin nt, a/=Bit`
 
   trySolve1 t sol nm     = trySolve t nm (sol t)
   trySolveLit n a sol nm = trySolve a nm (sol n a)
@@ -361,16 +376,18 @@ data ConstraintInfo =
   | CtrAnd ConstraintInfo ConstraintInfo
   | CtrProp Cry.Prop
   | CtrTrait Trait
-  | CtrIfBool Cry.TParam ConstraintInfo
+  | CtrIfBool Cry.TParam ConstraintInfo ConstraintInfo
     -- ^ Currently we do not support arbitrary nested things here,
     -- see `ctrProps`.
+
 
 -- | Returns unconditional assumptions, and ones that depend on the given
 -- parameter being bool.  If the entry is `[]`, than the parameter must
 -- not be bool.  If it we have some props, then they can be assumed but
 -- only when the parameter *is* bool.
 ctrProps ::
-  ConstraintInfo -> Maybe ([Trait], [Cry.Prop], Map Cry.TParam [Cry.Prop])
+  ConstraintInfo ->
+  Maybe ([Trait], [Cry.Prop], Map Cry.TParam BoolInfo)
 ctrProps = go (mempty,mempty,mempty)
   where
   go props@(ts,pu,pc) ci =
@@ -385,15 +402,46 @@ ctrProps = go (mempty,mempty,mempty)
 
       CtrTrait t -> pure (t : ts, pu, pc)
 
-      CtrIfBool x pr ->
-        pure
-          case pr of
-            CtrFalse  -> (ts, pu, Map.insert x [] pc)
-            CtrProp p ->
-              case Map.lookup x pc of
-                Just [] -> props
-                _       -> (ts, pu, Map.insertWith (++) x [p] pc)
-            _ -> panic "ctrProps" ["Unexpected nested prop"]
+      CtrIfBool x ifYes ifNo ->
+        let yesCase = toProps ifYes []
+            noCase  = toTraits ifNo []
+        in case Map.findWithDefault (Unknown [] []) x pc of
+             Known True ->
+               do newPs <- yesCase
+                  pure (ts, newPs ++ pu, pc)
+             Known False ->
+               do newTs <- noCase
+                  pure (newTs ++ ts, pu, pc)
+             Unknown y n ->
+                case (yesCase, noCase) of
+                  (Nothing,Nothing) -> Nothing
+                  (Nothing,Just newTs) ->
+                     pure (newTs ++ n ++ ts, pu, Map.insert x (Known False) pc)
+                  (Just newPs,Nothing) ->
+                     pure (ts, newPs ++ y ++ pu, Map.insert x (Known True) pc)
+                  (Just newPs, Just newTs) ->
+                    pure (ts, pu, Map.insert x (Unknown (newPs ++ y)
+                                                        (newTs ++ n)) pc)
 
+
+  toTraits :: ConstraintInfo -> [Trait] -> Maybe [Trait]
+  toTraits ci ts =
+    case ci of
+      CtrFalse      -> Nothing
+      CtrTrue       -> pure ts
+      CtrAnd p1 p2  -> toTraits p2 =<< toTraits p1 ts
+      CtrTrait t    -> pure (t:ts)
+      CtrProp {}    -> panic "toTraits" ["CtrProp"]
+      CtrIfBool {}  -> panic "toTriats" ["CtrIfBool"]
+
+  toProps :: ConstraintInfo -> [Cry.Prop] -> Maybe [Cry.Prop]
+  toProps ci ts =
+    case ci of
+      CtrFalse      -> Nothing
+      CtrTrue       -> pure ts
+      CtrAnd p1 p2  -> toProps p2 =<< toProps p1 ts
+      CtrProp t     -> pure (t:ts)
+      CtrTrait {}   -> panic "toProps" ["CtrTrait"]
+      CtrIfBool {}  -> panic "toProps" ["CtrIfBool"]
 
 

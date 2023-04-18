@@ -154,8 +154,8 @@ instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
 instance (Ord tname) => ApSubst (IRFunDef tname name) where
   apSubstMaybe su def =
     case def of
-      IRFunPrim  -> Nothing
-      IRFunDef e -> IRFunDef <$> apSubstMaybe su e
+      IRFunPrim ts  -> IRFunPrim <$> apSubstMaybe su ts
+      IRFunDef is e -> IRFunDef <$> apSubstMaybe su is <*> apSubstMaybe su e
 
 --------------------------------------------------------------------------------
 

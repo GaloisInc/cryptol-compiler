@@ -3,7 +3,7 @@ module Cryptol.Compiler.Cry2IR.Compile where
 import Cryptol.TypeCheck.AST qualified as Cry
 
 import Cryptol.Compiler.Error(panic)
-import Cryptol.Compiler.PP(pp)
+import Cryptol.Compiler.PP(pp,cryPP,(<+>))
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.Subst
 import Cryptol.Compiler.Monad qualified as M
@@ -11,63 +11,71 @@ import Cryptol.Compiler.Cry2IR.Monad qualified as S
 import Cryptol.Compiler.Cry2IR.Specialize
 import Cryptol.Compiler.Cry2IR.InstanceMap
 
-{-
-compileModule :: Cry.Module -> CryC [Decl]
-compileModule m
 
-   -- XXX: Skip the Prelude for now, as it is too difficult :-)
-  | Cry.mName m == Cry.preludeName = pure []
+compileModule :: Cry.Module -> M.CryC ()
+compileModule m = mapM_ compileDeclGroup (Cry.mDecls m)
 
-  | otherwise =
-  do dss <- mapM compileDeclGroup (Cry.mDecls m)
-     pure (concat dss)
-
-compileDeclGroup :: Cry.DeclGroup -> CryC [Decl]
+compileDeclGroup :: Cry.DeclGroup -> M.CryC ()
 compileDeclGroup dg =
   case dg of
-    Cry.NonRecursive d -> compileDecl d
-    Cry.Recursive ds   -> compileRecDecls ds
--}
+    Cry.NonRecursive d -> compileTopDecl (toPrim d)
+    Cry.Recursive ds   -> mapM_ (compileTopDecl . toPrim) ds
+  where
+  toPrim d = d { Cry.dDefinition = Cry.DPrim }
 
-compileTopDecl :: Cry.Decl -> M.CryC (InstanceMap FunDecl)
+compileTopDecl :: Cry.Decl -> M.CryC ()
 compileTopDecl d =
-  case Cry.dDefinition d of
-    Cry.DPrim       -> M.unsupported "PRIM"
-    Cry.DForeign {} -> M.unsupported "Foregin declaration" -- XXX: Revisit
-    Cry.DExpr e ->
-      do let (as,ps,xs,body) = prepExprDecl e
-         resTcry <- M.getTypeOf body
-         insts <- compileFunDecl as ps (map snd xs) resTcry \args resT ->
-            do let nms = zipWith IRName (map fst xs) args
-               let locs = [ (x, Cry.tMono t, nm) | ((x,t),nm) <- zip xs nms ]
-               def <- S.doCryCWith (M.withLocals locs) (compileExpr body)
-               pure (def,(nms,resT))
-         let decls = map mkDecl insts
-             mbMap = instanceMapFromList
-                       [ (irfnInstance (irfName fd), fd) | fd <- decls ]
-         case mbMap of
-           Right a  -> pure a
-           Left err -> M.unsupported err
+  debugWrap
+
+  do -- M.doIO (print (pp cname <+> ":" <+> cryPP (Cry.dSignature d)))
+     insts <-
+       case Cry.dDefinition d of
+         Cry.DPrim       ->
+           do insts <- compilePrimDecl (Cry.dSignature d)
+              pure [ (i,ty,IRFunPrim (ftParams ty)) | (i,ty) <- insts ]
+         Cry.DForeign {} -> M.unsupported "Foregin declaration" -- XXX: Revisit
+         Cry.DExpr e ->
+           do let (as,ps,xs,body) = prepExprDecl e
+              M.withCryLocals xs
+                do resTcry <- M.getTypeOf body
+                   compileFunDecl as ps (map snd xs) resTcry \args resT ->
+                      do let nms = zipWith IRName (map fst xs) args
+                         def <- S.doCryCWith (M.withIRLocals nms) (compileExpr body)
+                         pure (IRFunDef nms def)
+
+     let decls = map mkDecl insts
+         mbMap = instanceMapFromList
+                   [ (irfnInstance (irfName fd), fd) | fd <- decls ]
+     case mbMap of
+       Right a  -> M.addCompiled cname a
+       Left err -> M.unsupported err
 
   where
-  mkDecl (i,ty,(def,(nms,resT))) =
+  cname = Cry.dName d
+
+  mkDecl (i,ty,def) =
     IRFunDecl
       { irfName =
           IRFunName
-            { irfnName     = Cry.dName d
+            { irfnName     = cname
             , irfnInstance = i
-            , irfnResult   = resT
+            , irfnResult   = ftResult ty
             }
 
       , irfTParams    = ftTypeParams ty
       , irfTraits     = ftTraits ty
       , irfSizeParams = ftSizeParams ty
-      , irfParams     = nms
-      , irfDef        = IRFunDef def
+      , irfDef        = def
       }
 
-
-
+  debugWrap m =
+    do mb <- M.catchError m
+       case mb of
+         Right _  -> pure ()
+         Left err ->
+          M.doIO
+            do print (pp cname <+> ":" <+> cryPP (Cry.dSignature d))
+               print (pp err)
 
 -- | Identify expressions that are functions
 prepExprDecl ::

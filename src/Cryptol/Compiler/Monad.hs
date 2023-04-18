@@ -23,12 +23,14 @@ module Cryptol.Compiler.Monad
   , catchError
   , unsupported
   , panic
+  , catchablePanic
 
     -- * IO
   , doIO
 
     -- * Locals
-  , withLocals
+  , withIRLocals
+  , withCryLocals
   , getLocal
 
     -- * Types
@@ -37,8 +39,9 @@ module Cryptol.Compiler.Monad
   , getTopTypes
   , getFun
 
-    -- * IR generations
+    -- * IR generation
   , addCompiled
+  , getCompiled
 
     -- * SMT solver
   , getSolver
@@ -200,6 +203,9 @@ addWarning w =
 throwError :: CompilerError -> CryC a
 throwError e = CryC (raise e)
 
+catchablePanic :: String -> [String] -> CryC a
+catchablePanic m ms = throwError (CatchablePanic m ms)
+
 -- | Run the computation, returning any errors tagged with `Left`.
 catchError :: CryC a -> CryC (Either CompilerError a)
 catchError (CryC m) = CryC ((Right <$> m) `MLib.handle` (pure . Left))
@@ -285,15 +291,20 @@ getTopTypes =
     ]
 
 
--- | Add some locals for the duration of a compiler computation
-withLocals :: [(Cry.Name, Cry.Schema, Name)] -> CryC a -> CryC a
-withLocals locs (CryC m) = CryC (mapReader upd m)
+-- | Add some Crypotl locals for the duration of a compiler computation
+withCryLocals :: [(Cry.Name, Cry.Type)] -> CryC a -> CryC a
+withCryLocals locs (CryC m) = CryC (mapReader upd m)
   where
-  locTs = Map.fromList [ (x,t) | (x,t,_) <- locs ]
-  locNs = Map.fromList [ (x,n) | (x,_,n) <- locs ]
-  upd ro = ro { roLocalTypes   = Map.union locTs (roLocalTypes ro)
-              , roLocalIRNames = Map.union locNs (roLocalIRNames ro)
-              }
+  locTs = Map.fromList [ (x, Cry.tMono t) | (x,t) <- locs ]
+  upd ro = ro { roLocalTypes = Map.union locTs (roLocalTypes ro) }
+
+
+-- | Add some locals for the duration of a compiler computation
+withIRLocals :: [Name] -> CryC a -> CryC a
+withIRLocals locs (CryC m) = CryC (mapReader upd m)
+  where
+  locNs = Map.fromList [ (x,n) | n@(IRName x _) <- locs ]
+  upd ro = ro { roLocalIRNames = Map.union locNs (roLocalIRNames ro) }
 
 -- | Get the types of everything in scope.
 getTypes :: CryC (Map Cry.Name Cry.Schema)
@@ -324,15 +335,18 @@ addCompiled :: Cry.Name -> InstanceMap FunDecl -> CryC ()
 addCompiled x def =
   CryC $ sets_ \s -> s { rwCompiled = Map.insert x def (rwCompiled s) }
 
+getCompiled :: CryC (Map Cry.Name (InstanceMap FunDecl))
+getCompiled = CryC $ rwCompiled <$> get
+
 getFun :: Cry.Name -> CryC (InstanceMap (FunName,FunType))
 getFun x =
   do comp <- CryC (rwCompiled <$> get)
      let info d = (irfName d, funDeclType d)
      case Map.lookup x comp of
        Just fu -> pure (info <$> fu)
-       Nothing -> panic "getFunType" [ "Missing function"
-                                     , show (pp x)
-                                     ]
+       Nothing -> catchablePanic "getFunType" [ "Missing function"
+                                              , show (pp x)
+                                              ]
 
 
 --------------------------------------------------------------------------------

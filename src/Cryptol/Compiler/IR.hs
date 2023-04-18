@@ -64,13 +64,12 @@ data IRFunDecl tname name =
     , irfTParams    :: [tname]
     , irfTraits     :: [IRTrait tname]
     , irfSizeParams :: [IRSizeName tname]
-    , irfParams     :: [IRName tname name]
     , irfDef        :: IRFunDef tname name
     }
 
 data IRFunDef tname name =
-    IRFunPrim
-  | IRFunDef (IRExpr tname name)
+    IRFunPrim [IRType tname]
+  | IRFunDef  [IRName tname name] (IRExpr tname name)
 
 -- | Expressions
 newtype IRExpr tname name = IRExpr (IRExprF tname name (IRExpr tname name))
@@ -137,7 +136,9 @@ funDeclType fd =
     { ftTypeParams = irfTParams fd
     , ftTraits     = irfTraits fd
     , ftSizeParams = irfSizeParams fd
-    , ftParams     = map typeOf (irfParams fd)
+    , ftParams     = case irfDef fd of
+                       IRFunDef is _ -> map typeOf is
+                       IRFunPrim ts  -> ts
     , ftResult     = typeOf (irfName fd)
     }
 
@@ -185,17 +186,13 @@ instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
 instance (PP tname, PP name) => PP (IRExpr tname name) where
   pp (IRExpr e) = pp e
 
-instance (PP tname, PP name) => PP (IRFunDef tname name) where
-  pp def =
-    case def of
-     IRFunPrim  -> "/* external */"
-     IRFunDef e -> pp e
-
 instance (PP tname, PP name) => PP (IRFunDecl tname name) where
   pp fd =
     vcat
-      [ "fn" <+> pp (irfName fd) <+> tps <+> args <+> "->" <+> resT <+> "{"
-      , nest 2 (pp (irfDef fd))
+      [ "fn" <+> pp (irfName fd) <+> tps <+> args <+> "->" <+> resT
+      , nest 2 trts
+      , "{"
+      , nest 2 body
       , "}"
       ]
     where
@@ -203,10 +200,22 @@ instance (PP tname, PP name) => PP (IRFunDecl tname name) where
             [] -> mempty
             ps -> hcat [ "<", commaSep (map pp ps), ">" ]
 
+    trts = case irfTraits fd of
+             [] -> mempty
+             ts -> "where" <+> hsep (map pp ts)
+
+
     args = parens
          $ withTypes
          $ commaSep
-         $ map pp (irfSizeParams fd) ++ map pp (irfParams fd)
+         $ map pp (irfSizeParams fd) ++ params
+
+    (params,body) =
+      case irfDef fd of
+        IRFunDef is e   -> (map pp is, pp e)
+        IRFunPrim ts    -> (map pp ts, "/* primitive */")
+
+
 
     resT = withPrec 0 (pp (typeOf (irfName fd)))
 

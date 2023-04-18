@@ -50,6 +50,7 @@ import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.Subst
 import Cryptol.Compiler.IR.EvalType
+import Cryptol.Compiler.PP
 
 
 
@@ -73,7 +74,9 @@ data RW = RW
 
 data BoolInfo =
     Known   Bool       -- ^ The parameter is/isn't bool on this path.
-  | Unknown [Cry.Prop] -- ^ If parameter is bool, then also add props.
+  | Unknown [Cry.Prop] [Trait]
+    -- ^ If parameter is bool, then also add props.
+    -- - If it is *not* bool, then add the given traits
 
 instance BaseM SpecM SpecM where
   inBase = id
@@ -120,7 +123,7 @@ unsupported x = doCryC (M.unsupported x)
 -- | Get known constraints on a specific vairable.
 getBoolConstraint :: Cry.TParam -> SpecM BoolInfo
 getBoolConstraint x =
-  SpecM (Map.findWithDefault (Unknown []) x . rwBoolProps <$> get)
+  SpecM (Map.findWithDefault (Unknown [] []) x . rwBoolProps <$> get)
 
 -- | Add a constraint on a (value) type parameter.
 addIsBoolProp :: Cry.TParam -> BoolInfo -> SpecM ()
@@ -130,17 +133,21 @@ addIsBoolProp x t =
        Known yes ->
          case t of
            Known yes' -> when (yes /= yes') empty
-           Unknown ps
-             | yes       -> addNumProps ps
-             | otherwise -> pure ()
-       Unknown ps ->
+           Unknown ifYes ifNo
+             | yes       -> addNumProps ifYes
+             | otherwise -> mapM_ addTrait ifNo
+       Unknown ifYes ifNo ->
          case t of
-           Known yes  -> when yes (addNumProps ps) >> setI t
-           Unknown qs ->
-             do let new = qs ++ ps
-                ok <- couldAddNumProps new
-                if ok then setI (Unknown (qs ++ ps))
-                      else setI (Known False)
+           Known yes  ->
+              do if yes then addNumProps ifYes else mapM_ addTrait ifNo
+                 setI t
+           Unknown ifYes1 ifNo1 ->
+             do let newYes = ifYes1 ++ ifYes
+                    newNo  = ifNo1 ++ ifNo
+                ok <- couldAddNumProps newYes
+                if ok then setI (Unknown newYes newNo)
+                      else do mapM_ addTrait newNo
+                              setI (Known False)
   where
   setI i =
     do case i of

@@ -186,7 +186,7 @@ instance PP tname => PP (IRSize tname) where
 
 
 instance (PP tname) => PP (IRTrait tname) where
-  pp (IRTrait t x) = pp t <+> pp x
+  pp (IRTrait t x) = pp x <.> ":" <+> pp t
 
 instance PP IRTraitName where
   pp name =

@@ -5,6 +5,7 @@ module Cryptol.Compiler.Error
   ) where
 
 import Data.Text(Text)
+import Data.Text qualified as Text
 import Control.Exception
 
 import qualified Cryptol.ModuleSystem as Cry
@@ -18,6 +19,7 @@ import Cryptol.Compiler.PP
 data CompilerError =
     LoadError Cry.ModuleError     -- ^ Error loading a Cryptol module
   | Unsupported Text              -- ^ Something we do not support
+  | CatchablePanic String [String]
   deriving Show
 
 -- | Compiler warnings.
@@ -31,6 +33,10 @@ instance PP CompilerError where
     case err of
       LoadError e -> pp (Cry.pp e)
       Unsupported feature -> "Unsupported feature:" $$ nest 2 (pp feature)
+      CatchablePanic m ms ->
+         ("PANIC:" <+> pp (Text.pack m)) $$
+            nest 2 (vcat (map (pp . Text.pack) ms))
+
 
 instance PP CompilerWarning where
   pp warn =
