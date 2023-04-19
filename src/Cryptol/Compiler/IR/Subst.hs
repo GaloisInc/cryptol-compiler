@@ -134,20 +134,38 @@ instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
   apSubstMaybe su expr =
     case expr of
        IRVar nm -> IRVar <$> apSubstMaybe su nm
-       IRCall f t ts sz es ->
-         do let doSz (s,x) = do s' <- apSubstMaybe su s
-                                pure (s',x)
-
-            (sz',(t',(ts',es'))) <- anyJust2
-                                      (anyJust doSz)
-                                      (apSubstMaybe su)
-                                      (sz,(t,(ts,es)))
-            pure (IRCall f t' ts' sz' es')
+       IRCallFun f -> IRCallFun <$> apSubstMaybe su f
+       IRClosure f -> IRClosure <$> apSubstMaybe su f
        IRIf e1 e2 e3 ->
          do (e1',(e2',e3')) <- apSubstMaybe su (e1,(e2,e3))
             pure (IRIf e1' e2' e3')
 
        IRTuple es -> IRTuple <$> apSubstMaybe su es
+
+
+instance (Ord tname) => ApSubst (IRTopFunCall tname name) where
+  apSubstMaybe su (IRTopFunCall f ts sz) =
+    do let doSz (s,x) = do s' <- apSubstMaybe su s
+                           pure (s',x)
+
+       (ts',sz') <- anyJust2 (apSubstMaybe su) (anyJust doSz) (ts,sz)
+       pure (IRTopFunCall f ts' sz')
+
+instance
+  (Ord tname, ApSubst expr, TName expr ~ tname) =>
+                                      ApSubst (IRCallable tname name expr) where
+  apSubstMaybe su call =
+    case call of
+      IRTopFun fu   -> IRTopFun <$> apSubstMaybe su fu
+      IRFunVal expr -> IRFunVal <$> apSubstMaybe su expr
+
+instance
+  (Ord tname, ApSubst expr, TName expr ~ tname) =>
+                                      ApSubst (IRCall tname name expr) where
+  apSubstMaybe su (IRCall f t es) =
+    do (f',(t',es')) <- apSubstMaybe su (f,(t,es))
+       pure (IRCall f' t' es')
+
 
 instance (Ord tname) => ApSubst (IRFunDef tname name) where
   apSubstMaybe su def =

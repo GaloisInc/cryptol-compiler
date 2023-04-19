@@ -76,22 +76,28 @@ newtype IRExpr tname name = IRExpr (IRExprF tname name (IRExpr tname name))
 -- write generic traversals.
 data IRExprF tname name expr =
     IRVar     (IRName tname name)
-
-  | IRCall (IRFunName name)             -- function to call
-           (IRType tname)               -- type of result
-           [IRType tname]               -- type arguments
-           [(IRSize tname,SizeVarSize)] -- size type arugments
-           [expr]                       -- normal arguments
-    -- size args, args
-    -- The type of the result is stored in the name.
-    -- Note that this should be the type, for this call site (i.e., type
-    -- parameters may affect it
-
+  | IRCallFun (IRCall tname name expr)    -- ^ Call a function
+  | IRClosure (IRCall tname name expr)    -- ^ Make a closure
   | IRIf expr expr expr
-
   | IRTuple [expr]
 
-    deriving (Functor,Foldable,Traversable)
+data IRCallable tname name expr =
+    IRTopFun (IRTopFunCall tname name)
+  | IRFunVal expr
+
+data IRTopFunCall tname name = IRTopFunCall
+  { irtfName      :: IRFunName name
+  , irtfTypeArgs  :: [IRType tname]               -- ^ Type arguments
+  , irtfSizeArgs  :: [(IRSize tname,SizeVarSize)] -- ^ Size arguments
+  }
+
+-- | Information about calling a function
+data IRCall tname name expr =
+  IRCall
+    { ircFun      :: IRCallable tname name expr  -- ^ What we are calling
+    , ircType     :: IRType tname     -- ^ Result of function, or closure type
+    , ircArgs     :: [expr]           -- ^ Available arguments
+    }
 
 --------------------------------------------------------------------------------
 -- Computing Types
@@ -101,6 +107,9 @@ type instance TName (IRFunDecl tname name) = tname
 type instance TName (IRFunDef tname name) = tname
 type instance TName (IRExpr tname name) = tname
 type instance TName (IRExprF tname name expr) = tname
+type instance TName (IRCall tname name expr) = tname
+type instance TName (IRTopFunCall tname name) = tname
+type instance TName (IRCallable tname name expr) = tname
 
 
 -- | Things that have a type.
@@ -119,9 +128,13 @@ instance (HasType expr, TName expr ~ tname) =>
   typeOf expr =
     case expr  of
       IRVar x           -> typeOf x
-      IRCall _ t _ _ _  -> t
+      IRCallFun f       -> typeOf f
+      IRClosure f       -> typeOf f
       IRIf _ x _        -> typeOf x
       IRTuple es        -> TTuple (map typeOf es)
+
+instance HasType (IRCall tname name expr) where
+  typeOf = ircType
 
 instance HasType (IRExpr tname name) where
   typeOf (IRExpr e) = typeOf e
@@ -143,19 +156,43 @@ instance (PP name) => PP (IRFunName name) where
     | isEmptyInstance i = pp x
     | otherwise         = hcat [ pp x, "@", pp i ]
 
+ppIRTopFunCall :: (PP tname, PP name) => [Doc] -> IRTopFunCall tname name -> Doc
+ppIRTopFunCall extraArgs call =
+  withPrec 0 $ hcat [ pp (irtfName call), targs, args ]
+  where
+  targs = case irtfTypeArgs call of
+            [] -> mempty
+            ts -> hcat [ "::<", commaSep (map pp ts), ">" ]
+  args = parens (commaSep (map ppSize (irtfSizeArgs call) ++ extraArgs))
+  ppSize (x,s) = pp x <+> "as" <+> pp (sizeVarSizeTypeFor x s)
+
+instance (PP tname, PP name) => PP (IRTopFunCall tname name) where
+  pp = ppIRTopFunCall []
+
+instance (PP tname, PP name, PP expr) => PP (IRCallable tname name expr) where
+  pp call =
+    case call of
+      IRTopFun fu -> pp fu
+      IRFunVal e  -> pp e
+
+
+
+instance (PP tname, PP name, PP expr) => PP (IRCall tname name expr) where
+  pp call = withPrec 0 $
+            case ircFun call of
+              IRTopFun fu -> ppIRTopFunCall args fu
+              IRFunVal e  -> pp e <+> parens (commaSep args)
+
+    where
+    args = map pp (ircArgs call)
+
 instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
   pp expr =
     case expr of
       IRVar x -> pp x
 
-      IRCall f _ ts ss es  -> withPrec 0
-                          $ hcat [ pp f, targs, args ]
-         where
-         targs = case ts of
-                   [] -> mempty
-                   _  -> hcat [ "::<", commaSep (map pp ts), ">" ]
-         args = parens (commaSep (map ppSize ss ++ map pp es))
-         ppSize (x,s) = pp x <+> "as" <+> pp (sizeVarSizeTypeFor x s)
+      IRCallFun f -> pp f
+      IRClosure f -> "[|" <+> pp f <+> "|]"
 
       IRIf e1 e2 e3  ->
         parensAfter 0 $

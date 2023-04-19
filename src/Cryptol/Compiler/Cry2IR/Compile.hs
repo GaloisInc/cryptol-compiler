@@ -159,7 +159,7 @@ compileVar x ts args tgtT =
 -- XXX: Should lazy primitives (e.g., `\/') be handled specially here,
 -- or in a later pass?
 compileCall :: Cry.Name -> [Cry.Type] -> [Cry.Expr] -> Type -> S.SpecM Expr
-compileCall f ts es tgtT =
+compileCall f ts es tgtT' =
   do instDB <- S.doCryC (M.getFun f)
      tys    <- mapM compileType ts
      (funName,funTy) <-
@@ -188,25 +188,38 @@ compileCall f ts es tgtT =
          argTs = apSubst su (ftParams funTy)
          resT  = apSubst su (ftResult funTy)
 
-     case compare (length es) (length argTs) of
-       EQ -> pure ()
-       LT -> S.unsupported "function not fully applied"
-       GT -> S.unsupported "function over applied (higher order result)"
+     ces <- zipWithM compileExpr es argTs
+     let call = IRCall { ircFun      = IRTopFun
+                                         IRTopFunCall
+                                           { irtfName = funName
+                                           , irtfTypeArgs = typeArgs
+                                           , irtfSizeArgs = sizeArgs
+                                           }
+                       , ircType     = resT
+                       , ircArgs     = ces
+                       }
 
-     tgtT' <- S.zonk tgtT
-     unless (resT == tgtT')
+     let haveArgs = length es
+         needArgs = length argTs
+     tgtT <- S.zonk tgtT'
+
+     res <- case compare haveArgs needArgs of
+              EQ -> pure (IRCallFun call)
+              LT -> let need = drop haveArgs argTs
+                    in pure (IRClosure call { ircType = TFun need resT })
+              GT -> S.unsupported "function over applied (higher order result)"
+
+     let haveT = typeOf res
+     unless (haveT == tgtT)
        do S.doIO $ print
                  $ vcat [ "RESULT MISMATCH:"
-                        , nest 2 $ vcat [ "HAVE:" <+> pp resT
-                                        , "WANT:"  <+> pp tgtT'
+                        , nest 2 $ vcat [ "HAVE:" <+> pp haveT
+                                        , "WANT:"  <+> pp tgtT
                                         ]
                         ]
           empty
+     pure (IRExpr res)
 
-     ces <- zipWithM compileExpr es argTs
-
-
-     pure (IRExpr (IRCall funName resT typeArgs sizeArgs ces))
   where
   bindNum sz ty args =
     case ty of
