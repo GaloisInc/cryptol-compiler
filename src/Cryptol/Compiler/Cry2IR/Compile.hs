@@ -144,16 +144,38 @@ compileExpr expr0 tgtT =
 
 
 compileVar :: Cry.Name -> [Cry.Type] -> [Cry.Expr] -> Type -> S.SpecM Expr
-compileVar x ts args tgtT =
+compileVar x ts args tgtT' =
   do mb <- S.doCryC (M.getLocal x)
      case mb of
-       Nothing -> compileCall x ts args tgtT
+       Nothing -> compileCall x ts args tgtT'
        Just n ->
          case (ts,args) of
+           ([], []) -> pure (IRExpr (IRVar n))
+           ([], es) ->
+             do ty <- S.zonk (typeOf n)
+                case ty of
+                  TFun as b ->
+                    do let have = length es
+                           need = length as
+                       ces <- zipWithM compileExpr es as
+                       let call = IRCall
+                                    { ircFun  = IRFunVal (IRExpr (IRVar n))
+                                    , ircType = b
+                                    , ircArgs = ces
+                                    }
+                       expr <- case compare have need of
+                                 EQ -> pure (IRCallFun call)
+                                 LT -> pure (IRClosure call
+                                               { ircType = TFun (drop have as)
+                                                                b
+                                               })
+                                 GT -> undefined
+                       pure (IRExpr expr)
+
+                  _ -> unexpected "application to non-function"
            (_ : _, _) -> S.unsupported "Polymorphic locals"
-           (_, _ : _) -> S.unsupported "Function local"
-           ([],[]) -> pure (IRExpr (IRVar n))
-              -- XXX: assumes target type matches
+  where
+  unexpected msg = panic "compileVar" [msg]
 
 
 -- XXX: Should lazy primitives (e.g., `\/') be handled specially here,
