@@ -125,11 +125,6 @@ instance Ord tname => ApSubst (IRSize tname) where
 instance Ord tname => ApSubst (IRName tname name) where
   apSubstMaybe su (IRName x t) = IRName x <$> apSubstMaybe su t
 
-instance Ord tname => ApSubst (IRFunName tname name) where
-  apSubstMaybe su (IRFunName x i t) = IRFunName x i <$> apSubstMaybe su t
-
-
-
 instance Ord tname => ApSubst (IRExpr tname name) where
   apSubstMaybe su (IRExpr e) = IRExpr <$> apSubstMaybe su e
 
@@ -138,15 +133,15 @@ instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
   apSubstMaybe su expr =
     case expr of
        IRVar nm -> IRVar <$> apSubstMaybe su nm
-       IRCall f ts sz es ->
+       IRCall f t ts sz es ->
          do let doSz (s,x) = do s' <- apSubstMaybe su s
                                 pure (s',x)
 
-            (sz',(f',(ts',es'))) <- anyJust2
+            (sz',(t',(ts',es'))) <- anyJust2
                                       (anyJust doSz)
                                       (apSubstMaybe su)
-                                      (sz,(f,(ts,es)))
-            pure (IRCall f' ts' sz' es')
+                                      (sz,(t,(ts,es)))
+            pure (IRCall f t' ts' sz' es')
        IRIf e1 e2 e3 ->
          do (e1',(e2',e3')) <- apSubstMaybe su (e1,(e2,e3))
             pure (IRIf e1' e2' e3')
@@ -156,8 +151,8 @@ instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
 instance (Ord tname) => ApSubst (IRFunDef tname name) where
   apSubstMaybe su def =
     case def of
-      IRFunPrim ts  -> IRFunPrim <$> apSubstMaybe su ts
-      IRFunDef is e -> IRFunDef <$> apSubstMaybe su is <*> apSubstMaybe su e
+      IRFunPrim     -> Nothing
+      IRFunDef is e -> IRFunDef is <$> apSubstMaybe su e
 
 --------------------------------------------------------------------------------
 

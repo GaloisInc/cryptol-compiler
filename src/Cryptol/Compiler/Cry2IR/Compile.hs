@@ -35,7 +35,7 @@ compileTopDecl d =
        case Cry.dDefinition d of
          Cry.DPrim       ->
            do insts <- compilePrimDecl (Cry.dSignature d)
-              pure [ (i,ty,IRFunPrim (ftParams ty)) | (i,ty) <- insts ]
+              pure [ (i,ty,IRFunPrim) | (i,ty) <- insts ]
          Cry.DForeign {} -> M.unsupported "Foregin declaration" -- XXX: Revisit
          Cry.DExpr e ->
            do let (as,ps,xs,body) = prepExprDecl e
@@ -45,7 +45,7 @@ compileTopDecl d =
                       do let nms = zipWith IRName (map fst xs) args
                          def <- S.doCryCWith (M.withIRLocals nms)
                                              (compileExpr body resT)
-                         pure (IRFunDef nms def)
+                         pure (IRFunDef (map fst xs) def)
 
      let decls = map mkDecl insts
          mbMap = instanceMapFromList
@@ -63,13 +63,9 @@ compileTopDecl d =
           IRFunName
             { irfnName     = cname
             , irfnInstance = i
-            , irfnResult   = ftResult ty
             }
-
-      , irfTParams    = ftTypeParams ty
-      , irfTraits     = ftTraits ty
-      , irfSizeParams = ftSizeParams ty
-      , irfDef        = def
+      , irfType = ty
+      , irfDef  = def
       }
 
   debugWrap m =
@@ -166,7 +162,7 @@ compileCall :: Cry.Name -> [Cry.Type] -> [Cry.Expr] -> Type -> S.SpecM Expr
 compileCall f ts es tgtT =
   do instDB <- S.doCryC (M.getFun f)
      tys    <- mapM compileType ts
-     (funNameUninst,funTy) <-
+     (funName,funTy) <-
         case lookupInstance tys instDB of
           ITE gs opt1 opt2 -> doITE gs opt1 opt2
           Found a -> pure a
@@ -176,18 +172,17 @@ compileCall f ts es tgtT =
               , "Function: " ++ show (pp f)
               , "Instance: " ++ show [ either pp pp x | x <- tys ]
               ]
-     let (typeArgs,sizeArgs) = makeTArgs [] [] (irfnInstance funNameUninst) tys
+     let (typeArgs,sizeArgs) = makeTArgs [] [] (irfnInstance funName) tys
          su = foldr (uncurry suAddType) suEmpty
             $ zip (ftTypeParams funTy) typeArgs
          argTs = apSubst su (ftParams funTy)
-         resT = apSubst su (irfnResult funNameUninst)
-         funName = funNameUninst { irfnResult = resT }
+         resT  = apSubst su (ftResult funTy)
 
      tgtT' <- S.zonk tgtT
      unless (resT == tgtT') empty
      ces <- zipWithM compileExpr es argTs
 
-     pure (IRExpr (IRCall funName typeArgs sizeArgs ces))
+     pure (IRExpr (IRCall funName resT typeArgs sizeArgs ces))
   where
   bindNum sz ty args =
     case ty of

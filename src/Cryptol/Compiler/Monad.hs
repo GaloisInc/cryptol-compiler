@@ -341,7 +341,7 @@ getCompiled = CryC $ rwCompiled <$> get
 getFun :: Cry.Name -> CryC (InstanceMap (FunName,FunType))
 getFun x =
   do comp <- CryC (rwCompiled <$> get)
-     let info d = (irfName d, funDeclType d)
+     let info d = (irfName d, irfType d)
      case Map.lookup x comp of
        Just fu -> pure (info <$> fu)
        Nothing -> catchablePanic "getFunType" [ "Missing function"

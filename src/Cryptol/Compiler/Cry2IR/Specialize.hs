@@ -30,7 +30,7 @@ compilePrimDecl s =
      pure [ (a,b) | (a,b,_) <- ans ]
   where
   (args,res) = go [] (Cry.sType s)
-  k ts _ = pure (IRFunPrim ts)
+  k _ _ = pure IRFunPrim
 
   go as ty =
     case ty of
