@@ -39,12 +39,15 @@ data IRType tname =
   | TRational                                     -- ^ Rational number
   | TFloat                                        -- ^ Floating point small
   | TDouble                                       -- ^ Floating point large
-
   | TSize                                         -- ^ Sizes of arrays, indexing
   | TWord (IRSize tname)                          -- ^ Bit vector
+
   | TArray (IRSize tname) (IRType tname)          -- ^ Array
   | TStream (IRStreamSize tname) (IRType tname)   -- ^ Iterator
   | TTuple [IRType tname]                         -- ^ Tuple
+
+  | TFun [IRType tname] (IRType tname)            -- ^ Function types
+
   | TPoly tname                                   -- ^ Polymorphic
     deriving Eq
 
@@ -57,6 +60,7 @@ data IRStreamSize tname =
 -- | The name of a size variable
 data IRSizeName tname = IRSizeName { irsName :: tname, irsSize :: SizeVarSize }
   deriving Eq
+
 -- | Size types
 data IRSize tname =
     IRFixedSize Integer                           -- ^ A specific size
@@ -81,7 +85,7 @@ data IRFunType tname = IRFunType
 type family TName t
 
 type instance TName (IRType tname)       = tname
-type instance TName (IRSizeName tname) = tname
+type instance TName (IRSizeName tname)   = tname
 type instance TName (IRSize tname)       = tname
 type instance TName (IRStreamSize tname) = tname
 type instance TName (IRFunType tname)    = tname
@@ -141,6 +145,10 @@ instance PP tname => PP (IRType tname) where
       TStream n t -> parensAfter 0 ("Stream" <+> withPrec 9 (pp n <+> pp t))
       TPoly nm      -> pp nm
       TTuple ts     -> withPrec 0 (parens (commaSep (map pp ts)))
+
+      TFun as b     -> parensAfter 0
+                     $ withPrec 0
+                     $ parens (commaSep (map pp as)) <+> "->" <+> pp b
 
 
 instance (PP tname) => PP (IRSizeName tname) where

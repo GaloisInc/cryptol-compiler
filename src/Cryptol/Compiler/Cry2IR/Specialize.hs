@@ -11,11 +11,12 @@ import Control.Applicative(Alternative(..))
 
 import Cryptol.TypeCheck.TCon qualified as Cry
 import Cryptol.TypeCheck.Type qualified as Cry
+import Cryptol.TypeCheck.AST qualified as Cry
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.TypeCheck.Solver.Class qualified as Cry
 import Cryptol.TypeCheck.Solver.Types qualified as Cry
 
-import Cryptol.Compiler.PP(pp,cryPP)
+import Cryptol.Compiler.PP
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.Subst
@@ -180,7 +181,15 @@ compileValType ty =
 
             Cry.TCTuple {}    -> TTuple <$> mapM compileValType ts
 
-            Cry.TCFun         -> unsupported "higher order functions"
+            Cry.TCFun ->
+              case ts of
+                [a,b] ->
+                  do let (as,c) = Cry.splitWhile Cry.tIsFun b
+                     args <- mapM compileValType (a:as)
+                     res  <- compileValType c
+                     pure (TFun args res)
+                _ -> unexpected "Malformed function type"
+
             Cry.TCArray       -> unsupported "Array type"
             Cry.TCAbstract {} -> unsupported "abstract value types"
 
@@ -357,8 +366,6 @@ infoFromConstraint prop =
               ifThenBool a (CtrProp (Cry.pFin n))
                            (CtrTrait (IRTrait PRing x))
           _ -> unexpected ("Unsolved not TVar: " ++ show (cryPP t))
-                -- XXX: Also: [nt] a,  and nt /= inf
-                -- can be solved either if `nt = inf` or `fin nt, a/=Bit`
 
   trySolve1 t sol nm     = trySolve t nm (sol t)
   trySolveLit n a sol nm = trySolve a nm (sol n a)

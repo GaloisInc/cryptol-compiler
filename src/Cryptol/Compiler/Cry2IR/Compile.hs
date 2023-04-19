@@ -1,12 +1,13 @@
 module Cryptol.Compiler.Cry2IR.Compile where
 
-import Control.Monad(unless,zipWithM)
+import Data.Text qualified as Text
+import Control.Monad(unless,zipWithM,forM)
 import Control.Applicative(empty)
 
 import Cryptol.TypeCheck.AST qualified as Cry
 
 import Cryptol.Compiler.Error(panic)
-import Cryptol.Compiler.PP(pp,cryPP,(<+>))
+import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.Subst
 import Cryptol.Compiler.Monad qualified as M
@@ -30,8 +31,7 @@ compileTopDecl :: Cry.Decl -> M.CryC ()
 compileTopDecl d =
   debugWrap
 
-  do M.doIO (print (pp cname <+> ":" <+> cryPP (Cry.dSignature d)))
-     insts <-
+  do insts <-
        case Cry.dDefinition d of
          Cry.DPrim       ->
            do insts <- compilePrimDecl (Cry.dSignature d)
@@ -52,7 +52,7 @@ compileTopDecl d =
                    [ (irfnInstance (irfName fd), fd) | fd <- decls ]
      case mbMap of
        Right a  -> M.addCompiled cname a
-       Left err -> M.unsupported err
+       Left err -> M.unsupported (Text.pack (show (pp cname)) <> ": " <> err)
 
   where
   cname = Cry.dName d
@@ -151,7 +151,7 @@ compileVar x ts args tgtT =
        Just n ->
          case (ts,args) of
            (_ : _, _) -> S.unsupported "Polymorphic locals"
-           (_, _ : _) -> S.unsupported "Funciton local"
+           (_, _ : _) -> S.unsupported "Function local"
            ([],[]) -> pure (IRExpr (IRVar n))
               -- XXX: assumes target type matches
 
@@ -172,15 +172,39 @@ compileCall f ts es tgtT =
               , "Function: " ++ show (pp f)
               , "Instance: " ++ show [ either pp pp x | x <- tys ]
               ]
-     let (typeArgs,sizeArgs) = makeTArgs [] [] (irfnInstance funName) tys
-         su = foldr (uncurry suAddType) suEmpty
+     let (typeArgs',sizeArgs') = makeTArgs [] [] (irfnInstance funName) tys
+     typeArgs <- mapM S.zonk typeArgs'
+     sizeArgs <- forM sizeArgs' \(t',s) ->
+                   do t <- S.zonk t'
+                      pure (t,s)
+
+     let sizeSu = foldr (uncurry suAddSize) suEmpty
+                $ zip (map irsName (ftSizeParams funTy))
+                      (map (IRSize . fst) sizeArgs)
+
+         su = foldr (uncurry suAddType) sizeSu
             $ zip (ftTypeParams funTy) typeArgs
+
          argTs = apSubst su (ftParams funTy)
          resT  = apSubst su (ftResult funTy)
 
+     case compare (length es) (length argTs) of
+       EQ -> pure ()
+       LT -> S.unsupported "function not fully applied"
+       GT -> S.unsupported "function over applied (higher order result)"
+
      tgtT' <- S.zonk tgtT
-     unless (resT == tgtT') empty
+     unless (resT == tgtT')
+       do S.doIO $ print
+                 $ vcat [ "RESULT MISMATCH:"
+                        , nest 2 $ vcat [ "HAVE:" <+> pp resT
+                                        , "WANT:"  <+> pp tgtT'
+                                        ]
+                        ]
+          empty
+
      ces <- zipWithM compileExpr es argTs
+
 
      pure (IRExpr (IRCall funName resT typeArgs sizeArgs ces))
   where

@@ -99,6 +99,7 @@ instance Ord tname => ApSubst (IRType tname) where
       TArray sz ty    -> uncurry TArray <$> apSubstMaybe su (sz,ty)
       TStream sz ty   -> uncurry TStream <$> apSubstMaybe su (sz,ty)
       TTuple ts       -> TTuple <$> apSubstMaybe su ts
+      TFun as b       -> uncurry TFun <$> apSubstMaybe su (as,b)
       TPoly x         -> suLookupType x su
 
 instance Ord tname => ApSubst (IRStreamSize tname) where
