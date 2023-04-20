@@ -6,10 +6,12 @@ module Cryptol.Compiler.IR
 
 
 import Cryptol.TypeCheck.AST qualified as Cry
+import Cryptol.Utils.Ident qualified as Cry
 
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Common
 import Cryptol.Compiler.IR.Type
+import Cryptol.Compiler.IR.Prims
 
 --------------------------------------------------------------------------------
 -- Specialization for Cryptol names
@@ -35,23 +37,29 @@ type Name = IRName Cry.TParam Cry.Name
 -- | Function names, specialized to Cryptol names
 type FunName = IRFunName Cry.Name
 
+-- | Various types of names, specialize to Cryptol names
+type FunNameFlavor = IRFunNameFlavor Cry.Name
+
 -- | Declarations, specialized to Cryptol names
 type FunDecl = IRFunDecl Cry.TParam Cry.Name
 
 -- | Expressions, specialized to Cryptol names
 type Expr = IRExpr Cry.TParam Cry.Name
 
--- | Primitives, specialized to Cryptol names
-type Prim = IRExpr Cry.TParam
-
-
 --------------------------------------------------------------------------------
 
--- | Function name.
+-- | Function name, paired with an instance.
 data IRFunName name = IRFunName
-  { irfnName     :: name
+  { irfnName     :: IRFunNameFlavor name
   , irfnInstance :: FunInstance
   }
+
+-- | Various types of function names
+data IRFunNameFlavor name =
+    IRPrimName IRPrim                 -- ^ An IR primtive
+  | IRCryPrimName Cry.PrimIdent       -- ^ A Cryptol primitve
+  | IRDeclaredFunName name            -- ^ A declared function
+    deriving (Eq,Ord)
 
 -- | Typed names
 data IRName tname name = IRName name (IRType tname)
@@ -157,6 +165,13 @@ instance (PP tname, PP name) => PP (IRName tname name) where
       if ppShowTypes cfg
         then parensAfter 0 (pp x <+> ":" <+> withPrec 0 (pp t))
         else pp x
+
+instance PP name => PP (IRFunNameFlavor name) where
+  pp nm =
+    case nm of
+      IRPrimName p        -> "IR::" <.> pp p
+      IRCryPrimName p     -> "CRY::" <.> pp p
+      IRDeclaredFunName x -> pp x
 
 instance (PP name) => PP (IRFunName name) where
   pp (IRFunName x i)

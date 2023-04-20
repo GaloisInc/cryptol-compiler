@@ -8,7 +8,7 @@ import Cryptol.Compiler.PP
 -- | The size of a numeric type parameter.
 data SizeVarSize =
     MemSize         -- ^ value will fit in usize
-  | LargeSize       -- ^ value may be large, use BigInt
+  | LargeSize       -- ^ value *is* large, use BigInt
     deriving (Eq,Ord,Show)
 
 

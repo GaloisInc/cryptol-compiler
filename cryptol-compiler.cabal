@@ -44,6 +44,7 @@ library
     import: warnings, extensions
     exposed-modules:
       Cryptol.Compiler.IR
+      Cryptol.Compiler.IR.Prims
       Cryptol.Compiler.IR.Common
       Cryptol.Compiler.IR.Type
       Cryptol.Compiler.IR.EvalType

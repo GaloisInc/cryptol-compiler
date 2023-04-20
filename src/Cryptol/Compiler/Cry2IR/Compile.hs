@@ -47,7 +47,13 @@ compileTopDecl d =
                                              (compileExpr body resT)
                          pure (IRFunDef (map fst xs) def)
 
-     let decls = map mkDecl insts
+     let isPrim def = case def of
+                        IRFunPrim -> True
+                        _         -> False
+         hasPrims = not (null [ () | (_,_,p) <- insts, isPrim p ])
+     funame <- compileFunName hasPrims cname
+
+     let decls = map (mkDecl funame) insts
          mbMap = instanceMapFromList
                    [ (irfnInstance (irfName fd), fd) | fd <- decls ]
      case mbMap of
@@ -57,16 +63,18 @@ compileTopDecl d =
   where
   cname = Cry.dName d
 
-  mkDecl (i,ty,def) =
+  mkDecl funame (i,ty,def) =
     IRFunDecl
-      { irfName =
-          IRFunName
-            { irfnName     = cname
-            , irfnInstance = i
-            }
+      { irfName = IRFunName { irfnName = funame, irfnInstance = i }
       , irfType = ty
       , irfDef  = def
       }
+
+  compileFunName pr nm =
+    do mb <- M.isPrimDecl nm
+       case mb of
+         Just p | pr -> pure (IRCryPrimName p)
+         _           -> pure (IRDeclaredFunName nm)
 
   debugWrap m =
     do mb <- M.catchError m
@@ -210,9 +218,13 @@ compileVar x ts args tgtT' =
   unexpected msg = panic "compileVar" [msg]
 
 
--- XXX: Should lazy primitives (e.g., `\/') be handled specially here,
--- or in a later pass?
-compileCall :: Cry.Name -> [Cry.Type] -> [Cry.Expr] -> Type -> S.SpecM Expr
+-- | Compile a all to a function.
+compileCall ::
+  Cry.Name    {- ^ Function name -} ->
+  [Cry.Type]  {- ^ Type arguments at instantiation -} ->
+  [Cry.Expr]  {- ^ Value arguments provided -} ->
+  Type        {- ^ Wanted result type -} ->
+  S.SpecM Expr
 compileCall f ts es tgtT' =
   do instDB <- S.doCryC (M.getFun f)
      tys    <- mapM compileType ts
