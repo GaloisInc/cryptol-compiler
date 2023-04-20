@@ -6,7 +6,7 @@ import Cryptol.Compiler.PP
 
 -- | This is for primitivies specifi to the IR
 -- (i.e., *not* the primitives of Cryptol)
-data IRPrim = XXX
+data IRPrim = MakeSeq
   deriving (Show,Eq,Ord)
 
 

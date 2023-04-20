@@ -95,6 +95,27 @@ prepExprDecl expr = (tparams, quals, args, body)
   (args,body)     = Cry.splitWhile Cry.splitAbs      expr2
 
 
+
+callPrim :: IRPrim -> [Expr] -> Type -> Expr
+callPrim prim es tgtT =
+  IRExpr $ IRCallFun
+    IRCall
+      { ircFun =
+          IRTopFun
+            IRTopFunCall
+               { irtfName =
+                   IRFunName
+                    { irfnName     = IRPrimName prim
+                    , irfnInstance = FunInstance []
+                    }
+               , irtfTypeArgs = []
+               , irtfSizeArgs = []
+               }
+      , ircType = tgtT
+      , ircArgs = es
+      }
+
+
 compileExpr :: Cry.Expr -> Type -> S.SpecM Expr
 compileExpr expr0 tgtT =
 
@@ -106,13 +127,10 @@ compileExpr expr0 tgtT =
 
        Cry.EVar x -> compileVar x tyArgs args tgtT
 
-       -- NOTE: if we are making a word, especially a small one
-       Cry.EList {} -> S.unsupported "EList"
-{-
+       Cry.EList es t ->
          do it  <- compileValType t
-            ces <- mapM compileExpr es
-            S.unsupported "list" -- pure (IRExpr (IRPrim (Array it ces)))
--}
+            ces <- mapM (`compileExpr` it) es
+            pure (callPrim MakeSeq ces tgtT)
 
        Cry.ETuple es ->
         case tgtT of

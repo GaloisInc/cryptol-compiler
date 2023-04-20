@@ -2,6 +2,7 @@
 module Cryptol.Compiler.IR
   ( module Cryptol.Compiler.IR
   , module Cryptol.Compiler.IR.Type
+  , module Cryptol.Compiler.IR.Prims
   ) where
 
 
@@ -91,6 +92,7 @@ data IRExprF tname name expr =
   | IRTuple [expr]
   | IRLet (IRName tname name) expr expr
 
+
 -- | Something that can be called.
 data IRCallable tname name expr =
     IRTopFun (IRTopFunCall tname name)    -- ^ A top level declaration
@@ -112,6 +114,7 @@ data IRCall tname name expr =
     , ircType     :: IRType tname     -- ^ Result of function, or closure type
     , ircArgs     :: [expr]           -- ^ Available arguments
     }
+
 
 --------------------------------------------------------------------------------
 -- Computing Types
