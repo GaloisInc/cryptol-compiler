@@ -29,9 +29,7 @@ module Cryptol.Compiler.Monad
   , doIO
 
     -- * Locals
-  , withIRLocals
   , withCryLocals
-  , getLocal
 
     -- * Types
   , getTypeOf
@@ -94,9 +92,6 @@ data CompilerContext = CompilerContext
   { roLocalTypes    :: Map Cry.Name Cry.Schema
     -- ^ Cryptol types of local variables.
     -- We need this to compute the Cryptol types of things.
-
-  , roLocalIRNames  :: Map Cry.Name Name
-    -- ^ Maps Cryptol name to an IR name, which has the IRType of the local
   }
 
 -- | State of the compiler.
@@ -134,7 +129,6 @@ runCryC (CryC m) =
      let initialContext =
            CompilerContext
              { roLocalTypes = Map.empty
-             , roLocalIRNames = Map.empty
              }
          initialState =
            CompilerState
@@ -299,13 +293,6 @@ withCryLocals locs (CryC m) = CryC (mapReader upd m)
   upd ro = ro { roLocalTypes = Map.union locTs (roLocalTypes ro) }
 
 
--- | Add some locals for the duration of a compiler computation
-withIRLocals :: [Name] -> CryC a -> CryC a
-withIRLocals locs (CryC m) = CryC (mapReader upd m)
-  where
-  locNs = Map.fromList [ (x,n) | n@(IRName x _) <- locs ]
-  upd ro = ro { roLocalIRNames = Map.union locNs (roLocalIRNames ro) }
-
 -- | Get the types of everything in scope.
 getTypes :: CryC (Map Cry.Name Cry.Schema)
 getTypes =
@@ -326,10 +313,6 @@ getSchemaOf :: Cry.Expr -> CryC Cry.Schema
 getSchemaOf expr =
   do env <- getTypes
      pure (Cry.fastSchemaOf env expr)
-
-getLocal :: Cry.Name -> CryC (Maybe Name)
-getLocal x = Map.lookup x . roLocalIRNames <$> CryC ask
-
 
 addCompiled :: Cry.Name -> InstanceMap FunDecl -> CryC ()
 addCompiled x def =

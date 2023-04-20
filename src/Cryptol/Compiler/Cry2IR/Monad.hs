@@ -26,6 +26,10 @@ module Cryptol.Compiler.Cry2IR.Monad
   , caseIsInf
   , caseBool
 
+   -- * Locals
+  , addIRLocals
+  , getLocal
+
     -- * Queries
   , getTParams
   , getTraits
@@ -42,6 +46,7 @@ import Data.Map qualified as Map
 import Control.Applicative(Alternative(..),asum)
 import MonadLib
 
+import Cryptol.ModuleSystem.Name qualified as Cry
 import Cryptol.TypeCheck.TCon qualified as Cry
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.TypeCheck.Type qualified as Cry
@@ -63,11 +68,17 @@ type SpecImpl =
      , ChoiceT
      ]
 
+
+
+
 data RW = RW
   { roTParams     :: [Cry.TParam]
   , roTraits      :: Map Cry.TParam [Trait]  -- indexed by variable
   , rwProps       :: [Cry.Prop]
   , rwBoolProps   :: Map Cry.TParam BoolInfo
+
+  , roLocalIRNames:: Map Cry.Name Name
+    -- ^ Maps Cryptol name to an IR name, which has the IRType of the local
 
   , rwSubst       :: Maybe Subst
     -- ^ This is a cache for the current substitution.
@@ -87,11 +98,12 @@ instance BaseM SpecM SpecM where
 runSpecM :: SpecM a -> M.CryC [a]
 runSpecM (SpecM m) = map fst <$> findAll (runStateT rw0 m)
   where
-  rw0 = RW { roTParams     = mempty
-           , roTraits      = mempty
-           , rwProps       = mempty
-           , rwBoolProps   = mempty
-           , rwSubst       = Nothing
+  rw0 = RW { roTParams      = mempty
+           , roTraits       = mempty
+           , rwProps        = mempty
+           , rwBoolProps    = mempty
+           , roLocalIRNames = mempty
+           , rwSubst        = Nothing
            }
 
 -- | Do some IO.
@@ -358,3 +370,17 @@ checkFixedSize =
                        Cry.Nat n -> IRSize (IRFixedSize n)
 
 
+
+--------------------------------------------------------------------------------
+-- Local variables
+
+-- | Add some locals for the duration of a compiler computation
+addIRLocals :: [Name] -> SpecM ()
+addIRLocals locs =
+  SpecM $ sets_ \rw ->
+                 rw { roLocalIRNames = Map.union locNs (roLocalIRNames rw) }
+  where
+  locNs = Map.fromList [ (x,n) | n@(IRName x _) <- locs ]
+
+getLocal :: Cry.Name -> SpecM (Maybe Name)
+getLocal x = Map.lookup x . roLocalIRNames <$> SpecM get

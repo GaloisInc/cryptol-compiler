@@ -43,8 +43,8 @@ compileTopDecl d =
                 do resTcry <- M.getTypeOf body
                    compileFunDecl as ps (map snd xs) resTcry \args resT ->
                       do let nms = zipWith IRName (map fst xs) args
-                         def <- S.doCryCWith (M.withIRLocals nms)
-                                             (compileExpr body resT)
+                         S.addIRLocals nms
+                         def <- compileExpr body resT
                          pure (IRFunDef (map fst xs) def)
 
      let isPrim def = case def of
@@ -173,8 +173,8 @@ compileLocalDeclGroup dg k =
                         let cname = Cry.dName d
                             name  = IRName cname ty
                         ek <- S.doCryCWith (M.withCryLocals [(cname, cty)])
-                            $ S.doCryCWith (M.withIRLocals [name])
-                              k
+                            $ do S.addIRLocals [name]
+                                 k
                         pure (IRExpr (IRLet name e' ek))
                    Cry.DPrim {}    -> unexpected "Local primitve"
                    Cry.DForeign {} -> unexpected "Local foreign declaration"
@@ -185,7 +185,7 @@ compileLocalDeclGroup dg k =
 
 compileVar :: Cry.Name -> [Cry.Type] -> [Cry.Expr] -> Type -> S.SpecM Expr
 compileVar x ts args tgtT' =
-  do mb <- S.doCryC (M.getLocal x)
+  do mb <- S.getLocal x
      case mb of
        Nothing -> compileCall x ts args tgtT'
        Just n ->
