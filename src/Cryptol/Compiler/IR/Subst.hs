@@ -140,8 +140,10 @@ instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
          do (e1',(e2',e3')) <- apSubstMaybe su (e1,(e2,e3))
             pure (IRIf e1' e2' e3')
 
-       IRTuple es -> IRTuple <$> apSubstMaybe su es
-
+       IRTuple es    -> IRTuple <$> apSubstMaybe su es
+       IRLet x e1 e2 ->
+        do (x',(e1',e2')) <- apSubstMaybe su (x,(e1,e2))
+           pure (IRLet x' e1' e2')
 
 instance (Ord tname) => ApSubst (IRTopFunCall tname name) where
   apSubstMaybe su (IRTopFunCall f ts sz) =

@@ -64,6 +64,7 @@ data IRFunDecl tname name =
     , irfDef        :: IRFunDef tname name
     }
 
+-- | The definition of a top-level function.
 data IRFunDef tname name =
     IRFunPrim
   | IRFunDef [name] (IRExpr tname name)
@@ -80,18 +81,23 @@ data IRExprF tname name expr =
   | IRClosure (IRCall tname name expr)    -- ^ Make a closure
   | IRIf expr expr expr
   | IRTuple [expr]
+  | IRLet (IRName tname name) expr expr
 
+-- | Something that can be called.
 data IRCallable tname name expr =
-    IRTopFun (IRTopFunCall tname name)
-  | IRFunVal expr
+    IRTopFun (IRTopFunCall tname name)    -- ^ A top level declaration
+  | IRFunVal expr                         -- ^ A closure value
 
-data IRTopFunCall tname name = IRTopFunCall
-  { irtfName      :: IRFunName name
-  , irtfTypeArgs  :: [IRType tname]               -- ^ Type arguments
-  , irtfSizeArgs  :: [(IRSize tname,SizeVarSize)] -- ^ Size arguments
-  }
+-- | A call to a top level function, containing common parameters
+-- that are always present.
+data IRTopFunCall tname name =
+  IRTopFunCall
+    { irtfName      :: IRFunName name
+    , irtfTypeArgs  :: [IRType tname]               -- ^ Type arguments
+    , irtfSizeArgs  :: [(IRSize tname,SizeVarSize)] -- ^ Size arguments
+    }
 
--- | Information about calling a function
+-- | Information about a function call or a closure.
 data IRCall tname name expr =
   IRCall
     { ircFun      :: IRCallable tname name expr  -- ^ What we are calling
@@ -132,6 +138,7 @@ instance (HasType expr, TName expr ~ tname) =>
       IRClosure f       -> typeOf f
       IRIf _ x _        -> typeOf x
       IRTuple es        -> TTuple (map typeOf es)
+      IRLet _ _ e       -> typeOf e
 
 instance HasType (IRCall tname name expr) where
   typeOf = ircType
@@ -175,8 +182,6 @@ instance (PP tname, PP name, PP expr) => PP (IRCallable tname name expr) where
       IRTopFun fu -> pp fu
       IRFunVal e  -> pp e
 
-
-
 instance (PP tname, PP name, PP expr) => PP (IRCall tname name expr) where
   pp call = withPrec 0 $
             case ircFun call of
@@ -203,6 +208,13 @@ instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
              ]
 
       IRTuple es -> withPrec 0 (parens (commaSep (map pp es)))
+
+      IRLet x e1 e2 ->
+        withPrec 0 $
+        vcat [ "let" <+> withTypes (pp x) <+> "=" <+> pp e1 <.> ";"
+             , pp e2
+             ]
+
 
 
 instance (PP tname, PP name) => PP (IRExpr tname name) where

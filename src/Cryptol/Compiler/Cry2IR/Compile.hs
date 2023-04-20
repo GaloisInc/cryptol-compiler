@@ -125,10 +125,11 @@ compileExpr expr0 tgtT =
        -- XXX
        Cry.EComp {}              -> S.unsupported "EComp"
 
-       -- XXX
-       Cry.EWhere {}             -> S.unsupported "EWhere"
+       Cry.EWhere e ds -> compileLocalDeclGroups ds (compileExpr e tgtT)
+
        Cry.EPropGuards {}        -> S.unsupported "EPropGuards"
 
+       -- XXX
        Cry.EApp {}               -> unexpected "EApp"
        Cry.EAbs {}               -> S.unsupported "EAbs"
 
@@ -141,6 +142,37 @@ compileExpr expr0 tgtT =
 
   where
   unexpected msg = panic "compileExpr" [msg]
+
+compileLocalDeclGroups :: [Cry.DeclGroup] -> S.SpecM Expr -> S.SpecM Expr
+compileLocalDeclGroups dgs k =
+  case dgs of
+    [] -> k
+    d : ds -> compileLocalDeclGroup d (compileLocalDeclGroups ds k)
+
+compileLocalDeclGroup :: Cry.DeclGroup -> S.SpecM Expr -> S.SpecM Expr
+compileLocalDeclGroup dg k =
+  case dg of
+    Cry.Recursive {} -> S.unsupported "recursive local declaration" -- XXX
+    Cry.NonRecursive d ->
+      do let schema = Cry.dSignature d
+         case (Cry.sVars schema, Cry.sProps schema) of
+           ([],[]) ->
+              do let cty = Cry.sType schema
+                 ty <- compileValType (Cry.sType schema)
+                 case Cry.dDefinition d of
+                   Cry.DExpr e ->
+                     do e' <- compileExpr e ty
+                        let cname = Cry.dName d
+                            name  = IRName cname ty
+                        ek <- S.doCryCWith (M.withCryLocals [(cname, cty)])
+                            $ S.doCryCWith (M.withIRLocals [name])
+                              k
+                        pure (IRExpr (IRLet name e' ek))
+                   Cry.DPrim {}    -> unexpected "Local primitve"
+                   Cry.DForeign {} -> unexpected "Local foreign declaration"
+           _ -> S.unsupported "Polymorphic local variable"
+  where
+  unexpected msg = panic "compileLocalDeclGroup" [msg]
 
 
 compileVar :: Cry.Name -> [Cry.Type] -> [Cry.Expr] -> Type -> S.SpecM Expr
