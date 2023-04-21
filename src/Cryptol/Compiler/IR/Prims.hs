@@ -11,7 +11,18 @@ data IRPrim =
               -- The arguments are the elementes of the sequence
               -- The result type in the call has the type of sequences
               -- we are making.
-  deriving (Show,Eq,Ord)
+
+  | Map       -- ^ (xs : Stream n a, f : a -> b) -> Stream n b
+  | FlatMap   -- ^ (xs : Stream m a, f : a -> Stream n b) -> Stream (m*n) b
+  | Zip       -- ^ (xs : Stream m a, ys : Stream n b) -> Stream (min m n) (a,b)
+
+  | Collect   -- ^  (xs : Stream n a)    -> Array n a
+              -- or (xs : Stream n Bool) -> Word n
+
+  | Iter      -- ^   (xs : Array n a)  -> Stream n a
+              -- or  (xs : Wor n)      -> Stream n Bit
+
+    deriving (Show,Eq,Ord)
 
 
 

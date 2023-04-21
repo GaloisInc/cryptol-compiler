@@ -27,7 +27,7 @@ module Cryptol.Compiler.Cry2IR.Monad
   , caseBool
 
    -- * Locals
-  , addIRLocals
+  , withIRLocals
   , getLocal
 
     -- * Queries
@@ -375,10 +375,13 @@ checkFixedSize =
 -- Local variables
 
 -- | Add some locals for the duration of a compiler computation
-addIRLocals :: [Name] -> SpecM ()
-addIRLocals locs =
-  SpecM $ sets_ \rw ->
-                 rw { roLocalIRNames = Map.union locNs (roLocalIRNames rw) }
+withIRLocals :: [Name] -> SpecM a -> SpecM a
+withIRLocals locs k =
+  do ls <- roLocalIRNames <$> SpecM get
+     SpecM $ sets_ \rw -> rw { roLocalIRNames = Map.union locNs ls }
+     a <- k
+     SpecM $ sets_ \rw -> rw { roLocalIRNames = ls }
+     pure a
   where
   locNs = Map.fromList [ (x,n) | n@(IRName x _) <- locs ]
 

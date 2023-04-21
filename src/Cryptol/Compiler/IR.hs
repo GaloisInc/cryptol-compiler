@@ -255,7 +255,7 @@ instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
       IRLam xs e ->
         parensAfter 0 $
         withPrec 0 $
-        withTypes (hsep [ "|", commaSep (map pp xs), "|" ]) <+> pp e
+        withTypes (hcat [ "|", commaSep (map pp xs), "|" ]) <+> pp e
 
 
 instance (PP tname, PP name) => PP (IRExpr tname name) where

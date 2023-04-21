@@ -43,9 +43,9 @@ compileTopDecl d =
                 do resTcry <- M.getTypeOf body
                    compileFunDecl as ps (map snd xs) resTcry \args resT ->
                       do let nms = zipWith IRName (map fst xs) args
-                         S.addIRLocals nms
-                         def <- compileExpr body resT
-                         pure (IRFunDef (map fst xs) def)
+                         S.withIRLocals nms
+                           do def <- compileExpr body resT
+                              pure (IRFunDef (map fst xs) def)
 
      let isPrim def = case def of
                         IRFunPrim -> True
@@ -148,18 +148,20 @@ compileExpr expr0 tgtT =
             ceElse <- compileExpr eElse tgtT
             pure (IRExpr (IRIf ceCond ceThen ceElse))
 
-       -- XXX
-       Cry.EComp {}              -> S.unsupported "EComp"
+       Cry.EComp len ty res ms ->
+         do sz   <- compileStreamSizeType len
+            elTy <- compileValType ty
+            compileComprehension sz elTy tgtT res ms
 
        Cry.EWhere e ds -> compileLocalDeclGroups ds (compileExpr e tgtT)
 
        Cry.EPropGuards {}        -> S.unsupported "EPropGuards"
 
-       -- XXX
-       Cry.EApp {}               -> unexpected "EApp"
-       Cry.EAbs {}               -> S.unsupported "EAbs"
-
        Cry.ELocated _rng e       -> compileExpr e tgtT
+
+       Cry.EAbs {} -> compileLam xs' e args tgtT
+          where (xs',e) = Cry.splitWhile Cry.splitAbs expr
+       Cry.EApp {}               -> unexpected "EApp"
        Cry.ETAbs {}              -> unexpected "ETAbs"
        Cry.ETApp {}              -> unexpected "ETApp"
        Cry.EProofAbs {}          -> unexpected "EProofAbs"
@@ -168,6 +170,116 @@ compileExpr expr0 tgtT =
 
   where
   unexpected msg = panic "compileExpr" [msg]
+
+
+compileLam ::
+  [(Cry.Name, Cry.Type)] -> Cry.Expr -> [Cry.Expr] -> Type -> S.SpecM Expr
+compileLam xs' e' args tgtT = foldr addDef doFun defs
+  where
+  defs    = zip xs' args
+  xs      = drop (length defs) xs'
+
+  addDef ((x,t),e) k =
+    do ty  <- compileValType t
+       ec  <- compileExpr e ty
+       let nm = IRName x ty
+       ek <- S.doCryCWith (M.withCryLocals [(x, t)])
+           $ S.withIRLocals [nm] k
+       pure (IRExpr (IRLet nm ec ek))
+
+  doFun
+    | null xs = compileExpr e' tgtT
+    | otherwise =
+      do params <- forM xs \(x,t) -> IRName x <$> compileValType t
+         resT'  <- S.zonk tgtT
+         case resT' of
+           TFun as b ->
+              let have = length params
+                  need = length as
+              in case compare have need of
+                   EQ -> do body <- compileExpr e' b
+                            pure (IRExpr (IRLam params body))
+
+                   LT -> S.unsupported "Lambda arity mismatch: LT" 
+                   -- eta expand
+                   -- (\x -> e) :: (Int,Int) -> Int
+                   -- |x,y| e y
+
+                   GT -> S.unsupported "Lambda arity mismatch: LT" 
+                   -- (\x y -> e) -> Int -> (Int -> Int)
+                   -- \x -> \y -> e
+
+           _ -> unexpected "Lambda but result is not function"
+
+  unexpected msg = panic "compileLam" [msg]
+
+
+compileComprehension ::
+  StreamSize -> Type -> Type -> Cry.Expr -> [[Cry.Match]] -> S.SpecM Expr
+compileComprehension _sz elT tgtT res mss =
+  case mss of
+    []   ->  unexpected "Emppty zip"
+    [ms] ->
+      do cres <- doArm ms (compileExpr res elT) elT
+         pure (callPrim Collect [cres] tgtT)
+    _ -> S.unsupported "XXX: multiple arms"
+
+  where
+  doArm ms k kT =
+    case ms of
+      [] -> unexpected "empty arm"
+      [m] ->
+        case m of
+
+          Cry.From x len ty gen ->
+            do cty  <- compileValType (Cry.tSeq len ty)
+               cgen <- compileExpr gen cty
+
+               lenTy   <- compileStreamSizeType len
+               locElTy <- compileValType ty
+               let it   = callPrim Iter [cgen] (TStream lenTy locElTy)
+                   name = IRName x locElTy
+               body <- S.doCryCWith (M.withCryLocals [(x,ty)])
+                     $ S.withIRLocals [name] k
+
+               let fun = IRExpr (IRLam [name] body)
+               kT' <- S.zonk kT
+               pure (callPrim Map [it,fun] (TStream lenTy kT'))
+
+          Cry.Let {} -> S.unsupported "XXX: Let in EComp"
+
+      _ : _ -> S.unsupported "XXX: multiple matches"
+
+
+  unexpected msg = panic "compileComprehension" [msg]
+
+
+{-
+Single arm, single match:
+  [ e | x <- e1 ]
+
+e1.iter.map(|x| e)
+
+Single arm, multiple matches:
+  [ e | x <- e1, y <- e2 ]
+
+e1.iter.flatMap(|x| e2.iter.map(|y| e))
+
+Multiple arms, single match.
+  [ e | x <- e1 | y <- e2 ]
+
+zip(e1.iter,e2.iter).map(|x,y| e)
+
+Multiple arms, multiple matches:
+  [ e | x <- e1, y <- e2, z <- e3
+      | a <- e4
+  ]
+
+zip( e1.iter.flatMap(|x| e2.iter.flatMap(|y| e3.iter.map(|z| (x,y,z))))
+   , e4.iter
+   ).map(|(x,y,z),a| e)
+
+-}
 
 compileLocalDeclGroups :: [Cry.DeclGroup] -> S.SpecM Expr -> S.SpecM Expr
 compileLocalDeclGroups dgs k =
@@ -191,8 +303,7 @@ compileLocalDeclGroup dg k =
                         let cname = Cry.dName d
                             name  = IRName cname ty
                         ek <- S.doCryCWith (M.withCryLocals [(cname, cty)])
-                            $ do S.addIRLocals [name]
-                                 k
+                            $ S.withIRLocals [name] k
                         pure (IRExpr (IRLet name e' ek))
                    Cry.DPrim {}    -> unexpected "Local primitve"
                    Cry.DForeign {} -> unexpected "Local foreign declaration"
@@ -295,13 +406,11 @@ compileCall f ts es tgtT' =
 
      let haveT = typeOf res
      unless (haveT == tgtT)
-       do S.doIO $ print
-                 $ vcat [ "RESULT MISMATCH:"
-                        , nest 2 $ vcat [ "HAVE:" <+> pp haveT
-                                        , "WANT:"  <+> pp tgtT
-                                        ]
-                        ]
-          empty
+       $ S.doCryC $ M.catchablePanic "CALL"
+           [ "RESULT MISMATCH:"
+           , show $ "HAVE:" <+> pp haveT
+           , show $ "WANT:"  <+> pp tgtT
+           ]
      pure (IRExpr res)
 
   where
