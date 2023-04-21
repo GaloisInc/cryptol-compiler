@@ -218,8 +218,8 @@ data SizeConstraint =
 sizeProp :: SizeConstraint -> Cry.Type -> [Cry.Prop]
 sizeProp s t =
   case s of
-    IsFinSize -> [Cry.pFin t, Cry.tNum (maxSizeVal - 1) Cry.>== t ]
-    IsFin     -> [Cry.pFin t, t Cry.>== Cry.tNum maxSizeVal ]
+    IsFinSize -> [Cry.pFin t, Cry.tNum maxSizeVal Cry.>== t ]
+    IsFin     -> [Cry.pFin t, t Cry.>== Cry.tNum (maxSizeVal + 1) ]
     IsInf     -> [t Cry.=#= Cry.tInf]
 
 

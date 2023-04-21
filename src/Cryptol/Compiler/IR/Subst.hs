@@ -94,7 +94,6 @@ instance Ord tname => ApSubst (IRType tname) where
       TRational       -> Nothing
       TFloat          -> Nothing
       TDouble         -> Nothing
-      TSize           -> Nothing
       TWord sz        -> TWord <$> apSubstMaybe su sz
       TArray sz ty    -> uncurry TArray <$> apSubstMaybe su (sz,ty)
       TStream sz ty   -> uncurry TStream <$> apSubstMaybe su (sz,ty)

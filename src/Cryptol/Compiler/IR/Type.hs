@@ -39,7 +39,6 @@ data IRType tname =
   | TRational                                     -- ^ Rational number
   | TFloat                                        -- ^ Floating point small
   | TDouble                                       -- ^ Floating point large
-  | TSize                                         -- ^ Sizes of arrays, indexing
   | TWord (IRSize tname)                          -- ^ Bit vector
 
   | TArray (IRSize tname) (IRType tname)          -- ^ Array
@@ -96,19 +95,6 @@ type instance TName [a]       = TName a
 type instance TName (Maybe a) = TName a
 type instance TName (a,b)     = TName b
 
-sizeVarSizeType :: SizeVarSize -> IRType tname
-sizeVarSizeType sz =
-  case sz of
-    MemSize   -> TSize
-    LargeSize -> TInteger
-
--- | A convenience wrapper that ties the type of the variable to the
--- returned type
-sizeVarSizeTypeFor :: tname -> SizeVarSize -> IRType tname
-sizeVarSizeTypeFor _ = sizeVarSizeType
-
-
-
 
 --------------------------------------------------------------------------------
 -- Pretty Printing
@@ -138,7 +124,6 @@ instance PP tname => PP (IRType tname) where
       TRational     -> "Rational"
       TFloat        -> "Float"
       TDouble       -> "Double"
-      TSize         -> "Size"
       TWord n       -> parensAfter 0 ("Word"  <+> withPrec 9 (pp n))
       TArray n t    -> parensAfter 0 ("Array" <+> withPrec 9 (pp n)
                                               <+> withPrec 1 (pp t))
@@ -158,7 +143,7 @@ instance (PP tname) => PP (IRSizeName tname) where
                  MemSize   -> pp x
                  LargeSize -> "!" <> pp x
       in if ppShowTypes cfg
-              then parensAfter 0 (nm <+> ":" <+> pp (sizeVarSizeTypeFor x t))
+              then parensAfter 0 (nm <+> ":" <+> pp t)
               else nm
 
 instance PP tname => PP (IRStreamSize tname) where

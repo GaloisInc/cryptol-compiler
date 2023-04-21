@@ -137,9 +137,6 @@ class HasType t where
 instance HasType (IRName tname name) where
   typeOf (IRName _ t) = t
 
-instance HasType (IRSizeName tname) where
-  typeOf (IRSizeName _ t) = sizeVarSizeType t
-
 instance (HasType expr, TName expr ~ tname) =>
   HasType (IRExprF tname name expr) where
   typeOf expr =
@@ -189,7 +186,7 @@ ppIRTopFunCall extraArgs call =
             [] -> mempty
             ts -> hcat [ "::<", commaSep (map pp ts), ">" ]
   args = parens (commaSep (map ppSize (irtfSizeArgs call) ++ extraArgs))
-  ppSize (x,s) = pp x <+> "as" <+> pp (sizeVarSizeTypeFor x s)
+  ppSize (x,s) = pp x <+> "as" <+> pp s
 
 instance (PP tname, PP name) => PP (IRTopFunCall tname name) where
   pp = ppIRTopFunCall []
