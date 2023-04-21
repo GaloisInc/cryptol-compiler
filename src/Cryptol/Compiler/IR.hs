@@ -5,7 +5,6 @@ module Cryptol.Compiler.IR
   , module Cryptol.Compiler.IR.Prims
   ) where
 
-
 import Cryptol.TypeCheck.AST qualified as Cry
 import Cryptol.Utils.Ident qualified as Cry
 
@@ -53,7 +52,7 @@ type Expr = IRExpr Cry.TParam Cry.Name
 data IRFunName name = IRFunName
   { irfnName     :: IRFunNameFlavor name
   , irfnInstance :: FunInstance
-  }
+  } deriving (Eq,Ord)
 
 -- | Various types of function names
 data IRFunNameFlavor name =
@@ -62,8 +61,14 @@ data IRFunNameFlavor name =
   | IRDeclaredFunName name            -- ^ A declared function
     deriving (Eq,Ord)
 
--- | Typed names
+-- | Typed names.  When compared, we only consider the name, not the type.
 data IRName tname name = IRName name (IRType tname)
+
+instance Eq name => Eq (IRName tname name) where
+  IRName x _ == IRName y _ = x == y
+
+instance Ord name => Ord (IRName tname name) where
+  compare (IRName x _) (IRName y _) = compare x y
 
 -- | A function declaration
 data IRFunDecl tname name =
@@ -87,7 +92,8 @@ newtype IRExpr tname name = IRExpr (IRExprF tname name (IRExpr tname name))
 data IRExprF tname name expr =
     IRVar     (IRName tname name)
   | IRCallFun (IRCall tname name expr)    -- ^ Call a function
-  | IRClosure (IRCall tname name expr)    -- ^ Make a closure
+  | IRClosure (IRCall tname name expr)    -- ^ Partial application
+  | IRLam [IRName tname name] expr        -- ^ Lambda
   | IRIf expr expr expr
   | IRTuple [expr]
   | IRLet (IRName tname name) expr expr
@@ -115,7 +121,6 @@ data IRCall tname name expr =
     , ircArgs     :: [expr]           -- ^ Available arguments
     }
 
-
 --------------------------------------------------------------------------------
 -- Computing Types
 
@@ -127,6 +132,21 @@ type instance TName (IRExprF tname name expr) = tname
 type instance TName (IRCall tname name expr) = tname
 type instance TName (IRTopFunCall tname name) = tname
 type instance TName (IRCallable tname name expr) = tname
+
+type family VName a
+type instance VName [a]       = VName a
+type instance VName (Maybe a) = VName a
+type instance VName (a,b)     = VName a
+
+type instance VName (IRName tname name) = name
+type instance VName (IRFunDecl tname name) = name
+type instance VName (IRFunDef tname name) = name
+type instance VName (IRExpr tname name) = name
+type instance VName (IRExprF tname name expr) = name
+type instance VName (IRCall tname name expr) = name
+type instance VName (IRTopFunCall tname name) = name
+type instance VName (IRCallable tname name expr) = name
+
 
 
 -- | Things that have a type.
@@ -144,6 +164,7 @@ instance (HasType expr, TName expr ~ tname) =>
       IRVar x           -> typeOf x
       IRCallFun f       -> typeOf f
       IRClosure f       -> typeOf f
+      IRLam xs e        -> TFun (map typeOf xs) (typeOf e)
       IRIf _ x _        -> typeOf x
       IRTuple es        -> TTuple (map typeOf es)
       IRLet _ _ e       -> typeOf e
@@ -153,6 +174,7 @@ instance HasType (IRCall tname name expr) where
 
 instance HasType (IRExpr tname name) where
   typeOf (IRExpr e) = typeOf e
+
 
 
 
@@ -230,6 +252,10 @@ instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
              , pp e2
              ]
 
+      IRLam xs e ->
+        parensAfter 0 $
+        withPrec 0 $
+        withTypes (hsep [ "|", commaSep (map pp xs), "|" ]) <+> pp e
 
 
 instance (PP tname, PP name) => PP (IRExpr tname name) where

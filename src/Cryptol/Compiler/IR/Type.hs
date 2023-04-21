@@ -58,7 +58,7 @@ data IRStreamSize tname =
 
 -- | The name of a size variable
 data IRSizeName tname = IRSizeName { irsName :: tname, irsSize :: SizeVarSize }
-  deriving Eq
+  deriving (Eq,Ord)
 
 -- | Size types
 data IRSize tname =

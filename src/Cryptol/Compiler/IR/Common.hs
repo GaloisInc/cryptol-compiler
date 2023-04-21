@@ -25,6 +25,7 @@ data ParamInfo =
 
 -- | A specific instance of a Cryptol function.
 newtype FunInstance = FunInstance [ ParamInfo ]
+  deriving (Eq,Ord)
 
 isEmptyInstance :: FunInstance -> Bool
 isEmptyInstance (FunInstance ps) = null ps

@@ -135,6 +135,7 @@ instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
        IRVar nm -> IRVar <$> apSubstMaybe su nm
        IRCallFun f -> IRCallFun <$> apSubstMaybe su f
        IRClosure f -> IRClosure <$> apSubstMaybe su f
+       IRLam xs e  -> uncurry IRLam <$> apSubstMaybe su (xs,e)
        IRIf e1 e2 e3 ->
          do (e1',(e2',e3')) <- apSubstMaybe su (e1,(e2,e3))
             pure (IRIf e1' e2' e3')
