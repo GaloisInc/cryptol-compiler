@@ -228,7 +228,9 @@ compileComprehension _sz elT tgtT res mss =
   doArm ms k kT =
     case ms of
       [] -> unexpected "empty arm"
-      [m] ->
+
+      m : more ->
+
         case m of
 
           Cry.From x len ty gen ->
@@ -239,15 +241,22 @@ compileComprehension _sz elT tgtT res mss =
                locElTy <- compileValType ty
                let it   = callPrim Iter [cgen] (TStream lenTy locElTy)
                    name = IRName x locElTy
-               body <- S.withLocals [(name,ty)] k
+
+               (prim,body) <-
+                  S.withLocals [(name,ty)]
+                  case more of
+                    [] -> do resu <- k
+                             pure (Map,resu)
+                    _  -> do resu <- doArm more k kT
+                             pure (FlatMap, resu)
 
                let fun = IRExpr (IRLam [name] body)
                kT' <- S.zonk kT
-               pure (callPrim Map [it,fun] (TStream lenTy kT'))
+               pure (callPrim prim [it,fun] (TStream lenTy kT'))
 
           Cry.Let {} -> S.unsupported "XXX: Let in EComp"
 
-      _ : _ -> S.unsupported "XXX: multiple matches"
+
 
 
   unexpected msg = panic "compileComprehension" [msg]
