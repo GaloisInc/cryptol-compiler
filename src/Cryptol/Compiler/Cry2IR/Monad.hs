@@ -27,6 +27,7 @@ module Cryptol.Compiler.Cry2IR.Monad
   , caseBool
 
    -- * Locals
+  , withLocals
   , withIRLocals
   , getLocal
 
@@ -373,6 +374,11 @@ checkFixedSize =
 
 --------------------------------------------------------------------------------
 -- Local variables
+
+withLocals :: [(Name, Cry.Type)] -> SpecM a -> SpecM a
+withLocals xs k =
+  doCryCWith (M.withCryLocals [ (x,t) | (IRName x _, t) <- xs ]) $
+  withIRLocals (map fst xs) k
 
 -- | Add some locals for the duration of a compiler computation
 withIRLocals :: [Name] -> SpecM a -> SpecM a

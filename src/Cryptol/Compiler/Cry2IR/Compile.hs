@@ -2,7 +2,6 @@ module Cryptol.Compiler.Cry2IR.Compile where
 
 import Data.Text qualified as Text
 import Control.Monad(unless,zipWithM,forM)
-import Control.Applicative(empty)
 
 import Cryptol.TypeCheck.AST qualified as Cry
 
@@ -39,7 +38,8 @@ compileTopDecl d =
          Cry.DForeign {} -> M.unsupported "Foregin declaration" -- XXX: Revisit
          Cry.DExpr e ->
            do let (as,ps,xs,body) = prepExprDecl e
-              M.withCryLocals xs
+              M.withCryLocals xs    -- we add locals here so we can compute
+                                    -- the type of the body
                 do resTcry <- M.getTypeOf body
                    compileFunDecl as ps (map snd xs) resTcry \args resT ->
                       do let nms = zipWith IRName (map fst xs) args
@@ -183,8 +183,7 @@ compileLam xs' e' args tgtT = foldr addDef doFun defs
     do ty  <- compileValType t
        ec  <- compileExpr e ty
        let nm = IRName x ty
-       ek <- S.doCryCWith (M.withCryLocals [(x, t)])
-           $ S.withIRLocals [nm] k
+       ek <- S.withLocals [(nm,t)] k
        pure (IRExpr (IRLet nm ec ek))
 
   doFun
@@ -196,8 +195,9 @@ compileLam xs' e' args tgtT = foldr addDef doFun defs
            TFun as b ->
               let have = length params
                   need = length as
+                  nameTs = zip params (map snd xs)
               in case compare have need of
-                   EQ -> do body <- compileExpr e' b
+                   EQ -> do body <- S.withLocals nameTs (compileExpr e' b)
                             pure (IRExpr (IRLam params body))
 
                    LT -> S.unsupported "Lambda arity mismatch: LT" 
@@ -239,8 +239,7 @@ compileComprehension _sz elT tgtT res mss =
                locElTy <- compileValType ty
                let it   = callPrim Iter [cgen] (TStream lenTy locElTy)
                    name = IRName x locElTy
-               body <- S.doCryCWith (M.withCryLocals [(x,ty)])
-                     $ S.withIRLocals [name] k
+               body <- S.withLocals [(name,ty)] k
 
                let fun = IRExpr (IRLam [name] body)
                kT' <- S.zonk kT
@@ -302,8 +301,7 @@ compileLocalDeclGroup dg k =
                      do e' <- compileExpr e ty
                         let cname = Cry.dName d
                             name  = IRName cname ty
-                        ek <- S.doCryCWith (M.withCryLocals [(cname, cty)])
-                            $ S.withIRLocals [name] k
+                        ek <- S.withLocals [(name, cty)] k
                         pure (IRExpr (IRLet name e' ek))
                    Cry.DPrim {}    -> unexpected "Local primitve"
                    Cry.DForeign {} -> unexpected "Local foreign declaration"
