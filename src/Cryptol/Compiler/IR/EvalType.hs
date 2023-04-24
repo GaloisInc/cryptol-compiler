@@ -11,7 +11,7 @@ maxSizeVal :: Integer
 maxSizeVal = 2^(64::Int) - 1
 
 evalSizeType :: Cry.TFun -> [IRStreamSize tname] -> IRStreamSize tname
-evalSizeType tf args =
+evalSizeType tf args0 =
   case tf of
     Cry.TCAdd           -> liftInfNat dflt args Cry.nAdd
     Cry.TCSub           -> liftInfNat dflt args Cry.nSub
@@ -25,7 +25,50 @@ evalSizeType tf args =
     Cry.TCCeilDiv       -> liftInfNat dflt args Cry.nCeilDiv
     Cry.TCCeilMod       -> liftInfNat dflt args Cry.nCeilMod
     Cry.TCLenFromThenTo -> liftInfNat dflt args Cry.nLenFromThenTo
-  where dflt = IRSize (IRComputedSize tf args)
+  where
+  simp sz =
+    case sz of
+      IRSize (IRComputedSize f as) -> evalSizeType f as
+      _                            -> sz
+
+  args = map simp args0
+  dflt =
+    case (tf, args) of
+      (Cry.TCAdd           , [ a, K 0 ]) -> a
+      (Cry.TCAdd           , [ K 0, b ]) -> b
+
+      (Cry.TCSub           , [ a, K 0 ]) -> a
+
+      (Cry.TCMul           , [ _, K 0 ]) -> K 0
+      (Cry.TCMul           , [ K 0, _ ]) -> K 0
+      (Cry.TCMul           , [ a, K 1 ]) -> a
+      (Cry.TCMul           , [ K 1, b ]) -> b
+
+      (Cry.TCDiv           , [ a, K 1 ]) -> a
+
+      (Cry.TCMod           , [ _, K 1 ]) -> K 0
+
+      (Cry.TCExp           , [ a, K 1 ]) -> a
+      (Cry.TCExp           , [ K 1, _ ]) -> K 1
+
+      (Cry.TCMin           , [ K 0, _ ]) -> K 0
+      (Cry.TCMin           , [ _, K 0]) ->  K 0
+      (Cry.TCMin           , [ IRInfSize, b ]) -> b
+      (Cry.TCMin           , [ a, IRInfSize ]) -> a
+
+      (Cry.TCMax           , [ K 0, b ]) -> b
+      (Cry.TCMax           , [ a, K 0 ]) -> a
+      (Cry.TCMax           , [ IRInfSize, _ ]) -> IRInfSize
+      (Cry.TCMax           , [ _, IRInfSize ]) -> IRInfSize
+
+      (Cry.TCCeilDiv       , [ a, K 1 ]) -> a
+      (Cry.TCCeilMod       , [ _, K 1])  -> K 0
+
+      _ -> IRSize (IRComputedSize tf args)
+
+pattern K :: Integer -> IRStreamSize tname
+pattern K n = IRSize (IRFixedSize n)
+
 
 -- | Approximate the size of the result when we apply a function
 -- to the inputs of the given sizes.

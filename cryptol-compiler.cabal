@@ -31,6 +31,7 @@ common extensions
       DataKinds,
       MultiParamTypeClasses,
       FunctionalDependencies,
+      PatternSynonyms,
       RankNTypes
 
 common executable
