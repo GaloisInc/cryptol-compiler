@@ -2,7 +2,7 @@ module Cryptol.Compiler.Cry2IR.Compile where
 
 import Data.List(elemIndex)
 import Data.Text qualified as Text
-import Control.Monad(unless,zipWithM,forM)
+import Control.Monad(zipWithM,forM)
 
 import Cryptol.TypeCheck.AST qualified as Cry
 import Cryptol.Utils.RecordMap qualified as Cry
@@ -11,6 +11,7 @@ import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.Subst
+import Cryptol.Compiler.IR.EvalType
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.Cry2IR.Monad qualified as S
 import Cryptol.Compiler.Cry2IR.Specialize
@@ -44,7 +45,7 @@ compileTopDecl d =
                                     -- the type of the body
                 do resTcry <- M.getTypeOf body
                    compileFunDecl as ps (map snd xs) resTcry \args resT ->
-                      do let nms = zipWith IRName (map fst xs) args
+                      do let nms = zipWith IRName (map (IRNameId . fst) xs) args
                          S.withIRLocals nms
                            do def <- compileExpr body resT
                               pure (IRFunDef (map fst xs) def)
@@ -226,14 +227,14 @@ compileLam xs' e' args tgtT = foldr addDef doFun defs
   addDef ((x,t),e) k =
     do ty  <- compileValType t
        ec  <- compileExpr e ty
-       let nm = IRName x ty
+       let nm = IRName (IRNameId x) ty
        ek <- S.withLocals [(nm,t)] k
        pure (IRExpr (IRLet nm ec ek))
 
   doFun
     | null xs = compileExpr e' tgtT
     | otherwise =
-      do params <- forM xs \(x,t) -> IRName x <$> compileValType t
+      do params <- forM xs \(x,t) -> IRName (IRNameId x) <$> compileValType t
          resT'  <- S.zonk tgtT
          case resT' of
            TFun as b ->
@@ -286,47 +287,118 @@ Multiple arms, multiple matches:
 compileComprehension ::
   StreamSize -> Type -> Type -> Cry.Expr -> [[Cry.Match]] -> S.SpecM Expr
 compileComprehension _sz elT tgtT res mss =
+  (`coerceTo` tgtT) =<<
+
   case mss of
     []   ->  unexpected "Emppty zip"
-    [ms] ->
-      do cres <- doArm ms (compileExpr res elT) elT
-         pure (callPrim Collect [cres] tgtT)
-    _ -> S.unsupported "XXX: multiple arms"
+
+    [ms] -> doOneAltArm ms
+
+    _ ->
+      do arms <- mapM doZipArm mss
+
+         let jnGen (aNames, a) (bNames, b) =
+                let (la,ta)       = case typeOf a of
+                                      TStream p q -> (p,q)
+                                      _ -> unexpected "Not TStream"
+                    (lb,tb)       = case typeOf b of
+                                      TStream p q -> (p,q)
+                                      _ -> unexpected "Not TStream"
+                    len           = evalSizeType Cry.TCMin [la,lb]
+                    sel (x,_) n e = callPrim (TupleSel n 2) [e] (typeOf x)
+
+                in ( [ (x, f . sel x 0) | (x,f) <- aNames ] ++
+                     [ (x, f . sel x 1) | (x,f) <- bNames ]
+                   , callPrim Zip [ a, b ] (TStream len (TTuple [ta,tb]))
+                   )
+
+         let (nms,gen) = foldr1 jnGen arms
+
+         let (genLen,tupTy) =
+                case typeOf gen of
+                  TStream l t -> (l,t)
+                  _ -> unexpected "Generator not TStream"
+
+         tupName <- (`IRName` tupTy) <$> S.doCryC M.newNameId
+         let tupExpr = IRExpr (IRVar tupName)
+             defName ((x,t),f) k =
+               IRExpr . IRLet x (f tupExpr) <$> S.withLocals [(x,t)] k
+
+         body <- IRExpr . IRLam [tupName] <$>
+                 foldr defName (compileExpr res elT) nms 
+
+         pure (callPrim Map [gen,body] (TStream genLen elT))
 
   where
-  doArm ms k kT =
+  doOneAltArm ms =
     case ms of
-      [] -> unexpected "empty arm"
+      [] -> unexpected "OneAlt: empty arm"
 
       m : more ->
+        do (name,ty,lenTy,it) <- doMatch m
+           S.withLocals [(name,ty)]
+             case more of
+               [] ->
+                 do body <- compileExpr res elT
+                    let fun = IRExpr (IRLam [name] body)
+                    pure (callPrim Map [it,fun] (TStream lenTy elT))
+               _ ->
+                 do body <- doOneAltArm ms
+                    let fun    = IRExpr (IRLam [name] body)
+                        newLen =
+                          case typeOf body of
+                            TStream l _ -> evalSizeType Cry.TCMul [lenTy,l]
+                            _ -> unexpected "rest not TStream"
+                    pure (callPrim FlatMap [it,fun] (TStream newLen elT))
 
-        case m of
+  doZipArm ms =
+    case ms of
+      []  -> unexpected "Zip: empty arm"
+      [m] ->
+        do (name,ty,_lenTy,it) <- doMatch m
+           pure ([((name,ty),id)],it)
+      _   -> doMultiZipArm [] ms
 
-          Cry.From x len ty gen ->
-            do cty  <- compileValType (Cry.tSeq len ty)
-               cgen <- compileExpr gen cty
+  doMultiZipArm nms ms =
+    case ms of
+      [] -> unexpected "MultiZip: empty arm"
+      m : more ->
+        do (name,ty,lenTy,it) <- doMatch m
+           S.withLocals [(name,ty)]
+             case more of
+               [] ->
+                 do let allNms    = reverse ((name,ty) : nms)
 
-               lenTy   <- compileStreamSizeType len
-               locElTy <- compileValType ty
-               let it   = callPrim Iter [cgen] (TStream lenTy locElTy)
-                   name = IRName x locElTy
+                        len       = length allNms
+                        tupT      = TTuple (map (typeOf . fst) allNms)
+                        tupE      = IRExpr (IRTuple
+                                           (map (IRExpr . IRVar . fst) allNms))
 
-               (prim,body) <-
-                  S.withLocals [(name,ty)]
-                  case more of
-                    [] -> do resu <- k
-                             pure (Map,resu)
-                    _  -> do resu <- doArm more k kT
-                             pure (FlatMap, resu)
+                        sel x n e = callPrim (TupleSel n len) [e] (typeOf x)
+                        ns = [ ((x,t),sel x fi) |((x,t),fi) <- zip allNms [0..]]
+                        fu = IRExpr (IRLam [name] tupE)
+                        newIt = callPrim Map [it,fu] (TStream lenTy tupT)
+                    pure (ns,newIt)
 
-               let fun = IRExpr (IRLam [name] body)
-               kT' <- S.zonk kT
-               pure (callPrim prim [it,fun] (TStream lenTy kT'))
+               _ ->
+                 do (allNs,body) <- doMultiZipArm ((name,ty) : nms) more
+                    let fu = IRExpr (IRLam [name] body)
+                        newL =
+                          case typeOf body of
+                            TStream l _ -> evalSizeType Cry.TCMul [lenTy,l]
+                            _ -> unexpected "rest not TStream"
+                        newIt = callPrim FlatMap [it,fu] (TStream newL elT)
+                    pure (allNs,newIt)
 
-          Cry.Let {} -> S.unsupported "XXX: Let in EComp"
-
-
-
+  doMatch m =
+    case m of
+      Cry.From x len ty gen ->
+        do lenTy   <- compileStreamSizeType len
+           locElTy <- compileValType ty
+           it      <- compileExpr gen (TStream lenTy locElTy)
+           let name = IRName (IRNameId x) locElTy
+           pure (name,ty,lenTy,it)
+      Cry.Let {} -> S.unsupported "XXX: Let in EComp"
 
   unexpected msg = panic "compileComprehension" [msg]
 
@@ -351,7 +423,7 @@ compileLocalDeclGroup dg k =
                    Cry.DExpr e ->
                      do e' <- compileExpr e ty
                         let cname = Cry.dName d
-                            name  = IRName cname ty
+                            name  = IRName (IRNameId cname) ty
                         ek <- S.withLocals [(name, cty)] k
                         pure (IRExpr (IRLet name e' ek))
                    Cry.DPrim {}    -> unexpected "Local primitve"
@@ -362,13 +434,13 @@ compileLocalDeclGroup dg k =
 
 
 compileVar :: Cry.Name -> [Cry.Type] -> [Cry.Expr] -> Type -> S.SpecM Expr
-compileVar x ts args tgtT' =
-  do mb <- S.getLocal x
+compileVar x ts args tgtT =
+  do mb <- S.getLocal (IRNameId x)
      case mb of
-       Nothing -> compileCall x ts args tgtT'
+       Nothing -> compileCall x ts args tgtT
        Just n ->
          case (ts,args) of
-           ([], []) -> pure (IRExpr (IRVar n))
+           ([], []) -> coerceTo (IRExpr (IRVar n)) tgtT
            ([], es) ->
              do ty <- S.zonk (typeOf n)
                 case ty of
@@ -387,8 +459,8 @@ compileVar x ts args tgtT' =
                                                { ircType = TFun (drop have as)
                                                                 b
                                                })
-                                 GT -> undefined
-                       pure (IRExpr expr)
+                                 GT -> S.unsupported "over application"
+                       coerceTo (IRExpr expr) tgtT
 
                   _ -> unexpected "application to non-function"
            (_ : _, _) -> S.unsupported "Polymorphic locals"
@@ -403,7 +475,7 @@ compileCall ::
   [Cry.Expr]  {- ^ Value arguments provided -} ->
   Type        {- ^ Wanted result type -} ->
   S.SpecM Expr
-compileCall f ts es tgtT' =
+compileCall f ts es tgtT =
   do instDB <- S.doCryC (M.getFun f)
      tys    <- mapM compileType ts
      (funName,funTy) <-
@@ -445,7 +517,6 @@ compileCall f ts es tgtT' =
 
      let haveArgs = length es
          needArgs = length argTs
-     tgtT <- S.zonk tgtT'
 
      res <- case compare haveArgs needArgs of
               EQ -> pure (IRCallFun call)
@@ -453,14 +524,7 @@ compileCall f ts es tgtT' =
                     in pure (IRClosure call { ircType = TFun need resT })
               GT -> S.unsupported "function over applied (higher order result)"
 
-     let haveT = typeOf res
-     unless (haveT == tgtT)
-       $ S.doCryC $ M.catchablePanic "CALL"
-           [ "RESULT MISMATCH:"
-           , show $ "HAVE:" <+> pp haveT
-           , show $ "WANT:"  <+> pp tgtT
-           ]
-     pure (IRExpr res)
+     coerceTo (IRExpr res) tgtT
 
   where
   bindNum sz ty args =
@@ -544,6 +608,31 @@ compileType ty =
 
 
 
+coerceTo :: Expr -> Type -> S.SpecM Expr
+coerceTo e tgtT' =
+  do srcT <- S.zonk (typeOf e)
+     tgtT <- S.zonk tgtT'
+
+     case (srcT,tgtT) of
+
+       (TStream (IRSize l1) t1, TArray l2 t2)
+         | (l1,t1) == (l2,t2) -> pure (callPrim Collect [e] tgtT)
+
+       (TStream (IRSize l1) TBool, TWord l2)
+          | l1 == l2          -> pure (callPrim Collect [e] tgtT)
+
+       (TArray l1 t1, TStream (IRSize l2) t2)
+         | (l1,t1) == (l2,t2) -> pure (callPrim Iter [e] tgtT)
+
+       (TWord l1, TStream (IRSize l2) TBool)
+         | l1 == l2           -> pure (callPrim Iter [e] tgtT)
+
+       _ | srcT == tgtT -> pure e
+         | otherwise -> panic "adjustType"
+                          [ "Cannot coerce types"
+                          , "From: " ++ show (pp srcT)
+                          , "To  : " ++ show (pp tgtT)
+                          ]
 
 
 

@@ -15,7 +15,7 @@ module Cryptol.Compiler.PP
   , (<+>), (<.>), hsep, hcat
   , ($$), vcat, vsep
   , commaSep, parens, parensAfter, brackets, braces
-  , nest
+  , nest, hang
   , showPP
 
     -- * Cryptol pretty printing
@@ -195,6 +195,9 @@ braces = lift1 PP.braces
 -- | Separate with commas
 commaSep :: [Doc] -> Doc
 commaSep = liftMany (PP.sep . PP.punctuate PP.comma)
+
+hang :: Doc -> Int -> Doc -> Doc
+hang d1 n d2 = lift2 (\a b -> PP.hang a n b) d1 d2
 
 showPP :: Show a => a -> Doc
 showPP a = lift (PP.text (show a))

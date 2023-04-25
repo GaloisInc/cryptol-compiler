@@ -47,7 +47,6 @@ import Data.Map qualified as Map
 import Control.Applicative(Alternative(..),asum)
 import MonadLib
 
-import Cryptol.ModuleSystem.Name qualified as Cry
 import Cryptol.TypeCheck.TCon qualified as Cry
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.TypeCheck.Type qualified as Cry
@@ -78,7 +77,7 @@ data RW = RW
   , rwProps       :: [Cry.Prop]
   , rwBoolProps   :: Map Cry.TParam BoolInfo
 
-  , roLocalIRNames:: Map Cry.Name Name
+  , roLocalIRNames:: Map NameId Name
     -- ^ Maps Cryptol name to an IR name, which has the IRType of the local
 
   , rwSubst       :: Maybe Subst
@@ -377,7 +376,7 @@ checkFixedSize =
 
 withLocals :: [(Name, Cry.Type)] -> SpecM a -> SpecM a
 withLocals xs k =
-  doCryCWith (M.withCryLocals [ (x,t) | (IRName x _, t) <- xs ]) $
+  doCryCWith (M.withCryLocals [ (x,t) | (IRName (IRNameId x) _, t) <- xs ]) $
   withIRLocals (map fst xs) k
 
 -- | Add some locals for the duration of a compiler computation
@@ -391,5 +390,5 @@ withIRLocals locs k =
   where
   locNs = Map.fromList [ (x,n) | n@(IRName x _) <- locs ]
 
-getLocal :: Cry.Name -> SpecM (Maybe Name)
+getLocal :: NameId -> SpecM (Maybe Name)
 getLocal x = Map.lookup x . roLocalIRNames <$> SpecM get

@@ -10,7 +10,8 @@ import Cryptol.Compiler.IR.Type
 maxSizeVal :: Integer
 maxSizeVal = 2^(64::Int) - 1
 
-evalSizeType :: Cry.TFun -> [IRStreamSize tname] -> IRStreamSize tname
+evalSizeType ::
+  Eq tname => Cry.TFun -> [IRStreamSize tname] -> IRStreamSize tname
 evalSizeType tf args0 =
   case tf of
     Cry.TCAdd           -> liftInfNat dflt args Cry.nAdd
@@ -55,11 +56,13 @@ evalSizeType tf args0 =
       (Cry.TCMin           , [ _, K 0]) ->  K 0
       (Cry.TCMin           , [ IRInfSize, b ]) -> b
       (Cry.TCMin           , [ a, IRInfSize ]) -> a
+      (Cry.TCMin           , [ a, b ]) | a == b -> a
 
       (Cry.TCMax           , [ K 0, b ]) -> b
       (Cry.TCMax           , [ a, K 0 ]) -> a
       (Cry.TCMax           , [ IRInfSize, _ ]) -> IRInfSize
       (Cry.TCMax           , [ _, IRInfSize ]) -> IRInfSize
+      (Cry.TCMax           , [ a, b ]) | a == b -> a
 
       (Cry.TCCeilDiv       , [ a, K 1 ]) -> a
       (Cry.TCCeilMod       , [ _, K 1])  -> K 0

@@ -37,6 +37,9 @@ module Cryptol.Compiler.Monad
   , getTopTypes
   , getFun
 
+    -- * Names generation
+  , newNameId
+
     -- * IR generation
   , addCompiled
   , getCompiled
@@ -88,7 +91,7 @@ instance BaseM CryC CryC where
 
 
 -- | Context for compiler computations
-data CompilerContext = CompilerContext
+newtype CompilerContext = CompilerContext
   { roLocalTypes    :: Map Cry.Name Cry.Schema
     -- ^ Cryptol types of local variables.
     -- We need this to compute the Cryptol types of things.
@@ -110,6 +113,9 @@ data CompilerState = CompilerState
     -- cleared if new modules are loaded.
     -- The mapping is used to determined the Cryptol names assigned to
     -- various primitives.
+
+  , rwNameGen     :: !Int
+    -- ^ A seed for generating names.
 
   , rwCompiled :: Map Cry.Name (InstanceMap FunDecl)
   }
@@ -135,6 +141,7 @@ runCryC (CryC m) =
               { rwWarnings = Cry.stderrLogger
               , rwTypes = Nothing
               , rwPrims = Nothing
+              , rwNameGen = 0
               , rwCompiled = mempty
               , rwModuleInput =
                   Cry.ModuleInput
@@ -330,6 +337,11 @@ getFun x =
        Nothing -> catchablePanic "getFunType" [ "Missing function"
                                               , show (pp x)
                                               ]
+
+newNameId :: CryC NameId
+newNameId =
+  CryC $ sets \rw -> let x = rwNameGen rw
+                     in (IRAnonId x, rw { rwNameGen = x + 1 })
 
 
 --------------------------------------------------------------------------------

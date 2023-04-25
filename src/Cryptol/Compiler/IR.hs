@@ -34,6 +34,9 @@ type Size = IRSize Cry.TParam
 -- | Names, specialized to Cryptol names
 type Name = IRName Cry.TParam Cry.Name
 
+-- | NameIds, specialized to Cryptol names
+type NameId = IRNameId Cry.Name
+
 -- | Function names, specialized to Cryptol names
 type FunName = IRFunName Cry.Name
 
@@ -62,7 +65,12 @@ data IRFunNameFlavor name =
     deriving (Eq,Ord)
 
 -- | Typed names.  When compared, we only consider the name, not the type.
-data IRName tname name = IRName name (IRType tname)
+data IRName tname name = IRName (IRNameId name) (IRType tname)
+
+data IRNameId name =
+    IRAnonId !Int
+  | IRNameId name
+    deriving (Eq,Ord)
 
 instance Eq name => Eq (IRName tname name) where
   IRName x _ == IRName y _ = x == y
@@ -181,6 +189,12 @@ instance HasType (IRExpr tname name) where
 --------------------------------------------------------------------------------
 -- Pretty Printing
 
+instance (PP name) => PP (IRNameId name) where
+  pp name =
+    case name of
+      IRAnonId n -> "IR::x_" <.> pp n
+      IRNameId n -> pp n
+
 instance (PP tname, PP name) => PP (IRName tname name) where
   pp (IRName x t) =
     getPPCfg \cfg ->
@@ -255,7 +269,7 @@ instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
       IRLam xs e ->
         parensAfter 0 $
         withPrec 0 $
-        withTypes (hcat [ "|", commaSep (map pp xs), "|" ]) <+> pp e
+        hang (withTypes (hcat [ "|", commaSep (map pp xs), "|" ])) 2 (pp e)
 
 
 instance (PP tname, PP name) => PP (IRExpr tname name) where
@@ -264,7 +278,8 @@ instance (PP tname, PP name) => PP (IRExpr tname name) where
 instance (PP tname, PP name) => PP (IRFunDecl tname name) where
   pp fd =
     vcat
-      [ "fn" <+> pp (irfName fd) <+> tps <+> args <+> "->" <+> resT
+      [ hang ("fn" <+> pp (irfName fd) <+> tps) 2
+        (hang args 2 ("->" <+> resT))
       , nest 2 trts
       , "{"
       , nest 2 body
@@ -289,7 +304,8 @@ instance (PP tname, PP name) => PP (IRFunDecl tname name) where
 
     (params,body) =
       case irfDef fd of
-        IRFunDef is e   -> (map pp (zipWith IRName is (ftParams ty)), pp e)
+        IRFunDef is e   -> (map pp (zipWith (IRName . IRNameId)
+                                                      is (ftParams ty)), pp e)
         IRFunPrim       -> (map pp (ftParams ty), "/* primitive */")
 
 
