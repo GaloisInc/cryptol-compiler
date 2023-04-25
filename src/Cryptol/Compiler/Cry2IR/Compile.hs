@@ -1,9 +1,11 @@
 module Cryptol.Compiler.Cry2IR.Compile where
 
+import Data.List(elemIndex)
 import Data.Text qualified as Text
 import Control.Monad(unless,zipWithM,forM)
 
 import Cryptol.TypeCheck.AST qualified as Cry
+import Cryptol.Utils.RecordMap qualified as Cry
 
 import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.PP
@@ -137,9 +139,50 @@ compileExpr expr0 tgtT =
           TTuple ts -> IRExpr . IRTuple <$> zipWithM compileExpr es ts
           _         -> unexpected "ETuple of non-tuple type"
 
-       -- XXX
-       Cry.ERec {} -> S.unsupported "ERec"
-       Cry.ESel {} -> S.unsupported "ESel"
+       Cry.ERec rec ->
+          case tgtT of
+            TTuple ts ->
+              IRExpr . IRTuple <$>
+                zipWithM compileExpr (Cry.recordElements rec) ts
+
+            _ -> unexpected "Record at non-tuple type"
+
+       Cry.ESel e sel ->
+         case sel of
+           Cry.TupleSel n _   -> doTuple (Left n)
+           Cry.RecordSel nm _ -> doTuple (Right nm)
+           Cry.ListSel _n _   -> S.unsupported "XXX: ListSel"
+
+         where
+         doTuple n =
+            do cty <- S.doCryC (M.getTypeOf e)
+               ty  <- compileValType cty
+               let i = case n of
+                         Left j -> j
+                         Right nm ->
+                           case Cry.tNoUser cty of
+                             Cry.TRec fs ->
+                               case elemIndex nm $
+                                        map fst (Cry.canonicalFields fs) of
+                                 Just j -> j
+                                 Nothing -> unexpected' [ "Missing field"
+                                                        , show (cryPP nm)
+                                                        ]
+                             _ -> unexpected' [ "Bad record selector"
+                                              , show (cryPP cty)
+                                              ]
+
+               (_resT,len) <-
+                  case ty of
+                    TTuple ts | t : _ <- drop i ts -> pure (t, length ts)
+                    typ -> unexpected'
+                             [ "Bad argument of tuple selector"
+                             , show (pp typ)
+                             ]
+               -- XXX: check that resT matches TgtT?
+               ce <- compileExpr e ty
+               pure $ callPrim (TupleSel i len) [ce] tgtT
+
        Cry.ESet {} -> S.unsupported "ESet"
 
        Cry.EIf eCond eThen eElse ->
@@ -169,7 +212,8 @@ compileExpr expr0 tgtT =
 
 
   where
-  unexpected msg = panic "compileExpr" [msg]
+  unexpected msg = unexpected' [msg]
+  unexpected' msg = panic "compileExpr" msg
 
 
 compileLam ::
@@ -213,6 +257,31 @@ compileLam xs' e' args tgtT = foldr addDef doFun defs
 
   unexpected msg = panic "compileLam" [msg]
 
+
+{- Compiling comprehensions:
+
+Single arm, single match: [ e | x <- e1 ]
+
+    e1.iter.map(|x| e)
+
+Single arm, multiple matches: [ e | x <- e1, y <- e2 ]
+
+    e1.iter.flatMap(|x| e2.iter.map(|y| e))
+
+Multiple arms, single match:  [ e | x <- e1 | y <- e2 ]
+
+    zip(e1.iter,e2.iter).map(|x,y| e)
+
+Multiple arms, multiple matches:
+  [ e | x <- e1, y <- e2, z <- e3
+      | a <- e4
+  ]
+
+  zip( e1.iter.flatMap(|x| e2.iter.flatMap(|y| e3.iter.map(|z| (x,y,z))))
+     , e4.iter
+     ).map(|(x,y,z),a| e)
+
+-}
 
 compileComprehension ::
   StreamSize -> Type -> Type -> Cry.Expr -> [[Cry.Match]] -> S.SpecM Expr
@@ -261,33 +330,6 @@ compileComprehension _sz elT tgtT res mss =
 
   unexpected msg = panic "compileComprehension" [msg]
 
-
-{-
-Single arm, single match:
-  [ e | x <- e1 ]
-
-e1.iter.map(|x| e)
-
-Single arm, multiple matches:
-  [ e | x <- e1, y <- e2 ]
-
-e1.iter.flatMap(|x| e2.iter.map(|y| e))
-
-Multiple arms, single match.
-  [ e | x <- e1 | y <- e2 ]
-
-zip(e1.iter,e2.iter).map(|x,y| e)
-
-Multiple arms, multiple matches:
-  [ e | x <- e1, y <- e2, z <- e3
-      | a <- e4
-  ]
-
-zip( e1.iter.flatMap(|x| e2.iter.flatMap(|y| e3.iter.map(|z| (x,y,z))))
-   , e4.iter
-   ).map(|(x,y,z),a| e)
-
--}
 
 compileLocalDeclGroups :: [Cry.DeclGroup] -> S.SpecM Expr -> S.SpecM Expr
 compileLocalDeclGroups dgs k =

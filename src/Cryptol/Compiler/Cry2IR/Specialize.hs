@@ -15,6 +15,7 @@ import Cryptol.TypeCheck.AST qualified as Cry
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.TypeCheck.Solver.Class qualified as Cry
 import Cryptol.TypeCheck.Solver.Types qualified as Cry
+import Cryptol.Utils.RecordMap qualified as Cry
 
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.Monad qualified as M
@@ -203,7 +204,7 @@ compileValType ty =
         Cry.TVFree {} -> unexpected "TVFree"
 
     Cry.TUser _ _ t     -> compileValType t
-    Cry.TRec {}         -> unsupported "records"    -- XXX
+    Cry.TRec rec -> TTuple <$> mapM compileValType (Cry.recordElements rec)
     Cry.TNewtype {}     -> unsupported "newtype"    -- XXX
 
   where

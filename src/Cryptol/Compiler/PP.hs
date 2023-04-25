@@ -194,7 +194,7 @@ braces = lift1 PP.braces
 
 -- | Separate with commas
 commaSep :: [Doc] -> Doc
-commaSep = liftMany (PP.hsep . PP.punctuate PP.comma)
+commaSep = liftMany (PP.sep . PP.punctuate PP.comma)
 
 showPP :: Show a => a -> Doc
 showPP a = lift (PP.text (show a))
