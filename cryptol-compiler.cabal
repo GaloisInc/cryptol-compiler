@@ -61,7 +61,7 @@ library
       Cryptol.Compiler.Cry2IR.InstanceMap
       Cryptol.Compiler.Cry2IR.Compile
 
-      -- Cryptol.Compiler.Rust.CodeGen
+      Cryptol.Compiler.Rust.CodeGen
 
     -- other-modules:
     build-depends:

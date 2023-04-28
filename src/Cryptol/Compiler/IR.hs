@@ -46,6 +46,9 @@ type FunNameFlavor = IRFunNameFlavor Cry.Name
 -- | Declarations, specialized to Cryptol names
 type FunDecl = IRFunDecl Cry.TParam Cry.Name
 
+-- | Function definitions, specialized to Cryptol names
+type FunDef = IRFunDef Cry.TParam Cry.Name
+
 -- | Expressions, specialized to Cryptol names
 type Expr = IRExpr Cry.TParam Cry.Name
 
