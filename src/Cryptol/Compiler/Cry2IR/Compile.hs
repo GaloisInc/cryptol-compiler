@@ -114,7 +114,8 @@ callPrim prim es tgtT =
                , irtfTypeArgs = []
                , irtfSizeArgs = []
                }
-      , ircType = tgtT
+      , ircArgTypes = map typeOf es
+      , ircResType = tgtT
       , ircArgs = es
       }
 
@@ -447,18 +448,18 @@ compileVar x ts args tgtT =
                   TFun as b ->
                     do let have = length es
                            need = length as
+                           (haveTs,needTs) = splitAt have as
                        ces <- zipWithM compileExpr es as
                        let call = IRCall
                                     { ircFun  = IRFunVal (IRExpr (IRVar n))
-                                    , ircType = b
+                                    , ircArgTypes = haveTs
+                                    , ircResType = b
                                     , ircArgs = ces
                                     }
                        expr <- case compare have need of
                                  EQ -> pure (IRCallFun call)
                                  LT -> pure (IRClosure call
-                                               { ircType = TFun (drop have as)
-                                                                b
-                                               })
+                                               { ircResType = TFun needTs b })
                                  GT -> S.unsupported "over application"
                        coerceTo (IRExpr expr) tgtT
 
@@ -504,6 +505,10 @@ compileCall f ts es tgtT =
          argTs = apSubst su (ftParams funTy)
          resT  = apSubst su (ftResult funTy)
 
+     let haveArgs = length es
+         needArgs = length argTs
+         (haveTs,needTs) = splitAt haveArgs argTs
+
      ces <- zipWithM compileExpr es argTs
      let call = IRCall { ircFun      = IRTopFun
                                          IRTopFunCall
@@ -511,17 +516,15 @@ compileCall f ts es tgtT =
                                            , irtfTypeArgs = typeArgs
                                            , irtfSizeArgs = sizeArgs
                                            }
-                       , ircType     = resT
-                       , ircArgs     = ces
+                       , ircArgTypes  = haveTs
+                       , ircResType   = resT
+                       , ircArgs      = ces
                        }
 
-     let haveArgs = length es
-         needArgs = length argTs
 
      res <- case compare haveArgs needArgs of
               EQ -> pure (IRCallFun call)
-              LT -> let need = drop haveArgs argTs
-                    in pure (IRClosure call { ircType = TFun need resT })
+              LT -> pure (IRClosure call { ircResType = TFun needTs resT })
               GT -> S.unsupported "function over applied (higher order result)"
 
      coerceTo (IRExpr res) tgtT

@@ -164,9 +164,9 @@ instance
 instance
   (Ord tname, ApSubst expr, TName expr ~ tname) =>
                                       ApSubst (IRCall tname name expr) where
-  apSubstMaybe su (IRCall f t es) =
-    do (f',(t',es')) <- apSubstMaybe su (f,(t,es))
-       pure (IRCall f' t' es')
+  apSubstMaybe su (IRCall f at t es) =
+    do (f',((at',t'),es')) <- apSubstMaybe su (f,((at,t),es))
+       pure (IRCall f' at' t' es')
 
 
 instance (Ord tname) => ApSubst (IRFunDef tname name) where

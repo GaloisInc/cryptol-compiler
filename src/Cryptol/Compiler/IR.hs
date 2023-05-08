@@ -108,12 +108,14 @@ data IRExprF tname name expr =
   | IRIf expr expr expr
   | IRTuple [expr]
   | IRLet (IRName tname name) expr expr
+    deriving (Functor,Foldable,Traversable)
 
 
 -- | Something that can be called.
 data IRCallable tname name expr =
     IRTopFun (IRTopFunCall tname name)    -- ^ A top level declaration
   | IRFunVal expr                         -- ^ A closure value
+    deriving (Functor,Foldable,Traversable)
 
 -- | A call to a top level function, containing common parameters
 -- that are always present.
@@ -125,12 +127,16 @@ data IRTopFunCall tname name =
     }
 
 -- | Information about a function call or a closure.
+-- Note: we keep the types of arguments around, as they are convenient
+-- to have for backends that use more refined representations of types,
+-- and so the argument types need to be adjusted.
 data IRCall tname name expr =
   IRCall
     { ircFun      :: IRCallable tname name expr  -- ^ What we are calling
-    , ircType     :: IRType tname     -- ^ Result of function, or closure type
+    , ircArgTypes :: [IRType tname]   -- ^ Types of arguments
+    , ircResType  :: IRType tname     -- ^ Result of function, or closure type
     , ircArgs     :: [expr]           -- ^ Available arguments
-    }
+    } deriving (Functor,Foldable,Traversable)
 
 --------------------------------------------------------------------------------
 -- Computing Types
@@ -181,7 +187,7 @@ instance (HasType expr, TName expr ~ tname) =>
       IRLet _ _ e       -> typeOf e
 
 instance HasType (IRCall tname name expr) where
-  typeOf = ircType
+  typeOf = ircResType
 
 instance HasType (IRExpr tname name) where
   typeOf (IRExpr e) = typeOf e
