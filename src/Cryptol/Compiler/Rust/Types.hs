@@ -1,8 +1,7 @@
+-- | Translation of names from IR to Rust.
 module Cryptol.Compiler.Rust.Types where
 
 import qualified Language.Rust.Syntax as Rust
-import qualified Language.Rust.Data.Ident as RustIdent
-import qualified Language.Rust.Data.Position as RustPos
 import Language.Rust.Data.Ident(mkIdent)
 
 import qualified Cryptol.Compiler.IR as IR
