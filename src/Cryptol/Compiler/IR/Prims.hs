@@ -1,17 +1,22 @@
 module Cryptol.Compiler.IR.Prims where
 
 import Data.Text qualified as Text
+import Cryptol.Utils.Ident qualified as Cry
 import Cryptol.Compiler.PP
-
 
 -- | This is for primitivies specifi to the IR
 -- (i.e., *not* the primitives of Cryptol)
 data IRPrim =
-    MakeSeq
-    -- ^ Make a sequence literal
+    CryPrim Cry.PrimIdent       -- ^ A Cryptol primitve
+
+  | MakeSeq
+    -- ^ Make a sequence literal.
     -- The arguments are the elementes of the sequence
     -- The result type in the call has the type of sequences
     -- we are making.
+
+  | Tuple
+    -- ^ Make a tuple.
 
   | TupleSel Int Int
     -- ^ select_n_of_N(tuple)
@@ -38,5 +43,8 @@ data IRPrim =
 instance PP IRPrim where
   pp prim =
     case prim of
-      TupleSel n len -> hcat [ "select_", pp n, "_of_", pp len ]
-      _              -> pp (Text.pack (show prim))
+      CryPrim i      -> "CRY::" <> cryPP i
+      TupleSel n len -> "IR::" <> hcat [ "select_", pp n, "_of_", pp len ]
+      _              -> "IR::" <> pp (Text.pack (show prim))
+
+

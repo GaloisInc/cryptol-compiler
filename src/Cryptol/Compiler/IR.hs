@@ -5,8 +5,6 @@ module Cryptol.Compiler.IR
   , module Cryptol.Compiler.IR.Prims
   ) where
 
-import Cryptol.Utils.Ident qualified as Cry
-
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Common
 import Cryptol.Compiler.IR.Type
@@ -23,7 +21,6 @@ data IRFunName name = IRFunName
 -- | Various types of function names
 data IRFunNameFlavor name =
     IRPrimName IRPrim                 -- ^ An IR primtive
-  | IRCryPrimName Cry.PrimIdent       -- ^ A Cryptol primitve
   | IRDeclaredFunName name            -- ^ A declared function
     deriving (Eq,Ord,Functor)
 
@@ -61,7 +58,6 @@ data IRExprF tname name expr =
   | IRClosure (IRCall tname name expr)    -- ^ Partial application
   | IRLam [IRName tname name] expr        -- ^ Lambda
   | IRIf expr expr expr
-  | IRTuple [expr]
   | IRLet (IRName tname name) expr expr
     deriving (Functor,Foldable,Traversable)
 
@@ -138,7 +134,6 @@ instance (HasType expr, TName expr ~ tname) =>
       IRClosure f       -> typeOf f
       IRLam xs e        -> TFun (map typeOf xs) (typeOf e)
       IRIf _ x _        -> typeOf x
-      IRTuple es        -> TTuple (map typeOf es)
       IRLet _ _ e       -> typeOf e
 
 instance HasType (IRCall tname name expr) where
@@ -164,7 +159,6 @@ instance PP name => PP (IRFunNameFlavor name) where
   pp nm =
     case nm of
       IRPrimName p        -> "IR::" <.> pp p
-      IRCryPrimName p     -> "CRY::" <.> pp p
       IRDeclaredFunName x -> pp x
 
 instance (PP name) => PP (IRFunName name) where
@@ -215,8 +209,6 @@ instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
              , nest 2 "then" <+> pp e2
              , nest 2 "else" <+> pp e3
              ]
-
-      IRTuple es -> withPrec 0 (parens (commaSep (map pp es)))
 
       IRLet x e1 e2 ->
         withPrec 0 $

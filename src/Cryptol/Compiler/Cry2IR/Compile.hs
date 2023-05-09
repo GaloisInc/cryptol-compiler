@@ -77,7 +77,7 @@ compileTopDecl d =
   compileFunName pr nm =
     do mb <- M.isPrimDecl nm
        case mb of
-         Just p | pr -> pure (IRCryPrimName p)
+         Just p | pr -> pure (IRPrimName (CryPrim p))
          _           -> pure (IRDeclaredFunName (NameId nm))
 
   debugWrap m =
@@ -120,6 +120,9 @@ callPrim prim es tgtT =
       , ircArgs = es
       }
 
+mkTuple :: [Expr] -> Expr
+mkTuple es = callPrim Tuple es (TTuple (map typeOf es))
+
 
 compileExpr :: Cry.Expr -> Type -> S.SpecM Expr
 compileExpr expr0 tgtT =
@@ -139,14 +142,13 @@ compileExpr expr0 tgtT =
 
        Cry.ETuple es ->
         case tgtT of
-          TTuple ts -> IRExpr . IRTuple <$> zipWithM compileExpr es ts
-          _         -> unexpected "ETuple of non-tuple type"
+          TTuple ts -> mkTuple <$> zipWithM compileExpr es ts
+          _  -> unexpected "ETuple of non-tuple type"
 
        Cry.ERec rec ->
           case tgtT of
-            TTuple ts ->
-              IRExpr . IRTuple <$>
-                zipWithM compileExpr (Cry.recordElements rec) ts
+            TTuple ts -> mkTuple <$>
+                            zipWithM compileExpr (Cry.recordElements rec) ts
 
             _ -> unexpected "Record at non-tuple type"
 
@@ -373,8 +375,7 @@ compileComprehension _sz elT tgtT res mss =
 
                         len       = length allNms
                         tupT      = TTuple (map (typeOf . fst) allNms)
-                        tupE      = IRExpr (IRTuple
-                                           (map (IRExpr . IRVar . fst) allNms))
+                        tupE      = mkTuple (map (IRExpr . IRVar . fst) allNms)
 
                         sel x n e = callPrim (TupleSel n len) [e] (typeOf x)
                         ns = [ ((x,t),sel x fi) |((x,t),fi) <- zip allNms [0..]]

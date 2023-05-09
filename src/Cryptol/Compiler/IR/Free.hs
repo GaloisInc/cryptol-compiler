@@ -79,7 +79,6 @@ instance
       IRClosure c   -> freeNames c
       IRLam xs e    -> foldr removeLocal (freeNames e) xs
       IRIf e1 e2 e3 -> freeNames (e1,(e2,e3))
-      IRTuple es    -> freeNames es
       IRLet x e1 e2 -> freeNames e1 <> removeLocal x (freeNames e2)
 
 instance (Ord tname, Ord name) => FreeNames (IRExpr tname name) where

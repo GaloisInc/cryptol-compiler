@@ -50,7 +50,7 @@ genFunDecl fndecl =
   case IR.irfnName $ IR.irfName fndecl of
     IR.IRPrimName pname -> error ("genFunDecl: Not expecting to see fun decl for " ++ show pname)
     -- TODO: check that these are already in the environment
-    IR.IRCryPrimName primIdent -> pure ()
+    -- IR.IRCryPrimName primIdent -> pure ()
     IR.IRDeclaredFunName dfn -> undefined
 
 newDeclName :: Cry.Name -> Gen RustIdent.Ident
@@ -146,9 +146,11 @@ genExpr (IR.IRExpr e0) =
           elseExpr' <- genExpr elseExpr
 
           pure $ Rust.If [] testExpr' thenBlock (Just elseExpr') ()
+{-
     IR.IRTuple es ->
       do  es' <- genExpr `traverse` es
           pure $ Rust.TupExpr [] es' ()
+-}
     IR.IRLet name boundExpr inExpr ->
       letBind name boundExpr >> genExpr inExpr
 
