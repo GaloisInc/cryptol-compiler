@@ -51,6 +51,7 @@ library
       Cryptol.Compiler.IR.EvalType
       Cryptol.Compiler.IR.Subst
       Cryptol.Compiler.IR.Free
+      Cryptol.Compiler.IR.Cryptol
 
       Cryptol.Compiler.Monad
       Cryptol.Compiler.Error

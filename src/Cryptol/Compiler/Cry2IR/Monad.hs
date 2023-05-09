@@ -53,7 +53,7 @@ import Cryptol.TypeCheck.Type qualified as Cry
 import Cryptol.TypeCheck.Solver.SMT qualified as Cry
 
 import Cryptol.Compiler.Monad qualified as M
-import Cryptol.Compiler.IR
+import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.IR.Subst
 import Cryptol.Compiler.IR.EvalType
 

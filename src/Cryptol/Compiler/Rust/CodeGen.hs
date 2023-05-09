@@ -10,7 +10,7 @@ import qualified Language.Rust.Syntax as Rust
 import qualified Language.Rust.Data.Ident as RustIdent
 import qualified Language.Rust.Data.Position as RustPos
 
-import Cryptol.Compiler.IR qualified as IR
+import Cryptol.Compiler.IR.Cryptol qualified as IR
 -- import Cryptol.Compiler.Rust.Types
 
 type RustExpr = Rust.Expr ()

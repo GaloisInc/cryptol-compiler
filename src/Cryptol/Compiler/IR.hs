@@ -5,7 +5,6 @@ module Cryptol.Compiler.IR
   , module Cryptol.Compiler.IR.Prims
   ) where
 
-import Cryptol.TypeCheck.AST qualified as Cry
 import Cryptol.Utils.Ident qualified as Cry
 
 import Cryptol.Compiler.PP
@@ -14,58 +13,19 @@ import Cryptol.Compiler.IR.Type
 import Cryptol.Compiler.IR.Prims
 
 --------------------------------------------------------------------------------
--- Specialization for Cryptol names
-
--- | Types of functions
-type FunType = IRFunType Cry.TParam
-
--- | Value types, specialized to Cryptol names
-type Trait = IRTrait Cry.TParam
-
--- | Value types, specialized to Cryptol names
-type Type = IRType Cry.TParam
-
--- | Possibly infinite IR size types, specialized to Cryptol names
-type StreamSize = IRStreamSize Cry.TParam
-
--- | Size types, specialized to Cryptol names
-type Size = IRSize Cry.TParam
-
--- | Names, specialized to Cryptol names
-type Name = IRName Cry.TParam Cry.Name
-
--- | NameIds, specialized to Cryptol names
-type NameId = IRNameId Cry.Name
-
--- | Function names, specialized to Cryptol names
-type FunName = IRFunName Cry.Name
-
--- | Various types of names, specialize to Cryptol names
-type FunNameFlavor = IRFunNameFlavor Cry.Name
-
--- | Declarations, specialized to Cryptol names
-type FunDecl = IRFunDecl Cry.TParam Cry.Name
-
--- | Function definitions, specialized to Cryptol names
-type FunDef = IRFunDef Cry.TParam Cry.Name
-
--- | Expressions, specialized to Cryptol names
-type Expr = IRExpr Cry.TParam Cry.Name
-
---------------------------------------------------------------------------------
 
 -- | Function name, paired with an instance.
 data IRFunName name = IRFunName
   { irfnName     :: IRFunNameFlavor name
   , irfnInstance :: FunInstance
-  } deriving (Eq,Ord)
+  } deriving (Eq,Ord,Functor)
 
 -- | Various types of function names
 data IRFunNameFlavor name =
     IRPrimName IRPrim                 -- ^ An IR primtive
   | IRCryPrimName Cry.PrimIdent       -- ^ A Cryptol primitve
   | IRDeclaredFunName name            -- ^ A declared function
-    deriving (Eq,Ord)
+    deriving (Eq,Ord,Functor)
 
 -- | Typed names.  When compared, we only consider the name, not the type.
 data IRName tname name = IRName (IRNameId name) (IRType tname)

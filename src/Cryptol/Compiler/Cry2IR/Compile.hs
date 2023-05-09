@@ -9,7 +9,7 @@ import Cryptol.Utils.RecordMap qualified as Cry
 
 import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.PP
-import Cryptol.Compiler.IR
+import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.IR.Subst
 import Cryptol.Compiler.IR.EvalType
 import Cryptol.Compiler.Monad qualified as M

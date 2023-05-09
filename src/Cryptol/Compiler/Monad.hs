@@ -70,7 +70,7 @@ import qualified Cryptol.Eval.Value as Cry
 
 import Cryptol.Compiler.PP(pp)
 import Cryptol.Compiler.Error
-import Cryptol.Compiler.IR
+import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Cry2IR.InstanceMap
 
 -- | This is the implementation of the monad

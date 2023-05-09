@@ -4,7 +4,7 @@ module Cryptol.Compiler.Rust.Types where
 import qualified Language.Rust.Syntax as Rust
 import Language.Rust.Data.Ident(mkIdent)
 
-import qualified Cryptol.Compiler.IR as IR
+import qualified Cryptol.Compiler.IR.Cryptol as IR
 
 -- types
 unitType :: Rust.Ty ()

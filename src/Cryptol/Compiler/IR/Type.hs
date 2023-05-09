@@ -13,6 +13,7 @@ import Cryptol.Compiler.IR.Common
 
 
 data IRTrait tname = IRTrait IRTraitName tname
+  deriving Functor
 
 data IRTraitName =
     PZero
@@ -48,24 +49,24 @@ data IRType tname =
   | TFun [IRType tname] (IRType tname)            -- ^ Function types
 
   | TPoly tname                                   -- ^ Polymorphic
-    deriving Eq
+    deriving (Eq,Functor)
 
 -- | Size types tha tcould be infinite.
 data IRStreamSize tname =
     IRInfSize                                     -- ^ Infinite size
   | IRSize (IRSize tname)                         -- ^ Finite size
-    deriving Eq
+    deriving (Eq,Functor)
 
 -- | The name of a size variable
 data IRSizeName tname = IRSizeName { irsName :: tname, irsSize :: SizeVarSize }
-  deriving (Eq,Ord)
+  deriving (Eq,Ord,Functor)
 
 -- | Size types
 data IRSize tname =
     IRFixedSize Integer                           -- ^ A specific size
   | IRPolySize (IRSizeName tname)                 -- ^ Polymorphic size; finite
   | IRComputedSize Cry.TFun [IRStreamSize tname]  -- ^ Computed size
-    deriving Eq
+    deriving (Eq,Functor)
 
 
 -- | The type of a function declaration
@@ -75,7 +76,7 @@ data IRFunType tname = IRFunType
   , ftSizeParams :: [IRSizeName tname]
   , ftParams     :: [IRType tname]
   , ftResult     :: IRType tname
-  }
+  } deriving Functor
 
 
 --------------------------------------------------------------------------------
