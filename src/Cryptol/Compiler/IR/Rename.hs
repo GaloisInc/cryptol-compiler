@@ -3,74 +3,77 @@ module Cryptol.Compiler.IR.Rename where
 
 import Cryptol.Compiler.IR
 
-rename :: Rename f => (ta -> tb) -> (a -> b) -> f ta a -> f tb b
+rename ::
+  (Applicative m, Rename f) =>
+  (ta -> m tb) -> (a -> m b) -> f ta a -> m (f tb b)
 rename renT ren =
   let ?renameT = renT
       ?rename  = ren
   in renameIP
 
-type RenFuns ta a tb b = 
-  ( ?renameT :: ta -> tb
-  , ?rename  ::  a ->  b
+type RenFuns f ta a tb b = 
+  ( ?renameT :: ta -> f tb
+  , ?rename  ::  a -> f b
   )
 
 class Rename f where
-  renameIP :: RenFuns ta a tb b => f ta a -> f tb b
+  renameIP :: (Applicative m, RenFuns m ta a tb b) => f ta a -> m (f tb b)
 
 class RenameF f where
-  frenameIP :: RenFuns ta a tb b => f ta a x -> f tb b x
+  frenameIP ::
+    (Applicative m, RenFuns m ta a tb b) => f ta a (m x) -> m (f tb b x)
 
 instance Rename IRName where
-  renameIP (IRName x t) = IRName (?rename x) (?renameT <$> t)
+  renameIP (IRName x t) = IRName <$> ?rename x <*> traverse ?renameT t
 
 instance Rename IRFunDecl where
   renameIP fd =
-    IRFunDecl
-      { irfName = ?rename <$> irfName fd
-      , irfType = ?renameT <$> irfType fd
-      , irfDef  = renameIP (irfDef fd)
-      }
+    mk <$> traverse ?rename (irfName fd)
+       <*> traverse ?renameT (irfType fd)
+       <*> renameIP (irfDef fd)
+    where
+    mk a b c = IRFunDecl { irfName = a, irfType = b, irfDef = c }
 
 instance Rename IRFunDef where
   renameIP def =
     case def of
-      IRFunPrim     -> IRFunPrim
-      IRFunDef xs e -> IRFunDef (map ?rename xs) (renameIP e)
+      IRFunPrim     -> pure IRFunPrim
+      IRFunDef xs e ->
+        IRFunDef <$> traverse ?rename xs <*> renameIP e
 
 instance Rename IRExpr where
-  renameIP (IRExpr expr) = IRExpr (frenameIP (renameIP <$> expr))
+  renameIP (IRExpr expr) = IRExpr <$> frenameIP (renameIP <$> expr)
 
 instance RenameF IRExprF where
   frenameIP expr =
     case expr of
-      IRVar x       -> IRVar (renameIP x)
-      IRCallFun x   -> IRCallFun (frenameIP x)
-      IRClosure x   -> IRClosure (frenameIP x)
-      IRLam xs e    -> IRLam (map renameIP xs) e
-      IRIf e1 e2 e3 -> IRIf e1 e2 e3
-      IRLet x e1 e2 -> IRLet (renameIP x) e1 e2
+      IRVar x       -> IRVar <$> renameIP x
+      IRCallFun x   -> IRCallFun <$> frenameIP x
+      IRClosure x   -> IRClosure <$> frenameIP x
+      IRLam xs e    -> IRLam <$> traverse renameIP xs <*> e
+      IRIf e1 e2 e3 -> IRIf <$> e1 <*> e2 <*> e3
+      IRLet x e1 e2 -> IRLet <$> renameIP x <*> e1 <*> e2
 
 instance RenameF IRCall where
   frenameIP c =
     IRCall
-      { ircFun      = frenameIP (ircFun c)
-      , ircArgTypes = [ ?renameT <$> t | t <- ircArgTypes c ]
-      , ircResType  = ?renameT <$> ircResType c
-      , ircArgs     = ircArgs c
-      }
+      <$> frenameIP (ircFun c)
+      <*> traverse (traverse ?renameT) (ircArgTypes c)
+      <*> traverse ?renameT (ircResType c)
+      <*> sequenceA (ircArgs c)
 
 instance RenameF IRCallable where
   frenameIP call =
     case call of
-      IRTopFun f -> IRTopFun (renameIP f)
-      IRFunVal e -> IRFunVal e
+      IRTopFun f -> IRTopFun <$> renameIP f
+      IRFunVal e -> IRFunVal <$> e
 
 instance Rename IRTopFunCall where
   renameIP c =
     IRTopFunCall
-      { irtfName      = ?rename <$> irtfName c
-      , irtfTypeArgs  = [ ?renameT <$> t | t <- irtfTypeArgs c ]
-      , irtfSizeArgs  = [ (?renameT <$> x,s) | (x,s) <- irtfSizeArgs c ]
-      }
-
+      <$> traverse ?rename (irtfName c)
+      <*> traverse (traverse ?renameT) (irtfTypeArgs c)
+      <*> traverse szArg (irtfSizeArgs c)
+    where
+    szArg (x,s) = (\x' -> (x',s)) <$> traverse ?renameT x
 

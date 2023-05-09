@@ -16,13 +16,13 @@ import Cryptol.Compiler.IR.Prims
 data IRFunName name = IRFunName
   { irfnName     :: IRFunNameFlavor name
   , irfnInstance :: FunInstance
-  } deriving (Eq,Ord,Functor)
+  } deriving (Eq,Ord,Functor,Foldable,Traversable)
 
 -- | Various types of function names
 data IRFunNameFlavor name =
     IRPrimName IRPrim                 -- ^ An IR primtive
   | IRDeclaredFunName name            -- ^ A declared function
-    deriving (Eq,Ord,Functor)
+    deriving (Eq,Ord,Functor,Foldable,Traversable)
 
 -- | Typed names.  When compared, we only consider the name, not the type.
 data IRName tname name = IRName name (IRType tname)
