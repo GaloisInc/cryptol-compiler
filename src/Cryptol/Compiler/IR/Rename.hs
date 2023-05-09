@@ -3,6 +3,7 @@ module Cryptol.Compiler.IR.Rename where
 
 import Cryptol.Compiler.IR
 
+-- | Traverse names using the given functions.
 rename ::
   (Applicative m, Rename f) =>
   (ta -> m tb) -> (a -> m b) -> f ta a -> m (f tb b)
