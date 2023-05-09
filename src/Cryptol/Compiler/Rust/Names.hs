@@ -8,7 +8,6 @@ import Data.Set qualified as Set
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Char (isAlphaNum)
-import Data.Maybe(catMaybes)
 
 import Language.Rust.Data.Ident qualified as Rust
 
@@ -18,8 +17,7 @@ rustIdent name
   | name `Set.member` rustKeywords = (Rust.mkIdent str) { Rust.raw = True }
   | Just i <- Map.lookup name knownOperators = Rust.mkIdent i
   | otherwise =
-    Rust.mkIdent
-      (dflt (concat (catMaybes (zipWith escChar (True : repeat False) str))))
+    Rust.mkIdent (dflt (concat (zipWith escChar (True : repeat False) str)))
   where
   str = Text.unpack name
   dflt x = if null x then "x" else x
@@ -29,16 +27,18 @@ rustUniqueIdent ::
   Set Rust.Ident {- ^ Avoid these names -} ->
   Rust.Ident     {- ^ Name that should not clash -} ->
   Rust.Ident     {- ^ New name -}
-rustUniqueIdent avoid name = head (dropWhile (`Set.member` avoid) variants)
+rustUniqueIdent avoid name =
+  head [ x | x <- variants, not (x `Set.member` avoid) ]
   where
   variants  = name : map variant [ 1 .. ]
-  variant i = name { Rust.name = Rust.name name ++ "_" ++ show (i :: Int) }
+  variant i = Rust.mkIdent (Rust.name name ++ "_" ++ show (i :: Int))
 
-escChar :: Bool -> Char -> Maybe String
+
+escChar :: Bool -> Char -> String
 escChar isFirst c
-  | isAlphaNum c                        = Just [c]
-  | Just i <- Map.lookup c symbolNames  = Just (sep i)
-  | otherwise                           = Nothing
+  | isAlphaNum c                        = [c]
+  | Just i <- Map.lookup c symbolNames  = sep i
+  | otherwise                           = []
   where
   sep str = if isFirst then str else "_" ++ str
 
