@@ -45,10 +45,11 @@ compileTopDecl d =
                                     -- the type of the body
                 do resTcry <- M.getTypeOf body
                    compileFunDecl as ps (map snd xs) resTcry \args resT ->
-                      do let nms = zipWith IRName (map (IRNameId . fst) xs) args
+                      do let is = map (NameId . fst) xs
+                         let nms = zipWith IRName is args
                          S.withIRLocals nms
                            do def <- compileExpr body resT
-                              pure (IRFunDef (map fst xs) def)
+                              pure (IRFunDef is def)
 
      let isPrim def = case def of
                         IRFunPrim -> True
@@ -77,7 +78,7 @@ compileTopDecl d =
     do mb <- M.isPrimDecl nm
        case mb of
          Just p | pr -> pure (IRCryPrimName p)
-         _           -> pure (IRDeclaredFunName nm)
+         _           -> pure (IRDeclaredFunName (NameId nm))
 
   debugWrap m =
     do mb <- M.catchError m
@@ -228,14 +229,14 @@ compileLam xs' e' args tgtT = foldr addDef doFun defs
   addDef ((x,t),e) k =
     do ty  <- compileValType t
        ec  <- compileExpr e ty
-       let nm = IRName (IRNameId x) ty
+       let nm = IRName (NameId x) ty
        ek <- S.withLocals [(nm,t)] k
        pure (IRExpr (IRLet nm ec ek))
 
   doFun
     | null xs = compileExpr e' tgtT
     | otherwise =
-      do params <- forM xs \(x,t) -> IRName (IRNameId x) <$> compileValType t
+      do params <- forM xs \(x,t) -> IRName (NameId x) <$> compileValType t
          resT'  <- S.zonk tgtT
          case resT' of
            TFun as b ->
@@ -397,7 +398,7 @@ compileComprehension _sz elT tgtT res mss =
         do lenTy   <- compileStreamSizeType len
            locElTy <- compileValType ty
            it      <- compileExpr gen (TStream lenTy locElTy)
-           let name = IRName (IRNameId x) locElTy
+           let name = IRName (NameId x) locElTy
            pure (name,ty,lenTy,it)
       Cry.Let {} -> S.unsupported "XXX: Let in EComp"
 
@@ -424,7 +425,7 @@ compileLocalDeclGroup dg k =
                    Cry.DExpr e ->
                      do e' <- compileExpr e ty
                         let cname = Cry.dName d
-                            name  = IRName (IRNameId cname) ty
+                            name  = IRName (NameId cname) ty
                         ek <- S.withLocals [(name, cty)] k
                         pure (IRExpr (IRLet name e' ek))
                    Cry.DPrim {}    -> unexpected "Local primitve"
@@ -436,7 +437,7 @@ compileLocalDeclGroup dg k =
 
 compileVar :: Cry.Name -> [Cry.Type] -> [Cry.Expr] -> Type -> S.SpecM Expr
 compileVar x ts args tgtT =
-  do mb <- S.getLocal (IRNameId x)
+  do mb <- S.getLocal (NameId x)
      case mb of
        Nothing -> compileCall x ts args tgtT
        Just n ->

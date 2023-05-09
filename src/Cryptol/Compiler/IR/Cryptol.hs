@@ -6,6 +6,7 @@ module Cryptol.Compiler.IR.Cryptol
 
 import Cryptol.TypeCheck.AST qualified as Cry
 
+import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Type as M
 import Cryptol.Compiler.IR as M
 
@@ -25,24 +26,37 @@ type StreamSize = IRStreamSize Cry.TParam
 type Size = IRSize Cry.TParam
 
 -- | Names, specialized to Cryptol names
-type Name = IRName Cry.TParam Cry.Name
-
--- | NameIds, specialized to Cryptol names
-type NameId = IRNameId Cry.Name
+type Name = IRName Cry.TParam NameId
 
 -- | Function names, specialized to Cryptol names
-type FunName = IRFunName Cry.Name
+type FunName = IRFunName NameId
 
 -- | Various types of names, specialize to Cryptol names
-type FunNameFlavor = IRFunNameFlavor Cry.Name
+type FunNameFlavor = IRFunNameFlavor NameId
 
 -- | Declarations, specialized to Cryptol names
-type FunDecl = IRFunDecl Cry.TParam Cry.Name
+type FunDecl = IRFunDecl Cry.TParam NameId
 
 -- | Function definitions, specialized to Cryptol names
-type FunDef = IRFunDef Cry.TParam Cry.Name
+type FunDef = IRFunDef Cry.TParam NameId
 
 -- | Expressions, specialized to Cryptol names
-type Expr = IRExpr Cry.TParam Cry.Name
+type Expr = IRExpr Cry.TParam NameId
+
+
+data NameId =
+    AnonId !Int
+  | NameId Cry.Name
+    deriving (Eq,Ord)
+
+instance PP NameId where
+  pp name =
+    case name of
+      AnonId n -> "IR::x_" <.> pp n
+      NameId n -> pp n
+
+
+
+
 
 

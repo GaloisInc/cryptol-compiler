@@ -28,12 +28,7 @@ data IRFunNameFlavor name =
     deriving (Eq,Ord,Functor)
 
 -- | Typed names.  When compared, we only consider the name, not the type.
-data IRName tname name = IRName (IRNameId name) (IRType tname)
-
-data IRNameId name =
-    IRAnonId !Int
-  | IRNameId name
-    deriving (Eq,Ord)
+data IRName tname name = IRName name (IRType tname)
 
 instance Eq name => Eq (IRName tname name) where
   IRName x _ == IRName y _ = x == y
@@ -158,12 +153,6 @@ instance HasType (IRExpr tname name) where
 --------------------------------------------------------------------------------
 -- Pretty Printing
 
-instance (PP name) => PP (IRNameId name) where
-  pp name =
-    case name of
-      IRAnonId n -> "IR::x_" <.> pp n
-      IRNameId n -> pp n
-
 instance (PP tname, PP name) => PP (IRName tname name) where
   pp (IRName x t) =
     getPPCfg \cfg ->
@@ -273,8 +262,7 @@ instance (PP tname, PP name) => PP (IRFunDecl tname name) where
 
     (params,body) =
       case irfDef fd of
-        IRFunDef is e   -> (map pp (zipWith (IRName . IRNameId)
-                                                      is (ftParams ty)), pp e)
+        IRFunDef is e   -> (map pp (zipWith IRName is (ftParams ty)), pp e)
         IRFunPrim       -> (map pp (ftParams ty), "/* primitive */")
 
 

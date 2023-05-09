@@ -341,7 +341,7 @@ getFun x =
 newNameId :: CryC NameId
 newNameId =
   CryC $ sets \rw -> let x = rwNameGen rw
-                     in (IRAnonId x, rw { rwNameGen = x + 1 })
+                     in (AnonId x, rw { rwNameGen = x + 1 })
 
 
 --------------------------------------------------------------------------------
