@@ -1,5 +1,12 @@
 -- | Translation of names from IR to Rust.
-module Cryptol.Compiler.Rust.Names (RustIdent(..), Avoiding(..)) where
+module Cryptol.Compiler.Rust.Names
+  ( RustIdent(..)
+  , rustIdentAvoiding
+  , changeCase
+  , snakeCase
+  , screamingSnakeCase
+  , upperCamelCase
+  ) where
 
 import Data.Text (Text)
 import Data.Text qualified as Text
@@ -7,7 +14,9 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.Map (Map)
 import Data.Map qualified as Map
-import Data.Char (isAlphaNum)
+import Data.Char (isAlphaNum,isUpper,toLower,toUpper)
+import Data.Maybe (mapMaybe)
+import Data.List(groupBy)
 
 import Language.Rust.Data.Ident qualified as Rust
 
@@ -17,6 +26,45 @@ import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR.Cryptol
 
 
+rustIdentAvoiding :: RustIdent a => Set Rust.Ident -> a -> Rust.Ident
+rustIdentAvoiding avoid thing =
+    head [ x | x <- variants, not (x `Set.member` avoid) ]
+    where
+    names     = rustIdent thing
+    variants  = names ++ concatMap variant [ 1 .. ]
+    variant i = [ Rust.mkIdent (Rust.name name ++ "_" ++ show (i :: Int))
+                | name <- names
+                ]
+
+
+--------------------------------------------------------------------------------
+-- Cases
+
+changeCase :: (String -> String) -> Rust.Ident -> Rust.Ident
+changeCase f n = (Rust.mkIdent (f (Rust.name n))) { Rust.raw = Rust.raw n }
+-- We preserve the rawness just in case
+
+snakeCase :: String -> String
+snakeCase s = dropWhile (== '_') (s >>= snake)
+  where
+  snake c = if isUpper c then ['_', toLower c] else [c]
+
+screamingSnakeCase :: String -> String
+screamingSnakeCase = map toUpper . snakeCase
+
+upperCamelCase :: String -> String
+upperCamelCase = concat . mapMaybe check . groupBy isUnder2
+  where
+  isUnder x = x == '_'
+  isUnder2 x y = isUnder x == isUnder y
+
+  check g =
+    case g of
+      '_' : _ -> Nothing
+      cs      -> Just (toUpper (head cs) : map toLower (tail cs))
+
+
+--------------------------------------------------------------------------------
 
 class RustIdent a where
 
@@ -24,6 +72,8 @@ class RustIdent a where
   -- We compute a non-empty list of options, where the
   -- identifiers earlier on are to be preferred.
   rustIdent :: a -> [Rust.Ident]
+
+-- XXX: Names for instantiations
 
 instance RustIdent NameId where
   rustIdent nid =
@@ -63,18 +113,6 @@ instance RustIdent Text where
     where
     str = Text.unpack name
     dflt x = if null x then "x" else x
-
-data Avoiding a = Avoiding (Set Rust.Ident) a
-
-instance RustIdent a => RustIdent (Avoiding a) where
-  rustIdent (Avoiding avoid thing) =
-    [ x | x <- variants, not (x `Set.member` avoid) ]
-    where
-    names     = rustIdent thing
-    variants  = names ++ concatMap variant [ 1 .. ]
-    variant i = [ Rust.mkIdent (Rust.name name ++ "_" ++ show (i :: Int))
-                | name <- names
-                ]
 
 
 --------------------------------------------------------------------------------

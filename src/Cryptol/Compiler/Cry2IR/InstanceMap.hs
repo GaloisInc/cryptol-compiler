@@ -19,10 +19,10 @@ import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR
-import Cryptol.Compiler.IR.Common
 import Cryptol.Compiler.IR.EvalType
 
 
+-- XXX: This is probably not worth the effort and we could just use a map.
 -- | A map where the keys are function instances.
 data InstanceMap a =
     InstanceMap [ (ParamInfo, InstanceMap a) ]

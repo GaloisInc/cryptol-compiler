@@ -1,14 +1,13 @@
 -- | Basic IR for code generation.
 module Cryptol.Compiler.IR
   ( module Cryptol.Compiler.IR
-  , module Cryptol.Compiler.IR.Type
-  , module Cryptol.Compiler.IR.Prims
+  , module Exp
   ) where
 
 import Cryptol.Compiler.PP
-import Cryptol.Compiler.IR.Common
-import Cryptol.Compiler.IR.Type
-import Cryptol.Compiler.IR.Prims
+import Cryptol.Compiler.IR.Common as Exp
+import Cryptol.Compiler.IR.Type   as Exp
+import Cryptol.Compiler.IR.Prims  as Exp
 
 --------------------------------------------------------------------------------
 
