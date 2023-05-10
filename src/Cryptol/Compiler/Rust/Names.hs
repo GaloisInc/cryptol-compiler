@@ -1,7 +1,6 @@
 -- | Translation of names from IR to Rust.
 module Cryptol.Compiler.Rust.Names (RustIdent(..), Avoiding(..)) where
 
-import Data.List(intercalate)
 import Data.Text (Text)
 import Data.Text qualified as Text
 import Data.Set (Set)
@@ -14,6 +13,7 @@ import Language.Rust.Data.Ident qualified as Rust
 
 import Cryptol.Utils.Ident qualified as Cry
 import Cryptol.ModuleSystem.Name qualified as Cry
+import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR.Cryptol
 
 
@@ -21,7 +21,9 @@ import Cryptol.Compiler.IR.Cryptol
 class RustIdent a where
 
   -- | Pick a Rust identifier for the given thing string.
-  rustIdent :: a -> Rust.Ident
+  -- We compute a non-empty list of options, where the
+  -- identifiers earlier on are to be preferred.
+  rustIdent :: a -> [Rust.Ident]
 
 instance RustIdent NameId where
   rustIdent nid =
@@ -39,11 +41,12 @@ instance RustIdent Cry.OrigName where
   rustIdent og =
     let i = Cry.ogName og
         (_top,nested) = Cry.modPathSplit (Cry.ogModule og)
-    in case nested of
-         [] -> rustIdent i -- common case
-         _  -> let str = Rust.name . rustIdent
-                   full = intercalate "_" (map str nested ++ [str i])
-               in Rust.mkIdent full
+        qualName = Rust.name . head . rustIdent
+        base = case rustIdent i of
+                 [b] -> b
+                 _   -> panic "rustIdent@OrigName" ["Expecetd 1"]
+        qual prev q = Rust.mkIdent (qualName q ++ "_" ++ Rust.name prev)
+    in scanl qual base nested
 
 instance RustIdent Cry.PrimIdent where
   rustIdent (Cry.PrimIdent _m txt) = rustIdent txt
@@ -53,10 +56,10 @@ instance RustIdent Cry.Ident where
 
 instance RustIdent Text where
   rustIdent name
-    | name `Set.member` rustKeywords = (Rust.mkIdent str) { Rust.raw = True }
-    | Just i <- Map.lookup name knownOperators = Rust.mkIdent i
+    | name `Set.member` rustKeywords = [(Rust.mkIdent str) { Rust.raw = True }]
+    | Just i <- Map.lookup name knownOperators = [Rust.mkIdent i]
     | otherwise =
-      Rust.mkIdent (dflt (concat (zipWith escChar (True : repeat False) str)))
+      [Rust.mkIdent (dflt (concat (zipWith escChar (True : repeat False) str)))]
     where
     str = Text.unpack name
     dflt x = if null x then "x" else x
@@ -64,12 +67,14 @@ instance RustIdent Text where
 data Avoiding a = Avoiding (Set Rust.Ident) a
 
 instance RustIdent a => RustIdent (Avoiding a) where
-  rustIdent (Avoiding avoid thing) = 
-    head [ x | x <- variants, not (x `Set.member` avoid) ]
+  rustIdent (Avoiding avoid thing) =
+    [ x | x <- variants, not (x `Set.member` avoid) ]
     where
-    name      = rustIdent thing
-    variants  = name : map variant [ 1 .. ]
-    variant i = Rust.mkIdent (Rust.name name ++ "_" ++ show (i :: Int))
+    names     = rustIdent thing
+    variants  = names ++ concatMap variant [ 1 .. ]
+    variant i = [ Rust.mkIdent (Rust.name name ++ "_" ++ show (i :: Int))
+                | name <- names
+                ]
 
 
 --------------------------------------------------------------------------------
