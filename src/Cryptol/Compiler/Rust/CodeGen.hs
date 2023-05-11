@@ -1,7 +1,5 @@
 module Cryptol.Compiler.Rust.CodeGen where
 
-import Data.Set (Set)
-import Data.Set qualified as Set
 import Data.Map (Map)
 import Data.Map qualified as Map
 import MonadLib
@@ -11,14 +9,16 @@ import Language.Rust.Data.Ident qualified as Rust
 import Language.Rust.Data.Position qualified as Rust
 
 import Cryptol.Utils.Ident qualified as Cry
+import Cryptol.ModuleSystem.Name qualified as Cry
 import Cryptol.TypeCheck.AST qualified as Cry
 
 import Cryptol.Compiler.Error(panic)
-import Cryptol.Compiler.PP
+import Cryptol.Compiler.PP(pp,cryPP)
 import Cryptol.Compiler.IR.Cryptol
-import Cryptol.Compiler.Rust.Names
+import Cryptol.Compiler.Rust.NameMap
 -- import Cryptol.Compiler.Rust.Types
 
+type RustPath   = Rust.Path ()
 type RustType   = Rust.Ty ()
 type RustExpr   = Rust.Expr ()
 type RustStmt   = Rust.Stmt ()
@@ -55,6 +55,18 @@ type GenM =
 newtype Gen a = Gen (GenM a)
   deriving (Functor,Applicative,Monad) via GenM
 
+-- | Information about previously compile modules.
+data ExtModule = ExtModule
+  { extModuleName  :: RustPath
+    -- ^ Name of module
+
+  , extModuleNames :: Map FunName Rust.Ident
+    -- ^ Functions defined in the module
+
+  -- XXX: When we add support for `newtypes` we should have some type
+  -- definitions also.
+  }
+
 data RO = RO
   { roModName :: Cry.ModName
     -- ^ The current module we are working on
@@ -64,7 +76,7 @@ data RO = RO
     -- these are file names so they are not likely to contain weird
     -- things such as '
 
-  , roExternalNames :: Map Cry.ModName (Map FunName Rust.Ident)
+  , roExternalNames :: Map Cry.ModName ExtModule
     -- ^ Names defined in different modules. Read only.
   }
 
@@ -77,7 +89,10 @@ data RW = RW
   }
 
 -- | Bind a local names
-bindLocal :: (a -> LocalNames -> (Rust.Ident,LocalNames)) -> a -> Gen Rust.Ident
+bindLocal ::
+  (a -> LocalNames -> (Rust.Ident,LocalNames)) -> {- ^ How to bind it -}
+  a -> {- ^ Name of the local thing -}
+  Gen Rust.Ident
 bindLocal how x =
   Gen $ sets \rw -> let (i,ls) = how x (rwLocalNames rw)
                     in (i, rw { rwLocalNames = ls })
@@ -89,6 +104,7 @@ bindFun x =
                     in (i, rw { rwLocalFunNames = fs })
 
 
+-- | Get the type corresponding to a type parameter.
 lookupTParam :: Cry.TParam -> Gen RustType
 lookupTParam x =
   Gen
@@ -97,6 +113,7 @@ lookupTParam x =
          path  = Rust.Path False [seg] ()
      pure (Rust.PathTy Nothing path ())
 
+-- | Get the expresssion for a local.
 lookupNameId :: NameId -> Gen RustExpr
 lookupNameId x =
   Gen
@@ -105,41 +122,49 @@ lookupNameId x =
          path  = Rust.Path False [seg] ()
      pure (Rust.PathExpr [] Nothing path ())
 
-
+-- | Get an expression corresponding to a named function
+lookupFunName :: FunName -> Gen (Either IRPrim RustExpr)
+lookupFunName fu =
+  case irfnName fu of
+    IRPrimName p -> pure (Left p)
+    IRDeclaredFunName f ->
+      do let mo = Cry.nameTopModule
+                  case f of
+                    NameId x -> x
+                    AnonId {} ->
+                       panic "lookupFunName"
+                         [ "Unexpected anonymous function name" ]
+         ro <- Gen ask
+         rw <- Gen get
+         Right . (\x -> Rust.PathExpr [] Nothing x ()) <$>
+           if roModName ro == mo
+             then
+               do let i = lookupName fu (rwLocalFunNames rw)
+                      seg = Rust.PathSegment i Nothing ()
+                  pure (Rust.Path False [seg] ())
+             else
+               do ext <- case Map.lookup mo (roExternalNames ro) of
+                           Just e -> pure e
+                           Nothing ->
+                             panic "lookupFunName"
+                               [ "Missing module", show (cryPP mo) ]
+                  let Rust.Path glob segs _ = extModuleName ext
+                  i <- case Map.lookup fu (extModuleNames ext) of
+                         Just it -> pure it
+                         Nothing -> panic "lookupFunName"
+                                      [ "Missing function"
+                                      , "Module: " ++ show (cryPP mo)
+                                      , "Function: " ++ show (pp fu)
+                                      ]
+                  let seg = Rust.PathSegment i Nothing ()
+                  -- XXX: Maybe we should record that we used this module
+                  -- so we can add imports, or maybe they are not needed?
+                  pure (Rust.Path glob (segs ++ [seg]) ())
 
 
 
 --------------------------------------------------------------------------------
-
--- | Associate names with Rust identifiers, and keeps track of which
--- rust identifiers we've already used.
-data NameMap a = NameMap
-  { lUsed :: Set Rust.Ident
-  , lMap  :: Map a Rust.Ident
-  }
-
--- | An empty mpa.
-emptyNameMap :: Ord a => NameMap a
-emptyNameMap = NameMap { lUsed = mempty, lMap  = mempty }
-
--- | Pick a Rust name for something, ensuring that it does not clash with
--- any previously used names.
-addName :: (Ord a, RustIdent a) => a -> NameMap a -> (Rust.Ident, NameMap a)
-addName x mp =
-  (i, mp { lUsed = Set.insert i (lUsed mp), lMap  = Map.insert x i (lMap mp) })
-  where
-  used = lUsed mp
-  i    = rustIdentAvoiding used (rustIdent x)
-
-lookupName :: (PP a, Ord a) => a -> NameMap a -> Rust.Ident
-lookupName x mp =
-  case Map.lookup x (lMap mp) of
-    Just a  -> a
-    Nothing -> panic "lookupName"
-                 [ "Undefined name"
-                 , show (pp x)
-                 ]
-
+-- Local names
 
 -- | Names local to a declaration
 data LocalNames = LocalNames
