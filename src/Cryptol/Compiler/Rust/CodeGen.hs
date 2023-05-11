@@ -1,28 +1,35 @@
 module Cryptol.Compiler.Rust.CodeGen where
 
-import Data.Functor.Identity (Identity)
-import qualified Data.Char as Char
-import qualified Cryptol.TypeCheck.AST as Cry
-import qualified MonadLib as Monad
+import Data.Set (Set)
+import Data.Set qualified as Set
 import Data.Map (Map)
+import Data.Map qualified as Map
+import MonadLib
 
-import qualified Language.Rust.Syntax as Rust
-import qualified Language.Rust.Data.Ident as RustIdent
-import qualified Language.Rust.Data.Position as RustPos
+import Language.Rust.Syntax qualified as Rust
+import Language.Rust.Data.Ident qualified as Rust
+import Language.Rust.Data.Position qualified as Rust
 
-import Cryptol.Compiler.IR.Cryptol qualified as IR
+import Cryptol.Utils.Ident qualified as Cry
+import Cryptol.TypeCheck.AST qualified as Cry
+
+import Cryptol.Compiler.Error(panic)
+import Cryptol.Compiler.PP
+import Cryptol.Compiler.IR.Cryptol
+import Cryptol.Compiler.Rust.Names
 -- import Cryptol.Compiler.Rust.Types
 
-type RustExpr = Rust.Expr ()
-type RustStmt = Rust.Stmt ()
-type RustBlock = Rust.Block ()
+type RustType   = Rust.Ty ()
+type RustExpr   = Rust.Expr ()
+type RustStmt   = Rust.Stmt ()
+type RustBlock  = Rust.Block ()
 
 -- convenience
 
-dummySpan :: RustPos.Span
-dummySpan = RustPos.Span RustPos.NoPosition RustPos.NoPosition
+dummySpan :: Rust.Span
+dummySpan = Rust.Span Rust.NoPosition Rust.NoPosition
 
-simplePath :: RustIdent.Ident -> Rust.Path ()
+simplePath :: Rust.Ident -> Rust.Path ()
 simplePath n = Rust.Path True [Rust.PathSegment n Nothing ()] ()
 
 
@@ -39,12 +46,132 @@ stmtNoSemi e = Rust.NoSemi e ()
 --
 -- TODO
 
-type Gen a = Monad.StateT GenerationState Monad.Id a
-data GenerationState = GenerationState
-  { gsNameMapping :: Map Cry.Name RustIdent.Ident
+type GenM =
+  WithBase Id
+    [ ReaderT RO
+    , StateT  RW
+    ]
+
+newtype Gen a = Gen (GenM a)
+  deriving (Functor,Applicative,Monad) via GenM
+
+data RO = RO
+  { roModName :: Cry.ModName
+    -- ^ The current module we are working on
+
+    -- XXX: The segiments of a mod name are cryptol identifiers
+    -- so we'd need to translate those too, although more commonly
+    -- these are file names so they are not likely to contain weird
+    -- things such as '
+
+  , roExternalNames :: Map Cry.ModName (Map FunName Rust.Ident)
+    -- ^ Names defined in different modules. Read only.
   }
 
+data RW = RW
+  { rwLocalFunNames :: NameMap FunName
+    -- ^ Names in the current module
 
+  , rwLocalNames    :: LocalNames
+    -- ^ Names in the current function
+  }
+
+-- | Bind a local names
+bindLocal :: (a -> LocalNames -> (Rust.Ident,LocalNames)) -> a -> Gen Rust.Ident
+bindLocal how x =
+  Gen $ sets \rw -> let (i,ls) = how x (rwLocalNames rw)
+                    in (i, rw { rwLocalNames = ls })
+
+-- | Bind a function in this module
+bindFun :: FunName -> Gen Rust.Ident
+bindFun x =
+  Gen $ sets \rw -> let (i,fs) = addName x (rwLocalFunNames rw)
+                    in (i, rw { rwLocalFunNames = fs })
+
+
+lookupTParam :: Cry.TParam -> Gen RustType
+lookupTParam x =
+  Gen
+  do i <- lookupName x . lTypeNames . rwLocalNames <$> get
+     let seg   = Rust.PathSegment i Nothing ()
+         path  = Rust.Path False [seg] ()
+     pure (Rust.PathTy Nothing path ())
+
+lookupNameId :: NameId -> Gen RustExpr
+lookupNameId x =
+  Gen
+  do i <- lookupName x . lValNames . rwLocalNames <$> get
+     let seg   = Rust.PathSegment i Nothing ()
+         path  = Rust.Path False [seg] ()
+     pure (Rust.PathExpr [] Nothing path ())
+
+
+
+
+
+--------------------------------------------------------------------------------
+
+-- | Associate names with Rust identifiers, and keeps track of which
+-- rust identifiers we've already used.
+data NameMap a = NameMap
+  { lUsed :: Set Rust.Ident
+  , lMap  :: Map a Rust.Ident
+  }
+
+-- | An empty mpa.
+emptyNameMap :: Ord a => NameMap a
+emptyNameMap = NameMap { lUsed = mempty, lMap  = mempty }
+
+-- | Pick a Rust name for something, ensuring that it does not clash with
+-- any previously used names.
+addName :: (Ord a, RustIdent a) => a -> NameMap a -> (Rust.Ident, NameMap a)
+addName x mp =
+  (i, mp { lUsed = Set.insert i (lUsed mp), lMap  = Map.insert x i (lMap mp) })
+  where
+  used = lUsed mp
+  i    = rustIdentAvoiding used (rustIdent x)
+
+lookupName :: (PP a, Ord a) => a -> NameMap a -> Rust.Ident
+lookupName x mp =
+  case Map.lookup x (lMap mp) of
+    Just a  -> a
+    Nothing -> panic "lookupName"
+                 [ "Undefined name"
+                 , show (pp x)
+                 ]
+
+
+-- | Names local to a declaration
+data LocalNames = LocalNames
+  { lTypeNames  :: NameMap Cry.TParam
+  , lValNames   :: NameMap NameId
+  }
+
+-- | Empty local names, useful when starting a new declaration.
+emptyLocalNames :: LocalNames
+emptyLocalNames = LocalNames
+  { lTypeNames  = emptyNameMap
+  , lValNames   = emptyNameMap
+  }
+
+-- | Bind a type parameter.
+addLocalType :: Cry.TParam -> LocalNames -> (Rust.Ident, LocalNames)
+addLocalType t ns = (i, ns { lTypeNames = mp })
+  where
+  (i, mp) = addName t (lTypeNames ns)
+
+-- | Bind a local variable/paramter.
+addLocalVar :: NameId -> LocalNames -> (Rust.Ident, LocalNames)
+addLocalVar x ns = (i, ns { lValNames = mp })
+  where
+  (i, mp) = addName x (lValNames ns)
+
+--------------------------------------------------------------------------------
+
+
+
+
+{-
 genFunDecl :: IR.FunDecl -> Gen  ()
 genFunDecl fndecl =
   case IR.irfnName $ IR.irfName fndecl of
@@ -165,12 +292,5 @@ genExpr (IR.IRExpr e0) =
 --     IR.IRFunDef _ (IR.IRExpr expr) ->
 
 
-
--------------------------------------------------------------------------------
-
-asRustVarName :: String -> String
-asRustVarName s = s >>= rustify
-  where
-    rustify c = if Char.isUpper c then ['_', Char.toLower c] else [c]
-
+-}
 

@@ -21,16 +21,20 @@ import Data.List(groupBy)
 import Language.Rust.Data.Ident qualified as Rust
 
 import Cryptol.Utils.Ident qualified as Cry
+import Cryptol.TypeCheck.Type qualified as Cry
 import Cryptol.ModuleSystem.Name qualified as Cry
 import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR.Cryptol
 
 
-rustIdentAvoiding :: RustIdent a => Set Rust.Ident -> a -> Rust.Ident
-rustIdentAvoiding avoid thing =
+-- | Pick a name for something, so that it does not clash with the given names.
+rustIdentAvoiding ::
+  Set Rust.Ident {- Avoid these -} ->
+  [Rust.Ident] {- Variations on the name, pick first that doesn't clash -} ->
+  Rust.Ident
+rustIdentAvoiding avoid names =
     head [ x | x <- variants, not (x `Set.member` avoid) ]
     where
-    names     = rustIdent thing
     variants  = names ++ concatMap variant [ 1 .. ]
     variant i = [ Rust.mkIdent (Rust.name name ++ "_" ++ show (i :: Int))
                 | name <- names
@@ -40,18 +44,22 @@ rustIdentAvoiding avoid thing =
 --------------------------------------------------------------------------------
 -- Cases
 
+-- | Change the case of an indentifier.
 changeCase :: (String -> String) -> Rust.Ident -> Rust.Ident
 changeCase f n = (Rust.mkIdent (f (Rust.name n))) { Rust.raw = Rust.raw n }
 -- We preserve the rawness just in case
 
+-- | Use snake_case
 snakeCase :: String -> String
 snakeCase s = dropWhile (== '_') (s >>= snake)
   where
   snake c = if isUpper c then ['_', toLower c] else [c]
 
+-- | Use SCREAMING_SNAKE_CASE
 screamingSnakeCase :: String -> String
 screamingSnakeCase = map toUpper . snakeCase
 
+-- | Use UpperCamelCase
 upperCamelCase :: String -> String
 upperCamelCase = concat . mapMaybe check . groupBy isUnder2
   where
@@ -66,6 +74,7 @@ upperCamelCase = concat . mapMaybe check . groupBy isUnder2
 
 --------------------------------------------------------------------------------
 
+-- | Things that provide names.
 class RustIdent a where
 
   -- | Pick a Rust identifier for the given thing string.
@@ -73,7 +82,31 @@ class RustIdent a where
   -- identifiers earlier on are to be preferred.
   rustIdent :: a -> [Rust.Ident]
 
--- XXX: Names for instantiations
+instance RustIdent Cry.TParam where
+  rustIdent tp =
+    map (changeCase upperCamelCase)
+    case Cry.tpName tp of
+      Just n  -> rustIdent n
+      Nothing -> [ Rust.mkIdent "T" ]
+
+
+instance RustIdent a => RustIdent (IRFunName a) where
+  rustIdent = rustIdent . irfnName
+  -- XXX: Use instance to pick a more readable name
+  -- Currently we use the same name for all instance, relying
+  -- on disambiguation to pick different names
+
+instance RustIdent a => RustIdent (IRFunNameFlavor a) where
+  rustIdent i =
+    case i of
+      IRPrimName p -> rustIdent p
+      IRDeclaredFunName x -> rustIdent x
+
+instance RustIdent IRPrim where
+  rustIdent i =
+    case i of
+      CryPrim p -> rustIdent p
+      _         -> []   -- These are not declared by declarations
 
 instance RustIdent NameId where
   rustIdent nid =
