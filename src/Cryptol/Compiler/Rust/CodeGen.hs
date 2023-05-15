@@ -16,6 +16,7 @@ import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.PP(pp,cryPP)
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.NameMap
+import qualified Cryptol.Parser.Lexer as Rust
 -- import Cryptol.Compiler.Rust.Types
 
 type RustPath   = Rust.Path ()
@@ -23,6 +24,7 @@ type RustType   = Rust.Ty ()
 type RustExpr   = Rust.Expr ()
 type RustStmt   = Rust.Stmt ()
 type RustBlock  = Rust.Block ()
+type RustItem   = Rust.Item ()
 
 -- convenience
 
@@ -32,14 +34,22 @@ dummySpan = Rust.Span Rust.NoPosition Rust.NoPosition
 simplePath :: Rust.Ident -> Rust.Path ()
 simplePath n = Rust.Path True [Rust.PathSegment n Nothing ()] ()
 
-
 block :: [RustStmt] -> RustBlock
 block stmts = Rust.Block stmts Rust.Normal ()
 
 stmtNoSemi :: RustExpr -> RustStmt
 stmtNoSemi e = Rust.NoSemi e ()
 
+todoExp :: RustExpr
+todoExp = Rust.MacExpr [] todoMac ()
+  where
+  todoMac = Rust.Mac (simplePath "todo") (Rust.Stream []) ()
 
+todoBlock :: RustBlock
+todoBlock = block [stmtNoSemi todoExp]
+
+exprStmt :: RustExpr -> RustStmt
+exprStmt e = Rust.NoSemi e ()
 
 -------------------------------------------------------------------------------
 -- Generation monad
@@ -86,6 +96,10 @@ data RW = RW
 
   , rwLocalNames    :: LocalNames
     -- ^ Names in the current function
+
+  , rwBlockStmt     :: [RustStmt]
+    -- ^ Rust statements produced as part of a block.
+    --   Note that these are stored in reverse order for performance.
   }
 
 -- | Bind a local names
@@ -162,6 +176,18 @@ lookupFunName fu =
                   pure (Rust.Path glob (segs ++ [seg]) ())
 
 
+-- | blockScope `c` evaluates a c, returning the list of block
+--   statements generated during `c` alongside the value.  This also does
+--   not modify any values in the calling computation.
+blockScope :: Gen a -> Gen ([RustStmt],a)
+blockScope (Gen c) = Gen go
+  where
+  go =
+    do  rw <- sets (\rw -> (rw, rw { rwBlockStmt = []}))
+        a <- c
+        stmts <- reverse . rwBlockStmt <$> get
+        set rw
+        pure (stmts, a)
 
 --------------------------------------------------------------------------------
 -- Local names
@@ -193,129 +219,93 @@ addLocalVar x ns = (i, ns { lValNames = mp })
 
 --------------------------------------------------------------------------------
 
+nameFromIRName :: IRName t n -> n
+nameFromIRName (IRName n _) = n
 
+mkRustCall :: RustExpr -> [RustExpr] -> RustExpr
+mkRustCall fn args = Rust.Call [] fn args ()
 
-
-{-
-genFunDecl :: IR.FunDecl -> Gen  ()
-genFunDecl fndecl =
-  case IR.irfnName $ IR.irfName fndecl of
-    IR.IRPrimName pname -> error ("genFunDecl: Not expecting to see fun decl for " ++ show pname)
-    -- TODO: check that these are already in the environment
-    -- IR.IRCryPrimName primIdent -> pure ()
-    IR.IRDeclaredFunName dfn -> undefined
-
-newDeclName :: Cry.Name -> Gen RustIdent.Ident
-newDeclName = undefined
-
-addItem :: Rust.Item () -> Gen ()
-addItem = undefined
-
-
-genDeclaredFun :: Cry.Name -> IR.FunType -> IR.FunDef -> Gen ()
-genDeclaredFun name ty def =
-  do  name' <- newDeclName name
-      let fn = Rust.Fn [] visibility name' decl safety isConst abi generics impl ()
-      addItem fn
+mkClosure :: [Rust.Ident] -> [RustStmt] -> RustExpr -> RustExpr
+mkClosure args stmts expr = Rust.Closure [] move captureBy fnDecl fnExpr ()
   where
-    safety = Rust.Normal
-    isConst = Rust.Const
-    abi = Rust.RustCall
-    visibility = Rust.PublicV
+    move = Rust.Movable
+    captureBy = Rust.Value
+    mkArg a = Rust.Arg (Just $ identPat a) (Rust.Infer ()) ()
+    args' = mkArg <$> args
     variadic = False
-    args = []
-    retTy = Nothing
-    decl = Rust.FnDecl args retTy variadic ()
-    generics = Rust.Generics [] [] (Rust.WhereClause [] ()) () -- TODO
-    impl = todoBlock -- TODO
+    fnDecl = Rust.FnDecl args' Nothing variadic ()
+    fnExpr = blockExprIfNeeded stmts expr
 
 
--- Insert an empty `todo!`
-todoBlock :: RustBlock
-todoBlock = block [stmtNoSemi macExpr]
+blockExprIfNeeded :: [RustStmt] -> RustExpr -> RustExpr
+blockExprIfNeeded stmts e =
+  case stmts of
+    [] -> e
+    _ -> Rust.BlockExpr [] (block (stmts ++ [Rust.NoSemi e ()])) ()
+
+identPat :: Rust.Ident -> Rust.Pat ()
+identPat ident = Rust.IdentP bindingMode ident Nothing ()
   where
-    macExpr = Rust.MacExpr [] todoMac ()
-    todoMac = Rust.Mac (simplePath "todo") (Rust.Stream []) ()
+    bindingMode = Rust.ByValue Rust.Immutable
 
 
-type BlockGen a = Identity a
-
-blockStmt :: RustStmt -> BlockGen ()
-blockStmt s = undefined
-
-runGenBlock :: BlockGen a -> Gen a
-runGenBlock bg = undefined
-
-liftGen :: Gen a -> BlockGen a
-liftGen g = undefined
-
-subBlock :: IR.IRExpr tn n -> BlockGen RustBlock
-subBlock b = undefined
-
-blockMkName :: IR.Name -> BlockGen RustIdent.Ident
-blockMkName = undefined
-
-blockGetName :: IR.Name  -> BlockGen RustIdent.Ident
-blockGetName = undefined
-
-blockVar :: IR.Name -> BlockGen RustExpr
-blockVar n = undefined
-
-blockBindVar ::  IR.Name -> RustExpr -> BlockGen ()
-blockBindVar n e = undefined
-
-simpleVarExpr :: RustIdent.Ident -> Rust.Expr ()
-simpleVarExpr n = Rust.PathExpr [] Nothing (varPath n) ()
-  where
-    varPath n = Rust.Path True [Rust.PathSegment n Nothing ()] ()
-
-letBind :: IR.Name -> IR.Expr -> BlockGen ()
-letBind name expr =
-  do  expr' <- genExpr expr
-      name' <- blockMkName name
-      blockStmt (letStmt name' expr')
-      blockBindVar name (simpleVarExpr name')
-
-  where
-    letStmt n e = Rust.Local (pat n) Nothing (Just e) [] ()
-    pat n = Rust.IdentP (Rust.ByValue Rust.Immutable) n Nothing ()
+emitBlockStmt :: RustStmt -> Gen ()
+emitBlockStmt s =
+  Gen $ sets_ (\rw -> rw { rwBlockStmt = s:rwBlockStmt rw})
 
 
-genExpr :: IR.Expr -> BlockGen RustExpr
-genExpr (IR.IRExpr e0) =
+callPrim :: IRPrim -> [RustExpr] -> Gen RustExpr
+callPrim = undefined
+
+genExpr :: Expr -> Gen RustExpr
+genExpr (IRExpr e0) =
   case e0 of
-    IR.IRVar name -> blockVar name
-    IR.IRCallFun call ->
-      do  argExprs <- genExpr `traverse` IR.ircArgs call
-          undefined
+    IRVar (IRName name _) -> lookupNameId name
+    IRCallFun call ->
+      do  args' <- genExpr `traverse` ircArgs call
+          case ircFun call of
+            IRFunVal fnIR ->
+              do  fnExpr <- genExpr fnIR
+                  pure $ mkRustCall fnExpr args'
+
+            IRTopFun tf ->
+              do  name <- lookupFunName (irtfName tf)
+                  case name of
+                    Left prim -> callPrim prim args'
+                    Right nameExpr -> pure $ mkRustCall nameExpr args'
+
+    IRClosure call -> undefined
+
+    IRLam args expr ->
+      do  let args' = nameFromIRName <$> args
+          args'' <- bindLocal addLocalVar `traverse` args'
+          (lamStmt, lamE) <- blockScope (genExpr expr)
+          pure $ mkClosure args'' lamStmt lamE
 
 
-    IR.IRClosure call -> undefined
-    IR.IRLam names expr -> undefined
-    IR.IRIf testExpr thenExpr elseExpr ->
-      do  testExpr' <- genExpr testExpr
-          thenBlock <- subBlock thenExpr
-          elseExpr' <- genExpr elseExpr
+    IRIf eTest eThen eElse ->
+      do  eTest' <- genExpr eTest
+          (eThenStmts, eThen') <- blockScope $ genExpr eThen
+          (eElseStmts, eElse') <- blockScope $ genExpr eElse
+          let thenBlock = block (eThenStmts ++ [exprStmt eThen'])
+              elseBlock = block (eElseStmts ++ [exprStmt eElse'])
+          let elseBlockExpr =
+                case eElseStmts of
+                  [] -> eElse'
+                  _stmts -> Rust.BlockExpr [] elseBlock ()
 
-          pure $ Rust.If [] testExpr' thenBlock (Just elseExpr') ()
-{-
-    IR.IRTuple es ->
-      do  es' <- genExpr `traverse` es
-          pure $ Rust.TupExpr [] es' ()
--}
-    IR.IRLet name boundExpr inExpr ->
-      letBind name boundExpr >> genExpr inExpr
+              eif = Rust.If [] eTest' thenBlock (Just elseBlockExpr) ()
 
+          pure eif
 
+    IRLet (IRName name _) eBound eIn ->
+      do  eBound' <- genExpr eBound
+          boundIdent <- bindLocal addLocalVar name
+          let -- TODO add explicit type?
+              ty = Nothing
+              letBind = Rust.Local (identPat boundIdent) ty (Just eBound') [] ()
 
+          emitBlockStmt letBind
+          genExpr eIn
 
-
--- funDecl :: IR.IRFunDecl -> Gen (Maybe Rust.FnDecl)
--- funDecl decl =
---   case IR.irfDef decl of
---     IR.IRFunPrim -> pure Nothing
---     IR.IRFunDef _ (IR.IRExpr expr) ->
-
-
--}
 

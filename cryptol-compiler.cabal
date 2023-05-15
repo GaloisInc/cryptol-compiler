@@ -67,7 +67,7 @@ library
 
       Cryptol.Compiler.Rust.Names
       Cryptol.Compiler.Rust.NameMap
-      Cryptol.Compiler.Rust.Rename
+      -- Cryptol.Compiler.Rust.Rename
       Cryptol.Compiler.Rust.Types
       Cryptol.Compiler.Rust.CodeGen
 
