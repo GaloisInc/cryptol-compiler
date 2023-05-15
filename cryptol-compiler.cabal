@@ -64,6 +64,7 @@ library
       Cryptol.Compiler.Cry2IR.Specialize
       Cryptol.Compiler.Cry2IR.InstanceMap
       Cryptol.Compiler.Cry2IR.Compile
+      Cryptol.Compiler.Cry2IR.RecursiveStreams
 
       Cryptol.Compiler.Rust.Names
       Cryptol.Compiler.Rust.NameMap
