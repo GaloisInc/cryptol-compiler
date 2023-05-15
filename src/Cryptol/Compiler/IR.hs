@@ -24,7 +24,11 @@ data IRFunNameFlavor name =
     deriving (Eq,Ord,Functor,Foldable,Traversable)
 
 -- | Typed names.  When compared, we only consider the name, not the type.
-data IRName tname name = IRName name (IRType tname)
+data IRName tname name =
+  IRName
+    { irNameName :: name
+    , irNameType :: IRType tname
+    }
 
 instance Eq name => Eq (IRName tname name) where
   IRName x _ == IRName y _ = x == y
