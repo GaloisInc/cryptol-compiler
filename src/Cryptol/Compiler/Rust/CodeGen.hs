@@ -5,18 +5,25 @@ import Language.Rust.Syntax qualified as Rust
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
--- import Cryptol.Compiler.Rust.Types
+import Cryptol.Compiler.Rust.Types (rustRep)
+import Data.Maybe (catMaybes)
 
-
+-- | Generate Rust code for a Cryptol IR primitive call
 callPrim :: IRPrim -> [RustExpr] -> Gen RustExpr
 callPrim = undefined
 
+-- | Generate Rust code for a Cryptol IR expression, creating a block if
 doGenExpr :: Expr -> Gen RustExpr
 doGenExpr e =
   do (stmts,expr) <- genExpr e
      pure (blockExprIfNeeded stmts expr)
 
--- | Generate
+-- | Generate a Rust block corresponding to a Cryptol IR expression
+genBlock :: Expr -> Gen RustBlock
+genBlock e = uncurry block' <$> genExpr e
+
+-- | From a Cryptol IR expression, generate a Rust expressions along with
+--   a set of Rust statements that contextualize it, such as let bindings
 genExpr :: Expr -> Gen ([RustStmt], RustExpr)
 genExpr (IRExpr e0) =
   let justExpr e = ([],e)
@@ -51,12 +58,9 @@ genExpr (IRExpr e0) =
     IRIf eTest eThen eElse ->
       justExpr <$>
       do  eTest' <- doGenExpr eTest
-          (eThenStmts, eThen') <- genExpr eThen
+          thenBlock <- genBlock eThen
           elseBlockExpr <- doGenExpr eElse
-          let thenBlock = block (eThenStmts ++ [exprStmt eThen'])
-              eif = Rust.If [] eTest' thenBlock (Just elseBlockExpr) ()
-
-          pure eif
+          pure $ Rust.If [] eTest' thenBlock (Just elseBlockExpr) ()
 
     IRLet (IRName name _) eBound eIn ->
       do  eBound'    <- doGenExpr eBound
@@ -67,4 +71,40 @@ genExpr (IRExpr e0) =
           (stms,e) <- genExpr eIn
           pure (letBind:stms,e)
 
+-- | Build the associated Rust type for the IR type
+rustTy :: Type -> RustType
+rustTy = rustRep
 
+-- | Generate a RustItem corresponding to a function declaration.
+--   Returns `Nothing` if the declaration is for an IR primitive.
+genFunDecl :: FunDecl -> Gen (Maybe RustItem)
+genFunDecl decl =
+  case irfDef decl of
+    -- TODO: maybe this would be a good place to check that the set
+    --       of implemented primitives is complete?
+    IRFunPrim -> pure Nothing
+    IRFunDef argNames expr ->
+      do  (argNames', funExpr) <-
+            localScope
+              do  aNames <- mapM (bindLocal addLocalVar) argNames
+                  expr' <- genBlock expr
+                  pure (aNames, expr')
+
+          let argTys = rustTy <$> ftParams (irfType decl)
+              returnTy = rustTy $ ftResult (irfType decl)
+              -- TODO: actually build a meaningful Generics
+              generics = mkGenerics lifetimes tyParams whereClause
+              tyParams = []
+              lifetimes = []
+              whereClause = Rust.WhereClause [] ()
+              params = argNames' `zip` argTys
+
+
+          name <- bindFun (irfName decl)
+          pure . Just $ mkFnItem name generics params returnTy funExpr
+
+-- | Given a set of FunDecls, make a Rust SourceFile
+genSourceFile :: [FunDecl] -> Gen (Rust.SourceFile ())
+genSourceFile decls =
+  do  fnItems <- catMaybes <$> (genFunDecl `traverse` decls)
+      pure $ Rust.SourceFile Nothing [] fnItems

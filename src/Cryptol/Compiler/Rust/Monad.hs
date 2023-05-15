@@ -134,6 +134,15 @@ lookupFunName fu =
                   -- so we can add imports, or maybe they are not needed?
                   pure (Rust.Path glob (segs ++ [seg]) ())
 
+-- | Evaluate a computation, forgetting any locally bound variables afterward.
+localScope :: Gen a -> Gen a
+localScope (Gen ma) =
+  Gen
+  do  names <- rwLocalNames <$> get
+      r <- ma
+      _ <- sets_ (\s -> s { rwLocalNames = names })
+      pure r
+
 --------------------------------------------------------------------------------
 -- Local names
 
