@@ -4,23 +4,37 @@ module Cryptol.Compiler.Rust.Types where
 import qualified Language.Rust.Syntax as Rust
 import Language.Rust.Data.Ident(mkIdent)
 
-import qualified Cryptol.Compiler.IR.Cryptol as IR
+import Cryptol.TypeCheck.Type qualified as Cry
+
+import Cryptol.Compiler.IR.Cryptol qualified as IR
+import Cryptol.Compiler.Rust.Utils
 
 -- types
-unitType :: Rust.Ty ()
+unitType :: RustType
 unitType = tupleType []
 
-rustSimpleType :: String -> Rust.Ty ()
+rustSimpleType :: String -> RustType
 rustSimpleType i = Rust.PathTy Nothing path ()
   where
     path = Rust.Path True [Rust.PathSegment ident Nothing ()] ()
     ident = mkIdent i
 
-streamOfType :: Rust.Ty () -> Rust.Ty ()
-streamOfType = undefined
+streamOfType :: RustType -> RustType
+streamOfType = vectorOfType -- XXX
 
-vectorOfType :: Rust.Ty () -> Rust.Ty ()
-vectorOfType = undefined
+vectorOfType :: RustType -> RustType
+vectorOfType elT = Rust.PathTy Nothing path ()
+  where
+  path = Rust.Path False [ Rust.PathSegment "Vec" (Just params) () ] ()
+  params = Rust.AngleBracketed [] [elT] [] ()
+
+-- XXX
+funType :: [RustType] -> RustType -> RustType
+funType funArgs funRes = Rust.PathTy Nothing path ()
+  where
+  path = Rust.Path False [ Rust.PathSegment "Fun" (Just params) () ] ()
+  params = Rust.AngleBracketed [] (funArgs ++ [funRes]) [] ()
+
 
 fixedArrayOfType :: Rust.Ty () -> Integer -> Rust.Ty ()
 fixedArrayOfType ty i = Rust.Array ty sizeExpr ()
@@ -38,7 +52,7 @@ computeFixedSize sz = case sz of
   IR.IRComputedSize tf isss -> Nothing
 
 -- compute the rust type used to represent the given cryptol type
-rustRep :: IR.Type -> Rust.Ty ()
+rustRep :: (?poly :: Cry.TParam -> RustType) => IR.Type -> RustType
 rustRep ty =
   case ty of
     IR.TBool -> bool
@@ -64,8 +78,8 @@ rustRep ty =
         Nothing -> vectorOfType (rustRep t)
     IR.TStream sz t -> streamOfType (rustRep t)
     IR.TTuple ts -> tupleType (rustRep <$> ts)
-    IR.TPoly _ -> undefined
-    IR.TFun args ret -> undefined
+    IR.TPoly x -> ?poly x
+    IR.TFun args ret -> funType (map rustRep args) (rustRep ret)
   where
     bool = rustSimpleType "bool"
 

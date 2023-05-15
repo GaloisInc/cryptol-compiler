@@ -5,6 +5,7 @@ module Cryptol.Compiler.Cry2IR.InstanceMap
   , singletonInstanceMap
   , mergeInstanceMap
   , instanceMapFromList
+  , instanceMapToList
   , lookupInstance
   , ITE(..)
   , Guard(..)
@@ -39,6 +40,11 @@ instanceMapFromList ins =
             (uncurry singletonInstanceMap a)
             as
 
+instanceMapToList :: InstanceMap a -> [a]
+instanceMapToList mp =
+  case mp of
+    Result a -> [a]
+    InstanceMap opts -> concatMap (instanceMapToList . snd) opts
 
 
 -- | A singleton map associating the given instance with the value.

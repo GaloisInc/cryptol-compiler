@@ -1,4 +1,8 @@
-module Cryptol.Compiler.Rust.CodeGen where
+module Cryptol.Compiler.Rust.CodeGen
+  ( genModule
+  , ExtModule(..)
+  , GenInfo(..)
+  )  where
 
 import Language.Rust.Syntax qualified as Rust
 
@@ -10,7 +14,7 @@ import Data.Maybe (catMaybes)
 
 -- | Generate Rust code for a Cryptol IR primitive call
 callPrim :: IRPrim -> [RustExpr] -> Gen RustExpr
-callPrim = undefined
+callPrim _ _ = pure todoExp
 
 -- | Generate Rust code for a Cryptol IR expression, creating a block if
 doGenExpr :: Expr -> Gen RustExpr
@@ -45,7 +49,7 @@ genExpr (IRExpr e0) =
                     Left prim -> callPrim prim args'
                     Right nameExpr -> pure $ mkRustCall nameExpr args'
 
-    IRClosure call -> undefined
+    IRClosure call -> pure (justExpr todoExp)
 
     IRLam args expr ->
       justExpr <$>
@@ -72,8 +76,11 @@ genExpr (IRExpr e0) =
           pure (letBind:stms,e)
 
 -- | Build the associated Rust type for the IR type
-rustTy :: Type -> RustType
-rustTy = rustRep
+rustTy :: Type -> Gen RustType
+rustTy ty =
+  do tys <- getTParams
+     let ?poly = tys
+     pure (rustRep ty)
 
 -- | Generate a RustItem corresponding to a function declaration.
 --   Returns `Nothing` if the declaration is for an IR primitive.
@@ -84,27 +91,30 @@ genFunDecl decl =
     --       of implemented primitives is complete?
     IRFunPrim -> pure Nothing
     IRFunDef argNames expr ->
-      do  (argNames', funExpr) <-
-            localScope
-              do  aNames <- mapM (bindLocal addLocalVar) argNames
-                  expr' <- genBlock expr
-                  pure (aNames, expr')
+      do name <- bindFun (irfName decl)
+         let ft       = irfType decl
+             traits   = ftTraits ft     -- XXX
 
-          let argTys = rustTy <$> ftParams (irfType decl)
-              returnTy = rustTy $ ftResult (irfType decl)
-              -- TODO: actually build a meaningful Generics
-              generics = mkGenerics lifetimes tyParams whereClause
-              tyParams = []
-              lifetimes = []
-              whereClause = Rust.WhereClause [] ()
-              params = argNames' `zip` argTys
+         localScope
+           do tNames <- mapM (bindLocal addLocalType) (ftTypeParams ft)
+              aNames <- mapM (bindLocal addLocalVar) argNames
+              argTys <- mapM rustTy (ftParams ft)
+              returnTy <- rustTy (ftResult ft)
+              funExpr <- genBlock expr
 
+              let params = zip aNames argTys
+              let tyParams    =[ Rust.TyParam [] i [] Nothing () | i <- tNames ]
+                  lifetimes   = []
+                  whereClause = Rust.WhereClause [] () -- XXX: from traits
+                  generics    = mkGenerics lifetimes tyParams whereClause
+              pure (Just (mkFnItem name generics params returnTy funExpr))
 
-          name <- bindFun (irfName decl)
-          pure . Just $ mkFnItem name generics params returnTy funExpr
 
 -- | Given a set of FunDecls, make a Rust SourceFile
 genSourceFile :: [FunDecl] -> Gen (Rust.SourceFile ())
 genSourceFile decls =
   do  fnItems <- catMaybes <$> (genFunDecl `traverse` decls)
       pure $ Rust.SourceFile Nothing [] fnItems
+
+genModule :: GenInfo -> [FunDecl] -> Rust.SourceFile ()
+genModule gi ds = runGenM gi (genSourceFile ds)

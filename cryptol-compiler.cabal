@@ -98,6 +98,7 @@ executable cryptol-compiler
         text,
         simple-get-opt,
         cryptol-compiler,
+        language-rust,
         cryptol
 
     hs-source-dirs:   app

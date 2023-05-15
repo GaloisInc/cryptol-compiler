@@ -17,6 +17,27 @@ import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.NameMap
 
+data GenInfo =
+  GenInfo
+    { genCurModule :: Cry.ModName
+    , genExternalModules :: Map Cry.ModName ExtModule
+    }
+
+runGenM :: GenInfo -> Gen a -> a
+runGenM gi (Gen m) = fst $ runId $ runStateT rw $ runReaderT ro m
+  where
+  ro =
+    RO
+      { roModName = genCurModule gi
+      , roExternalNames = genExternalModules gi
+      }
+  rw =
+    RW
+      { rwLocalFunNames = emptyNameMap
+      , rwLocalNames    = emptyLocalNames
+      }
+
+
 type GenM =
   WithBase Id
     [ ReaderT RO
@@ -76,6 +97,15 @@ bindFun x =
   Gen $ sets \rw -> let (i,fs) = addName x (rwLocalFunNames rw)
                     in (i, rw { rwLocalFunNames = fs })
 
+
+getTParams :: Gen (Cry.TParam -> RustType)
+getTParams =
+  do tys <- lTypeNames . rwLocalNames <$> Gen get
+     pure \x ->
+       let i = lookupName x tys
+           seg   = Rust.PathSegment i Nothing ()
+           path  = Rust.Path False [seg] ()
+       in Rust.PathTy Nothing path ()
 
 -- | Get the type corresponding to a type parameter.
 lookupTParam :: Cry.TParam -> Gen RustType
