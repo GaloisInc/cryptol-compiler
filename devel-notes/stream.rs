@@ -73,6 +73,43 @@ fn sums<I : Iterator<Item = u32>>(ps : I) -> impl Iterator<Item = u32> {
 }
 
 
+fn zig_zag() -> (impl Iterator<Item = u32>, impl Iterator<Item = u32>) {
+
+  {
+    struct State {
+      index: usize,
+      history_zig: u32,
+      history_zag: u32
+    }
+
+    impl Iterator for State {
+      type Item = (u32,u32);
+      fn next(&mut self) -> Option<(u32,u32)> {
+        let zig =
+          match self.index {
+            0 => 0,
+            _ => self.history_zag
+          };
+        let zag =
+          match self.index {
+            0 => 1,
+            _ => self.history_zig
+          };
+        self.history_zig = zig;
+        self.history_zag = zag;
+        self.index += 1;
+        Some ((zig,zag))
+      }
+    }
+
+    let zig = State { index: 0, history_zig: 0xDEAD, history_zag: 0xBEEF };
+    let zag = State { index: 0, history_zig: 0xDEAD, history_zag: 0xBEEF };
+    (zig.map(|(a,_)| a),zag.map(|(_,b)| b))
+  }
+
+
+}
+
 
 
 
@@ -90,5 +127,19 @@ fn main() {
   for i in sus.take(10) {
     print!("{}\n",i)
   }
+
+  let (zig,zag) = zig_zag();
+  print!("Zig:\n");
+  for i in zig.take(5) {
+    print!("{}\n",i)
+  }
+
+  print!("Zag:\n");
+  for i in zag.take(5) {
+    print!("{}\n",i)
+  }
+
+
+
 
 }
