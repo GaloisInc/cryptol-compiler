@@ -2,8 +2,10 @@ module Cryptol.Compiler.IR.Type
   ( module Cryptol.Compiler.IR.Type
   , SizeVarSize(..)
   , Cry.TFun(..)
+  , Cry.Nat'(..)
   ) where
 
+import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.TypeCheck.TCon qualified as Cry
 
 import Cryptol.Compiler.Error
@@ -95,6 +97,25 @@ type instance TName (IRFunType tname)    = tname
 type instance TName [a]       = TName a
 type instance TName (Maybe a) = TName a
 type instance TName (a,b)     = TName b
+
+
+--------------------------------------------------------------------------------
+-- Common utilities
+
+isKnownStreamSize :: IRStreamSize tname  -> Maybe Cry.Nat'
+isKnownStreamSize s =
+  case s of
+    IRInfSize -> Just Cry.Inf
+    IRSize si -> Cry.Nat <$> isKnownSize si
+
+isKnownSize :: IRSize tname -> Maybe Integer
+isKnownSize sz =
+  case sz of
+    IRFixedSize n     -> Just n
+    IRPolySize {}     -> Nothing
+    IRComputedSize {} -> Nothing
+
+
 
 
 --------------------------------------------------------------------------------

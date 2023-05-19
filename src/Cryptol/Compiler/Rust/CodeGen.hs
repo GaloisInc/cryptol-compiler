@@ -6,6 +6,7 @@ module Cryptol.Compiler.Rust.CodeGen
 
 import Language.Rust.Syntax qualified as Rust
 
+import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
@@ -14,7 +15,21 @@ import Data.Maybe (catMaybes)
 
 -- | Generate Rust code for a Cryptol IR primitive call
 callPrim :: IRPrim -> [RustExpr] -> Gen RustExpr
-callPrim _ _ = pure todoExp
+callPrim p es =
+  case p of
+    CryPrim name  -> todo
+    MakeSeq       -> todo
+    Tuple         -> todo
+    TupleSel n _  -> todo
+    Map           -> todo
+    FlatMap       -> todo
+    Zip           -> todo
+
+    Collect       -> todo
+    Iter          -> todo
+  where
+  todo = pure (todoExp (show (pp p)))
+  primE =  undefined
 
 -- | Generate Rust code for a Cryptol IR expression, creating a block if
 doGenExpr :: Expr -> Gen RustExpr
@@ -38,6 +53,11 @@ genExpr (IRExpr e0) =
     IRCallFun call ->
       justExpr <$>
       do  args' <- doGenExpr `traverse` ircArgs call
+          -- XXX: adapt arguments if needed.  For example, a function that
+          -- works with polymorphic arguments expects a vector.
+          -- If we call this function with a known size argument, we need
+          -- to turn the array into a vector.
+
           case ircFun call of
             IRFunVal fnIR ->
               do  fnExpr <- doGenExpr fnIR
@@ -49,7 +69,7 @@ genExpr (IRExpr e0) =
                     Left prim -> callPrim prim args'
                     Right nameExpr -> pure $ mkRustCall nameExpr args'
 
-    IRClosure call -> pure (justExpr todoExp)
+    IRClosure call -> pure (justExpr (todoExp (show (pp call))))
 
     IRLam args expr ->
       justExpr <$>
@@ -82,6 +102,33 @@ rustTy ty =
      let ?poly = tys
      pure (rustRep ty)
 
+genTrait :: Trait -> Gen RustWherePredicate
+genTrait (IRTrait name arg) =
+  do tparam <- getTParams
+     pure (Rust.BoundPredicate [] (tparam arg) [bound] ())
+  where
+  bound     = Rust.TraitTyParamBound traitName Rust.None ()
+  traitName = Rust.PolyTraitRef [] (Rust.TraitRef path) ()
+  -- XXX: qualify these?
+  path =
+    simplePath
+      case name of
+        PZero         -> "Zero"
+        PLogic        -> "Logic"
+        PRing         -> "Ring"
+        PIntegral     -> "Integral"
+        PField        -> "Field"
+        PRound        -> "Round"
+
+        PEq           -> "Eq" -- Reuse Rust's?
+        PCmp          -> "Cmp"
+        PSignedCmp    -> "SignedCmp"
+
+        PLiteral      -> "Literal"
+        PFLiteral     -> "FLiteral"
+
+
+
 -- | Generate a RustItem corresponding to a function declaration.
 --   Returns `Nothing` if the declaration is for an IR primitive.
 genFunDecl :: FunDecl -> Gen (Maybe RustItem)
@@ -93,19 +140,19 @@ genFunDecl decl =
     IRFunDef argNames expr ->
       do name <- bindFun (irfName decl)
          let ft       = irfType decl
-             traits   = ftTraits ft     -- XXX
 
          localScope
            do tNames <- mapM (bindLocal addLocalType) (ftTypeParams ft)
               aNames <- mapM (bindLocal addLocalVar) argNames
               argTys <- mapM rustTy (ftParams ft)
+              quals  <- mapM genTrait (ftTraits ft)
               returnTy <- rustTy (ftResult ft)
               funExpr <- genBlock expr
 
               let params = zip aNames argTys
-              let tyParams    =[ Rust.TyParam [] i [] Nothing () | i <- tNames ]
+              let tyParams = [ Rust.TyParam [] i [] Nothing () | i <- tNames ]
                   lifetimes   = []
-                  whereClause = Rust.WhereClause [] () -- XXX: from traits
+                  whereClause = Rust.WhereClause quals ()
                   generics    = mkGenerics lifetimes tyParams whereClause
               pure (Just (mkFnItem name generics params returnTy funExpr))
 

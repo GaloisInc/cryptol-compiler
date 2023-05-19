@@ -1,9 +1,10 @@
+-- | Utilities for generating Rust code
+-- Nothing here should be specific to the compiler.
 module Cryptol.Compiler.Rust.Utils where
 
 import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
 import Language.Rust.Data.Position qualified as Rust
-import Language.Rust.Syntax (whereClause)
 
 type RustPath     = Rust.Path ()
 type RustType     = Rust.Ty ()
@@ -14,13 +15,14 @@ type RustItem     = Rust.Item ()
 type RustGenerics = Rust.Generics ()
 type RustLifetimeDef = Rust.LifetimeDef ()
 type RustTyParam = Rust.TyParam ()
+type RustWherePredicate = Rust.WherePredicate ()
 type RustWhereClause = Rust.WhereClause ()
 
 dummySpan :: Rust.Span
 dummySpan = Rust.Span Rust.NoPosition Rust.NoPosition
 
 simplePath :: Rust.Ident -> Rust.Path ()
-simplePath n = Rust.Path True [Rust.PathSegment n Nothing ()] ()
+simplePath n = Rust.Path False [Rust.PathSegment n Nothing ()] ()
 
 block :: [RustStmt] -> RustBlock
 block stmts = Rust.Block stmts Rust.Normal ()
@@ -63,18 +65,22 @@ identPat ident = Rust.IdentP bindingMode ident Nothing ()
   where
     bindingMode = Rust.ByValue Rust.Immutable
 
-todoExp :: RustExpr
-todoExp = Rust.MacExpr [] todoMac ()
+todoExp :: String -> RustExpr
+todoExp txt = Rust.MacExpr [] todoMac ()
   where
-  todoMac = Rust.Mac (simplePath "todo") (Rust.Stream []) ()
+  todoMac = Rust.Mac (simplePath "todo") (Rust.Stream [Rust.Tree arg]) ()
+  arg = Rust.Token dummySpan (Rust.LiteralTok str Nothing)
+  str = Rust.StrTok txt
 
-todoBlock :: RustBlock
-todoBlock = block [stmtNoSemi todoExp]
+todoBlock :: String -> RustBlock
+todoBlock txt = block [stmtNoSemi (todoExp txt)]
 
 exprStmt :: RustExpr -> RustStmt
 exprStmt e = Rust.NoSemi e ()
 
-mkFnItem :: Rust.Ident -> RustGenerics -> [(Rust.Ident, RustType)] -> RustType -> RustBlock ->  RustItem
+mkFnItem ::
+  Rust.Ident -> RustGenerics -> [(Rust.Ident, RustType)] -> RustType ->
+  RustBlock ->  RustItem
 mkFnItem name generics params returnTy body =
   Rust.Fn [] vis name decl unsafety constness abi generics body ()
   where
@@ -85,6 +91,39 @@ mkFnItem name generics params returnTy body =
     mkArg (n, t) = Rust.Arg (Just $ identPat n) t ()
     decl =
       Rust.FnDecl (mkArg <$> params) (Just returnTy) False ()
+
+
+--------------------------------------------------------------------------------
+
+rustSimpleType :: String -> RustType
+rustSimpleType i = Rust.PathTy Nothing path ()
+  where
+    path  = Rust.Path False [Rust.PathSegment ident Nothing ()] ()
+    ident = Rust.mkIdent i
+
+unitType :: RustType
+unitType = tupleType []
+
+tupleType :: [RustType] -> RustType
+tupleType tys = Rust.TupTy tys ()
+
+boolType :: RustType
+boolType = rustSimpleType "bool"
+
+vectorOfType :: RustType -> RustType
+vectorOfType elT = Rust.PathTy Nothing path ()
+  where
+  path   = Rust.Path False [ Rust.PathSegment "Vec" (Just params) () ] ()
+  params = Rust.AngleBracketed [] [elT] [] ()
+
+fixedArrayOfType :: RustType-> Integer -> RustType
+fixedArrayOfType ty i = Rust.Array ty sizeExpr ()
+  where
+    sizeExpr = Rust.Lit [] (Rust.Int Rust.Dec i Rust.Unsuffixed ()) ()
+
+
+
+
 
 
 
