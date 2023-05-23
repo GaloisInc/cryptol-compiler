@@ -7,6 +7,7 @@ module Cryptol.Compiler.Monad
 
     -- * Loaded Modules
   , loadModuleByPath
+  , loadModuleByName
   , getLoadedModules
 
     -- * Names of Primitives
@@ -14,6 +15,7 @@ module Cryptol.Compiler.Monad
   , getPrimDeclName
   , isPrimDecl
   , isPrimType
+  , listPrims
   , Cry.preludeName
   , Cry.floatName
 
@@ -194,6 +196,15 @@ loadModuleByPath path =
   do _ <- doModuleCmd (Cry.loadModuleByPath path)
      pure ()
 
+-- | Load a module to the compiler's environment.
+-- This will also load all of the module's dependencies.
+loadModuleByName :: Cry.ModName -> CryC ()
+loadModuleByName name =
+  do _ <- doModuleCmd (Cry.loadModuleByName name)
+     pure ()
+
+
+
 -- | Report this warning
 addWarning :: CompilerWarning -> CryC ()
 addWarning w =
@@ -255,6 +266,12 @@ isPrimDecl nm = Map.lookup nm . nameToPrimV <$> getPrims
 -- primitive name.
 isPrimType :: Cry.Name -> CryC (Maybe Cry.PrimIdent)
 isPrimType nm = Map.lookup nm . nameToPrimT <$> getPrims
+
+-- | The names of all loaded primitive values.
+listPrims :: CryC [Cry.Name]
+listPrims =
+  do ps <- getPrims
+     pure (Map.keys (nameToPrimV ps))
 
 -- | Get the map of loaded primitives.
 getPrims :: CryC Prims

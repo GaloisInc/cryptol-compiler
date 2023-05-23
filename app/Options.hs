@@ -1,22 +1,26 @@
 module Options
   ( Options(..)
+  , Command(..)
   , getOptions
+  , showHelp
   ) where
-
-import Control.Monad(when)
-import System.Exit(exitSuccess,exitFailure)
-import System.IO(stderr,hPutStrLn)
 
 import SimpleGetOpt
 
+data Command =
+    DefaultCommand
+  | ListPrimitives
+  | ShowHelp
+    deriving Show
+
 data Options = Options
-  { optShowHelp :: Bool
+  { optCommand  :: Command
   , optFiles    :: [FilePath]
   } deriving Show
 
 defaultOptions :: Options
 defaultOptions = Options
-  { optShowHelp = False
+  { optCommand  = DefaultCommand
   , optFiles    = []
   }
 
@@ -25,9 +29,13 @@ options = optSpec
   { progDescription = [ "A compiler for Cryptol" ]
 
   , progOptions =
-      [ Option [] ["help"]
+      [ Option [] ["dbg-list-primitives"]
+        "List declared primitves"
+        $ NoArg \o -> Right o { optCommand = ListPrimitives }
+
+      , Option [] ["help"]
         "Display this help"
-        $ NoArg \o -> Right o { optShowHelp = True }
+        $ NoArg \o -> Right o { optCommand = ShowHelp }
       ]
 
   , progParamDocs =
@@ -37,17 +45,9 @@ options = optSpec
   , progParams = \p o -> Right o { optFiles = p : optFiles o }
   }
 
+
 getOptions :: IO Options
-getOptions =
-  do opts <- getOpts defaultOptions options
+getOptions = getOpts defaultOptions options
 
-     when (optShowHelp opts)
-       do dumpUsage options
-          exitSuccess
-
-     when (null (optFiles opts))
-      do hPutStrLn stderr "No input files. See --help for command line options."
-         exitFailure
-
-     pure opts
-
+showHelp :: IO ()
+showHelp = dumpUsage options
