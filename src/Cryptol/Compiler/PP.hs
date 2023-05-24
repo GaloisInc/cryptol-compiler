@@ -12,7 +12,7 @@ module Cryptol.Compiler.PP
   , PPCfg(..)
 
     -- * Combinators
-  , (<+>), (<.>), hsep, hcat
+  , (<+>), (<.>), hsep, hcat, fsep
   , ($$), vcat, vsep
   , commaSep, parens, parensAfter, brackets, braces
   , nest, hang
@@ -142,6 +142,9 @@ instance Monoid Doc where
 -- | Join docuements with separation.
 hsep :: [Doc] -> Doc
 hsep = liftMany PP.hsep
+
+fsep :: [Doc] -> Doc
+fsep = liftMany PP.fsep
 
 -- | Join docuements with no separation.
 hcat :: [Doc] -> Doc

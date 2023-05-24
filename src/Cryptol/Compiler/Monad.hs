@@ -56,10 +56,12 @@ import Control.Exception
 import MonadLib
 import MonadLib qualified as MLib
 import qualified Data.ByteString as BS
+import Data.List(foldl')
 import Data.Map(Map)
 import qualified Data.Map as Map
 
 import qualified Cryptol.ModuleSystem as Cry
+import qualified Cryptol.ModuleSystem.Name as Cry
 import qualified Cryptol.ModuleSystem.Env as Cry
 import qualified Cryptol.TypeCheck.InferTypes as Cry
 import qualified Cryptol.TypeCheck.Solver.SMT as Cry
@@ -280,15 +282,45 @@ getPrims =
      case mb of
        Just done -> pure done
        Nothing ->
-         do mp <- doModuleCmd Cry.getPrimMap
-            let ps = Prims { primToName  = mp
-                           , nameToPrimV = inv (Cry.primDecls mp)
-                           , nameToPrimT = inv (Cry.primTypes mp)
-                           }
+         do ms <- getLoadedModules
+            let (nameTs,nameVs) = foldl' primsFromMod (mempty,mempty) ms
+                ps = Prims
+                        { primToName =
+                             Cry.PrimMap
+                               { Cry.primDecls = inv nameVs
+                               , Cry.primTypes = inv nameTs
+                               }
+                        , nameToPrimV = nameVs
+                        , nameToPrimT = nameTs
+                        }
             CryC (sets_ \s -> s { rwPrims = Just ps })
             pure ps
   where
-  inv mp = Map.fromList [ (x,y) | (y,x) <- Map.toList mp ]
+  inv mp = Map.fromList [ (y,x) | (x,y) <- Map.toList mp ]
+
+  primsFromMod ps m =
+    let vs = foldl' addDeclVs ps (Cry.mDecls m)
+    in foldl' addNameT vs (Map.keys (Cry.mPrimTypes m))
+
+  addDeclVs ps d =
+    case d of
+      Cry.Recursive ds -> foldl' addNameV ps (map Cry.dName ds)
+      Cry.NonRecursive de -> addNameV ps (Cry.dName de)
+
+  addNameV (ts,vs) x =
+    case addName vs x of
+      Just vs1 -> (ts,vs1)
+      Nothing  -> (ts,vs)
+
+  addNameT (ts,vs) x =
+    case addName ts x of
+      Just ts1 -> (ts1,vs)
+      Nothing  -> (ts,vs)
+
+  addName m x =
+    do pm <- Cry.asPrim x
+       pure (Map.insert x pm m)
+
 
 -- | Get the types of all top-level loaded declarations.
 getTopTypes :: CryC (Map Cry.Name Cry.Schema)

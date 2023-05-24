@@ -69,7 +69,7 @@ listPrimitives =
     | Set.null nm = methods
     | otherwise = hsep ("trait" : intersperse "+" (map pp (Set.toList nm)))
                     $$ nest 2 methods
-    where methods = vcat [ pp x <.> ":" <+> cryPP s | (x,s) <- es ]
+    where methods = vcat [ fsep [pp x <.> ":", cryPP s] | (x,s) <- es ]
 
   isClass ty =
     case Cry.tNoUser ty of
