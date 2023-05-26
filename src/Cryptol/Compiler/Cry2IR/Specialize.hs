@@ -24,7 +24,6 @@ import Cryptol.Compiler.IR.Subst
 import Cryptol.Compiler.IR.EvalType
 
 import Cryptol.Compiler.Cry2IR.Monad
-import Cryptol.Compiler.Cry2IR.InstanceMap
 
 compilePrimDecl :: Cry.Schema -> M.CryC [(FunInstance, FunType)]
 compilePrimDecl s =
