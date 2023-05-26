@@ -6,16 +6,14 @@
 fn fibs() -> impl Iterator<Item=u32> {
 
   {
-    type Element = u32;
-
     struct State {
       index:   usize,
-      history: [Element; 2]
+      history: [u32; 2]
     }
 
     impl Iterator for State {
-      type Item = Element;
-      fn next(&mut self) -> Option<Element> {
+      type Item = u32;
+      fn next(&mut self) -> Option<Self::Item> {
         let element =
           match self.index {
             0 => 0,
@@ -44,18 +42,17 @@ fn fibs() -> impl Iterator<Item=u32> {
 fn sums<I : Iterator<Item = u32>>(ps : I) -> impl Iterator<Item = u32> {
 
   {
-    type Element = u32;
 
     // Needs parameter to store the state of the external iterator
-    struct State<I : Iterator<Item = Element>> {
+    struct State<I : Iterator<Item = u32>> {
       index:   usize,
-      history: Element, // Single element, no need for array
-      ps: I             // External element
+      history: u32,           // Single element, no need for array
+      ps: I                   // External element
     }
 
-    impl<I : Iterator<Item = Element>> Iterator for State<I> {
-      type Item = Element;
-      fn next(&mut self) -> Option<Element> {
+    impl<I : Iterator<Item = u32>> Iterator for State<I> {
+      type Item = u32;
+      fn next(&mut self) -> Option<Self::Item> {
         let p = self.ps.next()?;     // Get from external
         let s = match self.index {
                   0 => 0,
@@ -73,6 +70,8 @@ fn sums<I : Iterator<Item = u32>>(ps : I) -> impl Iterator<Item = u32> {
 }
 
 
+// zig = [0] # zag
+// zag = [1] # zig
 fn zig_zag() -> (impl Iterator<Item = u32>, impl Iterator<Item = u32>) {
 
   {
@@ -84,7 +83,7 @@ fn zig_zag() -> (impl Iterator<Item = u32>, impl Iterator<Item = u32>) {
 
     impl Iterator for State {
       type Item = (u32,u32);
-      fn next(&mut self) -> Option<(u32,u32)> {
+      fn next(&mut self) -> Option<Self::Item> {
         let zig =
           match self.index {
             0 => 0,
@@ -112,6 +111,36 @@ fn zig_zag() -> (impl Iterator<Item = u32>, impl Iterator<Item = u32>) {
 
 
 
+// f : {n} (fin n, n >= 1) => [n][32] -> [inf][32]
+// f xs = ys
+//  where ys = xs # [ y + 1 | y <- ys ]
+fn extern_init(x : Vec<u32>) -> impl Iterator<Item = u32> {
+  {
+    struct State {
+      index: usize,
+      history: Vec<u32>,
+      x: Vec<u32>
+    }
+
+    impl Iterator for State {
+      type Item = u32;
+      fn next(&mut self) -> Option<Self::Item> {
+        let element =
+          if self.index < self.x.len() {
+            self.x[self.index]
+          } else {
+            self.history[ (self.index - self.x.len()) % self.x.len() ] + 1
+          };
+        self.history [ self.index % self.x.len() ] = element;
+        self.index += 1;
+        Some(element)
+      }
+    }
+
+    State { index: 0, history: x.clone(), x: x }
+  }
+}
+
 
 fn main() {
 
@@ -136,6 +165,12 @@ fn main() {
 
   print!("Zag:\n");
   for i in zag.take(5) {
+    print!("{}\n",i)
+  }
+
+  let ext = extern_init(vec![0,1]);
+  print!("Extern:\n");
+  for i in ext.take(10) {
     print!("{}\n",i)
   }
 
