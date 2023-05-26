@@ -53,17 +53,18 @@ data IRType tname =
   | TPoly tname                                   -- ^ Polymorphic
     deriving (Eq,Functor,Foldable,Traversable)
 
--- | Size types tha tcould be infinite.
+-- | Size types that could be infinite.
 data IRStreamSize tname =
     IRInfSize                                     -- ^ Infinite size
   | IRSize (IRSize tname)                         -- ^ Finite size
     deriving (Eq,Functor,Foldable,Traversable)
 
--- | The name of a size variable
+-- | The name of a size variable.
 data IRSizeName tname = IRSizeName { irsName :: tname, irsSize :: SizeVarSize }
   deriving (Eq,Ord,Functor,Foldable,Traversable)
 
--- | Size types
+-- | Size "types".  These are typically not erased, to they are really values.
+-- These are supposed to be finite.
 data IRSize tname =
     IRFixedSize Integer                           -- ^ A specific size
   | IRPolySize (IRSizeName tname)                 -- ^ Polymorphic size; finite
