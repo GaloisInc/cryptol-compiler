@@ -1,3 +1,4 @@
 #!/bin/bash
 
-cp -r $(./scripts/haddock-dir) doc/haddock
+rm -rf docs/haddock
+cp -r $(./scripts/haddock-dir) docs/haddock
