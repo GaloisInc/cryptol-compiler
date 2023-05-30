@@ -1,0 +1,7 @@
+#/bin/bash
+
+dirname \
+  $( find ./dist-newstyle -name 'index.html' \
+   | grep $(./scripts/ghc-version) \
+   | grep cryptol-compiler \
+   )
