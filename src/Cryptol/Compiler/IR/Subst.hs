@@ -143,6 +143,21 @@ instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
        IRLet x e1 e2 ->
         do (x',(e1',e2')) <- apSubstMaybe su (x,(e1,e2))
            pure (IRLet x' e1' e2')
+       IRStream s -> IRStream <$> apSubstMaybe su s
+
+instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
+  ApSubst (IRStreamExpr tname name expr) where
+  apSubstMaybe su expr =
+    do (defs,entries) <- apSubstMaybe su (irseDecls expr, irseEntries expr)
+       pure expr { irseDecls = defs, irseEntries = entries }
+
+instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
+  ApSubst (IRStreamDef tname name expr) where
+  apSubstMaybe su def =
+    do (hist,expr) <- apSubstMaybe su (irsdHistory def, irsdDef def)
+       pure def { irsdHistory = hist, irsdDef = expr }
+
+
 
 instance (Ord tname) => ApSubst (IRTopFunCall tname name) where
   apSubstMaybe su (IRTopFunCall f ts sz) =

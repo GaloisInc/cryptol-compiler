@@ -1,13 +1,13 @@
 -- | Basic IR for code generation.
 module Cryptol.Compiler.IR
   ( module Cryptol.Compiler.IR
-  , module Exp
+  , module Exported
   ) where
 
 import Cryptol.Compiler.PP
-import Cryptol.Compiler.IR.Common as Exp
-import Cryptol.Compiler.IR.Type   as Exp
-import Cryptol.Compiler.IR.Prims  as Exp
+import Cryptol.Compiler.IR.Common as Exported
+import Cryptol.Compiler.IR.Type   as Exported
+import Cryptol.Compiler.IR.Prims  as Exported
 
 --------------------------------------------------------------------------------
 
@@ -62,6 +62,7 @@ data IRExprF tname name expr =
   | IRLam [IRName tname name] expr        -- ^ Lambda
   | IRIf expr expr expr
   | IRLet (IRName tname name) expr expr
+  | IRStream (IRStreamExpr tname name expr)
     deriving (Functor,Foldable,Traversable)
 
 
@@ -92,6 +93,44 @@ data IRCall tname name expr =
     , ircArgs     :: [expr]           -- ^ Available arguments
     } deriving (Functor,Foldable,Traversable)
 
+
+-- | A group of stream equations.
+data IRStreamExpr tname name expr =
+  IRStreamExpr
+    { irseCurIndex :: IRSizeName tname
+      {- ^ Name used to refer to the current index.
+           This becomes a parmater to the `next` function for the stream,
+           and may be used in the body (e.g., to decide if we are in the
+           base case or in the recursive case.
+       -}
+
+    , irseDecls :: [ IRStreamDef tname name expr ]
+      {- ^ Defines how to compute the next element of a stream.
+         An expression may use the values of any history variables,
+         or of previously defined expressions in the list
+         XXX: shall we allow the latter?.
+
+        This can be used to define the body of the `next` function.
+      -}
+
+    , irseEntries :: [IRName tname name]
+      {- ^ Streams whose values are used outside the recursive group.
+         Each of these needs its own copy of the *entire* steram state, as they
+         may be consumed in different ways.
+
+         If this is a singleton, we treat the expression as a single stream.
+         If there are more than one entries, then we generate a tuple.
+      -}
+    } deriving (Functor,Foldable,Traversable)
+
+
+-- | A stream equation, and information about its history.
+data IRStreamDef tname name expr = IRStreamDef
+  { irsdName    :: IRName tname name
+  , irsdHistory :: IRStreamSize tname
+  , irsdDef     :: expr
+  } deriving (Functor,Foldable,Traversable)
+
 --------------------------------------------------------------------------------
 -- Computing Types
 
@@ -103,6 +142,8 @@ type instance TName (IRExprF tname name expr) = tname
 type instance TName (IRCall tname name expr) = tname
 type instance TName (IRTopFunCall tname name) = tname
 type instance TName (IRCallable tname name expr) = tname
+type instance TName (IRStreamExpr tname name expr) = tname
+type instance TName (IRStreamDef tname name expr) = tname
 
 type family VName a
 type instance VName [a]       = VName a
@@ -117,6 +158,8 @@ type instance VName (IRExprF tname name expr) = name
 type instance VName (IRCall tname name expr) = name
 type instance VName (IRTopFunCall tname name) = name
 type instance VName (IRCallable tname name expr) = name
+type instance VName (IRStreamExpr tname name expr) = name
+type instance VName (IRStreamDef tname name expr) = name
 
 
 
@@ -138,6 +181,14 @@ instance (HasType expr, TName expr ~ tname) =>
       IRLam xs e        -> TFun (map typeOf xs) (typeOf e)
       IRIf _ x _        -> typeOf x
       IRLet _ _ e       -> typeOf e
+      IRStream e        -> typeOf e
+
+instance (HasType expr, TName expr ~ tname) =>
+  HasType (IRStreamExpr tname name expr) where
+  typeOf expr =
+    case map typeOf (irseEntries expr) of
+      [t] -> t
+      ts  -> TTuple ts
 
 instance HasType (IRCall tname name expr) where
   typeOf = ircResType
@@ -223,6 +274,22 @@ instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
         parensAfter 0 $
         withPrec 0 $
         hang (withTypes (hcat [ "|", commaSep (map pp xs), "|" ])) 2 (pp e)
+
+      IRStream e -> pp e
+
+
+instance (PP tname, PP name, PP expr) =>
+  PP (IRStreamExpr tname name expr) where
+  pp expr =
+    "stream" <+> "{"
+      $$ nest 2 (vcat (map pp (irseDecls expr)))
+      $$ "}"
+
+instance (PP tname, PP name, PP expr) =>
+  PP (IRStreamDef tname name expr) where
+  pp d =
+    fsep [ pp (irsdName d), "{", pp (irsdHistory d), "}", "=", pp (irsdDef d) ]
+
 
 
 instance (PP tname, PP name) => PP (IRExpr tname name) where

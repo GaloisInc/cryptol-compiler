@@ -12,7 +12,7 @@ rename renT ren =
       ?rename  = ren
   in renameIP
 
-type RenFuns f ta a tb b = 
+type RenFuns f ta a tb b =
   ( ?renameT :: ta -> f tb
   , ?rename  ::  a -> f b
   )
@@ -54,6 +54,21 @@ instance RenameF IRExprF where
       IRLam xs e    -> IRLam <$> traverse renameIP xs <*> e
       IRIf e1 e2 e3 -> IRIf <$> e1 <*> e2 <*> e3
       IRLet x e1 e2 -> IRLet <$> renameIP x <*> e1 <*> e2
+      IRStream s    -> IRStream <$> frenameIP s
+
+instance RenameF IRStreamExpr where
+  frenameIP expr =
+    IRStreamExpr
+       <$> traverse ?renameT (irseCurIndex expr)
+       <*> traverse frenameIP (irseDecls expr)
+       <*> traverse renameIP (irseEntries expr)
+
+instance RenameF IRStreamDef where
+  frenameIP expr =
+    IRStreamDef
+      <$> renameIP (irsdName expr)
+      <*> traverse ?renameT (irsdHistory expr)
+      <*> irsdDef expr
 
 instance RenameF IRCall where
   frenameIP c =

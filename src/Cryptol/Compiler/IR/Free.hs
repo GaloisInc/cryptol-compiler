@@ -74,12 +74,35 @@ instance
   FreeNames (IRExprF tname name expr) where
   freeNames expr =
     case expr of
-      IRVar x       -> singleFreeLocal x
-      IRCallFun c   -> freeNames c
-      IRClosure c   -> freeNames c
-      IRLam xs e    -> foldr removeLocal (freeNames e) xs
-      IRIf e1 e2 e3 -> freeNames (e1,(e2,e3))
-      IRLet x e1 e2 -> freeNames e1 <> removeLocal x (freeNames e2)
+      IRVar x         -> singleFreeLocal x
+      IRCallFun c     -> freeNames c
+      IRClosure c     -> freeNames c
+      IRLam xs e      -> foldr removeLocal (freeNames e) xs
+      IRIf e1 e2 e3   -> freeNames (e1,(e2,e3))
+      IRLet x e1 e2   -> freeNames e1 <> removeLocal x (freeNames e2)
+      IRStream e      -> freeNames e
+
+instance
+  (FreeNames expr, TName expr ~ tname, VName expr ~ name, Ord name) =>
+  FreeNames (IRStreamExpr tname name expr) where
+  freeNames expr =
+    Free
+      { freeTop    = freeTop defFree
+      , freeLocals = locals
+      , freeSize   = sizes
+      }
+    where
+    defFree       = freeNames (irseDecls expr)
+    streamVars    = Set.fromList (map irsdName (irseDecls expr))
+
+    locals        = Set.difference (freeLocals defFree) streamVars
+    sizes         = Set.delete (irseCurIndex expr) (freeSize defFree)
+
+
+instance
+  (FreeNames expr, TName expr ~ tname, VName expr ~ name, Ord name) =>
+  FreeNames (IRStreamDef tname name expr) where
+  freeNames d = freeNames (irsdDef d)
 
 instance (Ord tname, Ord name) => FreeNames (IRExpr tname name) where
   freeNames (IRExpr e) = freeNames e

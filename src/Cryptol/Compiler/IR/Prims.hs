@@ -22,6 +22,12 @@ data IRPrim =
     -- ^ select_n_of_N(tuple)
     -- Index `n`-th element in a tuple of size `N`
 
+  | EqSize
+    -- ^ Check if two sizes are the same.  They are in the size args of the call
+
+  | LeqSize
+    -- ^ Compare two size types.  They are in the size args of the call
+
     -- Iterators
   | Map       -- ^ (xs : Stream n a, f : a -> b) -> Stream n b
   | FlatMap   -- ^ (xs : Stream m a, f : a -> Stream n b) -> Stream (m*n) b
@@ -32,6 +38,11 @@ data IRPrim =
 
   | Iter      -- ^   (xs : Array n a)  -> Stream n a
               -- or  (xs : Wor n)      -> Stream n Bit
+
+  | LookupHistory
+    -- ^ The index to look at is in the *size* args of the call
+    -- The parameter is the name of the history variable
+
 
     deriving (Show,Eq,Ord)
 
