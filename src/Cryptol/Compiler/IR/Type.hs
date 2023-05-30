@@ -5,6 +5,9 @@ module Cryptol.Compiler.IR.Type
   , Cry.Nat'(..)
   ) where
 
+import Data.Map(Map)
+import Data.Map qualified as Map
+
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.TypeCheck.TCon qualified as Cry
 
@@ -14,7 +17,8 @@ import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Common
 
 
-data IRTrait tname = IRTrait IRTraitName tname
+data IRTrait tname =
+  IRTrait { irTraitName :: IRTraitName, irTraitType :: tname }
   deriving (Functor, Foldable, Traversable)
 
 data IRTraitName =
@@ -103,12 +107,14 @@ type instance TName (a,b)     = TName b
 --------------------------------------------------------------------------------
 -- Common utilities
 
+-- | Is this a known size type or infinity.
 isKnownStreamSize :: IRStreamSize tname  -> Maybe Cry.Nat'
 isKnownStreamSize s =
   case s of
     IRInfSize -> Just Cry.Inf
     IRSize si -> Cry.Nat <$> isKnownSize si
 
+-- | Is this a known size type.
 isKnownSize :: IRSize tname -> Maybe Integer
 isKnownSize sz =
   case sz of
@@ -116,6 +122,10 @@ isKnownSize sz =
     IRPolySize {}     -> Nothing
     IRComputedSize {} -> Nothing
 
+-- | Group traits by their variable name.
+traitMap :: Ord tname => [IRTrait tname] -> Map tname [IRTraitName]
+traitMap ts =
+  Map.fromListWith (++) [ (irTraitType t, [irTraitName t]) | t <- ts ]
 
 
 
