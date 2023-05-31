@@ -17,10 +17,12 @@ import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Common
 
 
+-- | A constraint on a type parameter.
 data IRTrait tname =
   IRTrait { irTraitName :: IRTraitName, irTraitType :: tname }
   deriving (Functor, Foldable, Traversable)
 
+-- | Names of constraints (aka traits in Rust, classes in Haskell).
 data IRTraitName =
     PZero
   | PLogic
@@ -38,7 +40,7 @@ data IRTraitName =
     deriving (Eq,Ord)
 
 
--- | Value types
+-- | Value types.
 data IRType tname =
     TBool                                         -- ^ Boolean
   | TInteger                                      -- ^ Unbounded integer
@@ -76,13 +78,13 @@ data IRSize tname =
     deriving (Eq,Functor,Foldable,Traversable)
 
 
--- | The type of a function declaration
+-- | The type of a function.
 data IRFunType tname = IRFunType
-  { ftTypeParams :: [tname]
-  , ftTraits     :: [IRTrait tname]
-  , ftSizeParams :: [IRSizeName tname]
-  , ftParams     :: [IRType tname]
-  , ftResult     :: IRType tname
+  { ftTypeParams :: [tname]            -- ^ Value type parameters.
+  , ftTraits     :: [IRTrait tname]    -- ^ Constraints on the type paramters.
+  , ftSizeParams :: [IRSizeName tname] -- ^ Size parameters.
+  , ftParams     :: [IRType tname]     -- ^ Normal parameters.
+  , ftResult     :: IRType tname       -- ^ Function result.
   } deriving (Functor, Foldable, Traversable)
 
 

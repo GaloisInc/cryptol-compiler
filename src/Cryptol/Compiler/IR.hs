@@ -1,13 +1,60 @@
 -- | Basic IR for code generation.
 module Cryptol.Compiler.IR
-  ( module Cryptol.Compiler.IR
-  , module Exported
+  ( -- * Functions
+    IRFunDecl(..)
+  , IRFunDef(..)
+  , IRFunName(..)
+  , IRFunNameFlavor(..)
+  , IRPrim(..)
+  , FunInstance(..)
+  , ParamInfo(..)
+
+    -- * Expressions
+  , IRExpr(..)
+  , IRExprF(..)
+
+    -- ** Local Names
+  , IRName(..)
+
+    -- ** Function Calls
+  , IRCall(..)
+  , IRCallable(..)
+  , IRTopFunCall(..)
+
+    -- ** Streams
+  , IRStreamExpr(..)
+  , IRStreamDef(..)
+
+    -- * Types
+  , IRType(..)
+  , HasType(..)
+
+    -- ** Size "Types"
+  , IRStreamSize(..)
+  , IRSize(..)
+  , IRSizeName(..)
+  , SizeVarSize(..)
+  , isKnownStreamSize
+  , isKnownSize
+
+    -- ** Function Types
+  , IRFunType(..)
+
+    -- ** Traits
+  , IRTrait(..)
+  , IRTraitName
+  , traitMap
+
+    -- * Type functions
+  , VName
+  , TName
+
   ) where
 
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Common as Exported
 import Cryptol.Compiler.IR.Type   as Exported
-import Cryptol.Compiler.IR.Prims  as Exported
+import Cryptol.Compiler.IR.Prims
 
 --------------------------------------------------------------------------------
 
@@ -36,7 +83,7 @@ instance Eq name => Eq (IRName tname name) where
 instance Ord name => Ord (IRName tname name) where
   compare (IRName x _) (IRName y _) = compare x y
 
--- | A function declaration
+-- | A function declaration.
 data IRFunDecl tname name =
   IRFunDecl
     { irfName       :: IRFunName name
@@ -46,8 +93,11 @@ data IRFunDecl tname name =
 
 -- | The definition of a top-level function.
 data IRFunDef tname name =
-    IRFunPrim
+    IRFunPrim                             -- ^ A primitive function.
   | IRFunDef [name] (IRExpr tname name)
+    -- ^ Function with definition.
+    -- Includes names of the function parameters.
+    -- Their types are in the function's type.
 
 -- | Expressions
 newtype IRExpr tname name = IRExpr (IRExprF tname name (IRExpr tname name))
