@@ -2,6 +2,7 @@ module Cryptol.Compiler.Cry2IR.Specialize
   ( compileFunDecl
   , compilePrimDecl
   , compileValType
+  , compileSizeType
   , compileStreamSizeType
   ) where
 
@@ -148,12 +149,8 @@ compileValType ty =
 
             Cry.TCIntMod ->
               case ts of
-                [ sz ] ->
-                  do csz <- compileStreamSizeType sz
-                     case csz of
-                       IRSize s  -> pure (TIntegerMod s)
-                       IRInfSize -> unexpected "TCIntMod Inf"
-                _ -> unexpected "Malformed TCIntMod"
+                [ sz ] -> TIntegerMod <$> compileSizeType sz
+                _      -> unexpected "Malformed TCIntMod"
 
 
             Cry.TCSeq ->
@@ -209,6 +206,14 @@ compileValType ty =
   where
   unexpected msg = panic "compileValType" [msg]
 
+
+-- | Compile a known finite Cryptol size type to an IR type.
+compileSizeType :: Cry.Type -> SpecM Size
+compileSizeType ty =
+  do sz <- compileStreamSizeType ty
+     case sz of
+       IRSize s -> pure s
+       IRInfSize -> panic "compileSizeType" ["inf"]
 
 -- | Compile a Cryptol size type to an IR type.
 compileStreamSizeType :: Cry.Type -> SpecM StreamSize
