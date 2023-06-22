@@ -42,10 +42,19 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
   /// Extra padding space
   const PAD: usize       = Self::BITS - W;
 
+  /// Clear up any bits in the least significant position of the full Uint
+  pub fn fix_underflow(&mut self) {
+    if Self::PAD == 0 { return; }
+    let BitVec(me) = self;
+    let buf = me.as_words_mut();
+    let mask : c::Word = ! ((1 << Self::PAD) - 1);
+    buf[0] &= mask
+  }
 
   /// Convert to Uint from crypto_bigint
   pub fn to_uint(&self) -> c::Uint<L> {
     let BitVec(v) = self;
+    if Self::PAD == 0 { return *v }
     v >> Self::PAD
   }
 
@@ -53,6 +62,7 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
   /// Construct using a Uint from `crypto-bigint`.
   pub fn from_uint(x: c::Uint<L>) -> Self {
     let _ = Self::SIZE_OK;
+    if Self::PAD == 0 { return BitVec(x) }
     BitVec(x << Self::PAD)
   }
 
@@ -115,9 +125,11 @@ impl<const W: usize, const L: usize> Div for &BitVec<W,L> {
   type Output = BitVec<W,L>;
 
   fn div(self, other: Self) -> Self::Output {
-    let lhs = self.to_uint();
+    let BitVec(lhs) = self;
     let rhs = other.to_uint();
-    Self::Output::from_uint(lhs.wrapping_div(&rhs))
+    let mut result = BitVec(lhs.wrapping_div(&rhs));
+    result.fix_underflow();
+    result
   }
 }
 
