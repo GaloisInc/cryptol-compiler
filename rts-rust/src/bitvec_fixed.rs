@@ -18,7 +18,7 @@ pub const fn limbs_for_bits(w: usize) -> usize {
 }
 
 #[macro_export]
-/// A conveninet way to write a `BitVec` type without having to specify
+/// A convenient way to write a `BitVec` type without having to specify
 /// the number of limbs.
 macro_rules! BitVec {
 
