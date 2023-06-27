@@ -9,7 +9,7 @@ use num::bigint as n;
 /// The unused least significant bits are set to 0.  This representation allows
 /// us to reuse many operations without any additional overhead
 /// (e.g., add, compare, etc).
-#[derive(Debug,PartialEq,Eq)]
+#[derive(Debug,PartialEq,Eq,Clone)]
 pub struct BitVec<const W: usize, const L: usize>(pub c::Uint<L>);
 
 pub const fn limbs_for_bits(w: usize) -> usize {
@@ -64,8 +64,23 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
 // -----------------------------------------------------------------------------
 // From
 
-impl<const W: usize, const L: usize> From<&n::BigUint> for BitVec<W,L> {
 
+// From u64
+impl<const W: usize, const L: usize> From<u64> for BitVec<W,L> {
+  fn from(x : u64) -> Self { Self::from(<c::Uint<L>>::from_u64(x)) }
+}
+
+
+// From u128
+impl<const W: usize, const L: usize> From<u128> for BitVec<W,L> {
+  fn from(x : u128) -> Self { Self::from(<c::Uint<L>>::from_u128(x)) }
+}
+
+
+
+
+// From Integer
+impl<const W: usize, const L: usize> From<&n::BigUint> for BitVec<W,L> {
   fn from(n: &n::BigUint) -> Self {
     let mut result = < c::Uint<L> >::default();
     let buf        = result.as_words_mut();
@@ -82,9 +97,7 @@ impl<const W: usize, const L: usize> From<c::Uint<L>> for BitVec<W,L> {
   }
 }
 
-impl<const W: usize, const L: usize> From<u64> for BitVec<W,L> {
-  fn from(x : u64) -> Self { Self::from(<c::Uint<L>>::from_u64(x)) }
-}
+
 // -----------------------------------------------------------------------------
 
 
@@ -115,7 +128,7 @@ impl<const W: usize, const L: usize> Neg for &BitVec<W,L> {
   type Output = BitVec<W,L>;
 
   fn neg(self) -> Self::Output {
-    let x = BitVec::<W,L>::from(0);
+    let x = BitVec::<W,L>::from(0_u64);
     &x - self
   }
 }
@@ -214,6 +227,31 @@ macro_rules! append {
 }
 
 
+impl<const W: usize, const L: usize> BitVec<W,L> {
+  pub fn join<const N: usize, const EW: usize, const EL: usize>
+    (xs: &[ BitVec<EW,EL>; N ]) -> Self {
+
+    assert_eq!(N * EW, W);
+    assert_eq!(L, limbs_for_bits(W));
+
+    let mut uint_out : c::Uint<L> = Default::default();
+    let out = uint_out.as_words_mut();
+    if EW == 0 { return BitVec(uint_out); }
+
+    let pad_el = BitVec::<EW,EL>::PAD;
+
+    if pad_el == 0 {
+      for i in 0 .. N {
+        let BitVec(el) = xs[i];
+        out[ (L - (i+1) * EL) .. (L - i * EL) ].copy_from_slice(el.as_words());
+      }
+    } else {
+      todo!(); // XXX
+    }
+
+    BitVec(uint_out)
+  }
+}
 
 
 
@@ -222,10 +260,11 @@ macro_rules! append {
 #[cfg(test)]
 mod tests {
   use num::bigint::ToBigUint;
+  use super::*;
 
   #[test]
   fn test_append() {
-    let x0  = <BitVec!(0)>::from(0);
+    let x0  = <BitVec!(0)>::from(0_u64);
 
     let v1 : u64 = 0b1;
     let x1  = <BitVec!(1)>::from(v1);
@@ -242,8 +281,8 @@ mod tests {
     assert_eq!(append!(0,0,&x0,&x0), x0);
     assert_eq!(append!(0,1,&x0,&x1), x1);
     assert_eq!(append!(1,0,&x1,&x0), x1);
-    assert_eq!(append!(5,1,&x5,&x1),   <BitVec!(6)>::from(0b100011));
-    assert_eq!(append!(1,5,&x1,&x5),   <BitVec!(6)>::from(0b110001));
+    assert_eq!(append!(5,1,&x5,&x1),   <BitVec!(6)>::from(0b100011_u64));
+    assert_eq!(append!(1,5,&x1,&x5),   <BitVec!(6)>::from(0b110001_u64));
 
     let m = (((v1 as u128) << 64) | (v64 as u128)).to_biguint().unwrap();
     assert_eq!(append!(1,64,&x1,&x64), <BitVec!(65)>::from(&m));
@@ -251,6 +290,16 @@ mod tests {
     let m1 = (((v64 as u128) << 1) | (v1 as u128)).to_biguint().unwrap();
     assert_eq!(append!(64,1,&x64,&x1), <BitVec!(65)>::from(&m1));
 
+  }
+
+  #[test]
+  fn test_join() {
+    let v64 : u64 = (1 << 63) + 3;
+    let x64 = <BitVec!(64)>::from(v64);
+
+    let v128 = ((v64 as u128) << 64) | (v64 as u128);
+    let arr  = [x64.clone(),x64];
+    assert_eq!(<BitVec!(128)>::join(&arr), <BitVec!(128)>::from(v128));
   }
 
 }
