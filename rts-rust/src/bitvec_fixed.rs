@@ -9,7 +9,7 @@ use num::bigint as n;
 /// The unused least significant bits are set to 0.  This representation allows
 /// us to reuse many operations without any additional overhead
 /// (e.g., add, compare, etc).
-#[derive(Debug,PartialEq,Eq,Clone)]
+#[derive(Debug,PartialEq,Eq,Copy,Clone)]
 pub struct BitVec<const W: usize, const L: usize>(pub c::Uint<L>);
 
 pub const fn limbs_for_bits(w: usize) -> usize {
@@ -35,8 +35,6 @@ macro_rules! BitVec {
 
 impl<const W: usize, const L: usize> BitVec<W,L> {
 
-  const SIZE_OK: ()          = assert!(limbs_for_bits(W) == L);
-
   /// Total number of bits in the underlying type
   pub const BITS: usize      = L * c::Limb::BITS;
 
@@ -58,22 +56,50 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
     if Self::PAD == 0 { return *v }
     v >> Self::PAD
   }
+
+  /// Expose internal representation
+  pub fn as_words(&self) -> &[c::Word] {
+    let BitVec(v) = self;
+    v.as_words()
+  }
+
+  /// Expose internal representation
+  pub fn as_words_mut(&mut self) -> &mut [c::Word] {
+    let BitVec(v) = self;
+    v.as_words_mut()
+  }
+
 }
+
 
 
 // -----------------------------------------------------------------------------
 // From
 
 
+// From u32
+impl<const W: usize, const L: usize> From<u32> for BitVec<W,L> {
+  fn from(x : u32) -> Self {
+    Self::from(<c::Uint<L>>::from_u64((x as u64) << 32))
+  }
+}
+
+
 // From u64
 impl<const W: usize, const L: usize> From<u64> for BitVec<W,L> {
-  fn from(x : u64) -> Self { Self::from(<c::Uint<L>>::from_u64(x)) }
+  fn from(x : u64) -> Self {
+    Self::from(<c::Uint<L>>::from(x))
+  }
 }
 
 
 // From u128
 impl<const W: usize, const L: usize> From<u128> for BitVec<W,L> {
-  fn from(x : u128) -> Self { Self::from(<c::Uint<L>>::from_u128(x)) }
+  fn from(x : u128) -> Self {
+    if L < 128 / c::Limb::BITS {
+      Self::from(x as u64) } else { Self::from(<c::Uint<L>>::from(x))
+    }
+  }
 }
 
 
@@ -82,6 +108,7 @@ impl<const W: usize, const L: usize> From<u128> for BitVec<W,L> {
 // From Integer
 impl<const W: usize, const L: usize> From<&n::BigUint> for BitVec<W,L> {
   fn from(n: &n::BigUint) -> Self {
+    // XXX: assert that it fits?
     let mut result = < c::Uint<L> >::default();
     let buf        = result.as_words_mut();
     for (r,d) in buf.iter_mut().zip(n.iter_u64_digits()) { *r = d }
@@ -91,7 +118,7 @@ impl<const W: usize, const L: usize> From<&n::BigUint> for BitVec<W,L> {
 
 impl<const W: usize, const L: usize> From<c::Uint<L>> for BitVec<W,L> {
   fn from(x: c::Uint<L>) -> Self {
-    let _ = Self::SIZE_OK;
+    assert_eq!(L, limbs_for_bits(W));
     if Self::PAD == 0 { return BitVec(x) }
     BitVec(x << Self::PAD)
   }
@@ -158,6 +185,7 @@ impl<const W: usize, const L: usize> Div for &BitVec<W,L> {
 impl<const W: usize, const L: usize> Rem for &BitVec<W,L> {
   type Output = BitVec<W,L>;
 
+  // XXX: do we need both to_uint?
   fn rem(self, other: Self) -> Self::Output {
     let lhs = self.to_uint();
     let rhs = other.to_uint();
@@ -178,12 +206,10 @@ impl<const WU: usize, const LU: usize> BitVec<WU,LU> {
     >
     (&self, lower_bv: &BitVec<WL,LL>) -> BitVec<WO,LO> {
 
-    let BitVec(uint_upper) = self;
-    let BitVec(uint_lower) = lower_bv;
-    let upper              = uint_upper.as_words();
-    let lower              = uint_lower.as_words();
+    let upper = self.as_words();
+    let lower = lower_bv.as_words();
     let mut uint_out : c::Uint<LO> = Default::default();
-    let out                = uint_out.as_words_mut();
+    let out = uint_out.as_words_mut();
 
     assert_eq!(LU, upper.len());
     assert_eq!(LL, lower.len());
@@ -217,40 +243,104 @@ impl<const WU: usize, const LU: usize> BitVec<WU,LU> {
 
 #[macro_export]
 macro_rules! append {
-  ($W1:expr,$W2:expr,$xs:expr,$ys:expr) => { {
-    const L2: usize = $crate::bitvec_fixed::limbs_for_bits($W2);
-    const W3: usize = $W1 + $W2;
+  ($FRONT:expr,$BACK:expr,$xs:expr,$ys:expr) => { {
+    const L2: usize = $crate::bitvec_fixed::limbs_for_bits($BACK);
+    const W3: usize = $FRONT + $BACK;
     const L3: usize = $crate::bitvec_fixed::limbs_for_bits(W3);
-    $xs.append::<$W2, L2, W3, L3>($ys)
+    $xs.append::<$BACK, L2, W3, L3>($ys)
   } }
 
 }
 
 
 impl<const W: usize, const L: usize> BitVec<W,L> {
-  pub fn join<const N: usize, const EW: usize, const EL: usize>
-    (xs: &[ BitVec<EW,EL>; N ]) -> Self {
 
-    assert_eq!(N * EW, W);
+  // Big endian, like Cryptol
+  pub fn join<const PARTS: usize, const EACH: usize, const EACH_L: usize>
+    (xs: &[ BitVec<EACH,EACH_L>; PARTS ]) -> Self {
+
+    assert_eq!(PARTS * EACH, W);
     assert_eq!(L, limbs_for_bits(W));
 
     let mut uint_out : c::Uint<L> = Default::default();
     let out = uint_out.as_words_mut();
-    if EW == 0 { return BitVec(uint_out); }
 
-    let pad_el = BitVec::<EW,EL>::PAD;
+    // Joining 0 bit vectors
+    if EACH == 0 || PARTS == 0 { return BitVec(uint_out); }
+
+    let pad_el    = BitVec::<EACH,EACH_L>::PAD;
+    let have_last = c::Limb::BITS - pad_el; // valid bits in 0 word
+
 
     if pad_el == 0 {
-      for i in 0 .. N {
-        let BitVec(el) = xs[i];
-        out[ (L - (i+1) * EL) .. (L - i * EL) ].copy_from_slice(el.as_words());
+
+      // Copy full limbs
+      for i in 0 .. PARTS  {
+        out[(L - (i+1) * EACH_L) .. (L - i * EACH_L)]
+           .copy_from_slice(xs[i].as_words());
       }
+
     } else {
-      todo!(); // XXX
+
+      let mut buf    = 0;                  // partial word to output
+      let mut have   = 0;
+      let mut out_ix = L;
+      // 1 bigger than where we want write,
+      // so that we don't wrap on last iteration.
+
+      for bitvec in xs {
+
+        let ws = bitvec.as_words();
+
+        if have == 0 {
+          out[ (out_ix - EACH_L + 1) .. out_ix ].copy_from_slice(&ws[1..]);
+          buf     = ws[0];
+          have    = c::Limb::BITS - pad_el;
+          out_ix -= EACH_L - 1;
+        } else {
+
+          // Copy upper full words
+          for j in (1 .. EACH_L).rev() {
+            let w = ws[j];
+            buf |= w >> have;
+            out_ix -= 1;      // pre-decrement, as we are 1 bigger.
+            out[out_ix] = buf;
+            buf  = w << (c::Limb::BITS - have);
+          }
+
+          // Last word is not full
+          let w = ws[0];
+          buf |= w >> have;
+          have += have_last;
+
+          if have >= c::Limb::BITS {
+            out_ix -= 1;
+            out[out_ix] = buf;
+            have -= c::Limb::BITS;
+            buf = w << (c::Limb::BITS - have - pad_el);
+          }
+        }
+      }
+
+      // Do we have any leftovers
+      if have > 0 { out[0] = buf; }
     }
 
     BitVec(uint_out)
   }
+}
+
+
+#[macro_export]
+macro_rules! join {
+  ($PARTS:expr,$EACH:expr,$xs:expr) => { {
+    const EACH_L: usize = $crate::bitvec_fixed::limbs_for_bits($EACH);
+    const OUT_W:  usize = $PARTS * $EACH;
+    const OUT_L:  usize = $crate::bitvec_fixed::limbs_for_bits(OUT_W);
+    $crate::bitvec_fixed
+        ::BitVec::<OUT_W,OUT_L>::join::<{$PARTS},{$EACH},EACH_L>($xs)
+  } }
+
 }
 
 
@@ -260,7 +350,7 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
 #[cfg(test)]
 mod tests {
   use num::bigint::ToBigUint;
-  use super::*;
+  use num::bigint::BigUint;
 
   #[test]
   fn test_append() {
@@ -299,7 +389,23 @@ mod tests {
 
     let v128 = ((v64 as u128) << 64) | (v64 as u128);
     let arr  = [x64.clone(),x64];
-    assert_eq!(<BitVec!(128)>::join(&arr), <BitVec!(128)>::from(v128));
+    assert_eq!(join!(2,64,&arr), <BitVec!(128)>::from(v128));
+
+    let x1 = <BitVec!(1)>::from(1_u64);
+    let arr2  = [x1.clone(),x1.clone(),x1];
+    assert_eq!(join!(3,1,&arr2)
+              , <BitVec!(3)>::from(0b111_u64));
+
+    let ans = u32::MAX as u128;
+    assert_eq!( join!(3,32, &[ <BitVec!(32)>::from(ans); 3 ])
+              , <BitVec!(96)>::from((ans << 64) | (ans << 32) | ans)
+              );
+
+    assert_eq!( join!(3,63, &[ <BitVec!(63)>::from(0x0123456789abcdef_u64); 3 ])
+              , <BitVec!(189)>::from(&"6974557483762978536120337476781526266153645112264740335".parse::<BigUint>().unwrap())
+              );
+
+
   }
 
 }
