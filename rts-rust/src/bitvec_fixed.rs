@@ -69,6 +69,16 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
     v.as_words_mut()
   }
 
+  pub fn index_front(&self, i: usize) -> bool {
+    let BitVec(uint) = self;
+    uint.bit_vartime(c::Uint::<L>::BITS - 1 - i)
+  }
+
+  pub fn index_back(&self, i: usize) -> bool {
+    let BitVec(uint) = self;
+    uint.bit_vartime(i + Self::PAD)
+  }
+
 }
 
 
@@ -92,23 +102,20 @@ impl<const W: usize, const L: usize> From<u64> for BitVec<W,L> {
   }
 }
 
-
 // From u128
 impl<const W: usize, const L: usize> From<u128> for BitVec<W,L> {
   fn from(x : u128) -> Self {
     if L < 128 / c::Limb::BITS {
-      Self::from(x as u64) } else { Self::from(<c::Uint<L>>::from(x))
+      Self::from(x as u64)
+    } else {
+      Self::from(<c::Uint<L>>::from(x))
     }
   }
 }
 
-
-
-
 // From Integer
 impl<const W: usize, const L: usize> From<&n::BigUint> for BitVec<W,L> {
   fn from(n: &n::BigUint) -> Self {
-    // XXX: assert that it fits?
     let mut result = < c::Uint<L> >::default();
     let buf        = result.as_words_mut();
     for (r,d) in buf.iter_mut().zip(n.iter_u64_digits()) { *r = d }
@@ -344,6 +351,39 @@ macro_rules! join {
 }
 
 
+// -----------------------------------------------------------------------------
+// Traversal
+
+impl<const W: usize, const L: usize> BitVec<W,L> {
+
+  pub fn traverse_bits<'a>(&'a self) -> impl Iterator<Item = bool> + 'a {
+
+    struct S<'a, const W: usize, const L: usize> {
+      vec: &'a BitVec<W,L>,
+      ix: usize
+    }
+
+    impl<'b, const W: usize, const L: usize> Iterator for S<'b, W,L> {
+      type Item = bool;
+      fn next(&mut self) -> Option<Self::Item> {
+        if self.ix >= W {
+          None
+        } else {
+          let i = self.ix;
+          self.ix += 1;
+          Some(self.vec.index_front(i))
+        }
+      }
+    }
+
+    S::<'a,W,L> { vec: self, ix: 0 }
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Formatting
+// XXX
+
 
 
 
@@ -405,7 +445,36 @@ mod tests {
               , <BitVec!(189)>::from(&"6974557483762978536120337476781526266153645112264740335".parse::<BigUint>().unwrap())
               );
 
+  }
 
+  #[test]
+  fn test_index() {
+    let a = <BitVec!(3)>::from(0b111_u64);
+    assert_eq!(a.index_front(0), true);
+
+    let x = <BitVec!(127)>::from(0b110_u64);
+    assert_eq!(x.index_back(0), false);
+    assert_eq!(x.index_back(1), true);
+    assert_eq!(x.index_back(2), true);
+    assert_eq!(x.index_front(2), false);
+
+    let y = <BitVec!(127)>::from(0b110_u128 << 124);
+    assert_eq!(y.index_front(0), true);
+    assert_eq!(y.index_front(1), true);
+    assert_eq!(y.index_front(2), false);
+    assert_eq!(y.index_back(2), false);
+  }
+
+
+  #[test]
+  fn test_traversal() {
+    let x = <BitVec!(3)>::from(0b111_u64);
+    let mut count = 0;
+    for i in x.traverse_bits() {
+      count += 1;
+      assert_eq!(i,true);
+    }
+    assert_eq!(count,3);
   }
 
 }
