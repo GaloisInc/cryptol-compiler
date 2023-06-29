@@ -17,21 +17,6 @@ pub const fn limbs_for_bits(w: usize) -> usize {
   (w + c::Limb::BITS - 1) / c::Limb::BITS
 }
 
-#[macro_export]
-/// A convenient way to write a `BitVec` type without having to specify
-/// the number of limbs.
-macro_rules! BitVec {
-
-  // XXX: we can add extra cases here to handle small bit-vectors
-  // (e.g., <= 32)
-
-  ($w:expr) => { $crate::bitvec_fixed::BitVec
-                       < $w
-                       , {$crate::bitvec_fixed::limbs_for_bits($w)}
-                       >
-  };
-}
-
 
 impl<const W: usize, const L: usize> BitVec<W,L> {
 
@@ -70,13 +55,63 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
   }
 
   pub fn index_front(&self, i: usize) -> bool {
+    assert!(i < W);
     let BitVec(uint) = self;
     uint.bit_vartime(c::Uint::<L>::BITS - 1 - i)
   }
 
   pub fn index_back(&self, i: usize) -> bool {
+    assert!(i < W);
     let BitVec(uint) = self;
     uint.bit_vartime(i + Self::PAD)
+  }
+
+  pub fn take<const W1: usize, const L1: usize>(&self) -> BitVec<W1,L1> {
+    assert!(W1 <= W);
+    assert_eq!(L1, limbs_for_bits(W1));
+    let mut uint = <c::Uint<L1>>::default();
+    uint.as_words_mut().copy_from_slice(&self.as_words()[ (L - L1) .. ]);
+    let mut res = BitVec(uint);
+    res.fix_underflow();
+    res
+  }
+
+
+  /// Note that the parameters are the size of the result,
+  /// NOT how much to drop.
+  pub fn drop<const W1: usize, const L1: usize>(&self) -> BitVec<W1,L1> {
+    assert!(W1 <= W);
+    assert_eq!(L1, limbs_for_bits(W1));
+    let mut uint = <c::Uint<L1>>::default();
+    let p1 = Self::PAD;
+    let p2 = BitVec::<W1,L1>::PAD;
+    let ws = self.as_words();
+    let mut out = uint.as_words_mut();
+    if p1 == p2 {
+      out.copy_from_slice(&ws[ .. L1 ]);
+    } else if p1 < p2 {
+      let off = p2 - p1;
+      let w0 = ws[0];
+      out[0] = w0 << off;
+      let have = c::Limb::BITS - p2;
+      let mut prev = w0 >> p2;
+
+      for i in 1 .. L1 {
+        let w = ws[i];
+        out[i] = (w << have) | prev;
+        prev = w >> p2;
+      }
+    } else {
+      let off = p1 - p2;
+      let mut prev = ws[0] >> off;
+      let have = c::Limb::BITS - p1;
+      for i in 0 .. L1 {
+        let w = ws[i+1];
+          out[i] = (w << have) | prev;
+          prev = w >> p1;
+      }
+    }
+    BitVec(uint)
   }
 
 }
@@ -248,17 +283,6 @@ impl<const WU: usize, const LU: usize> BitVec<WU,LU> {
 }
 
 
-#[macro_export]
-macro_rules! append {
-  ($FRONT:expr,$BACK:expr,$xs:expr,$ys:expr) => { {
-    const L2: usize = $crate::bitvec_fixed::limbs_for_bits($BACK);
-    const W3: usize = $FRONT + $BACK;
-    const L3: usize = $crate::bitvec_fixed::limbs_for_bits(W3);
-    $xs.append::<$BACK, L2, W3, L3>($ys)
-  } }
-
-}
-
 
 impl<const W: usize, const L: usize> BitVec<W,L> {
 
@@ -338,18 +362,6 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
 }
 
 
-#[macro_export]
-macro_rules! join {
-  ($PARTS:expr,$EACH:expr,$xs:expr) => { {
-    const EACH_L: usize = $crate::bitvec_fixed::limbs_for_bits($EACH);
-    const OUT_W:  usize = $PARTS * $EACH;
-    const OUT_L:  usize = $crate::bitvec_fixed::limbs_for_bits(OUT_W);
-    $crate::bitvec_fixed
-        ::BitVec::<OUT_W,OUT_L>::join::<{$PARTS},{$EACH},EACH_L>($xs)
-  } }
-
-}
-
 
 // -----------------------------------------------------------------------------
 // Traversal
@@ -378,6 +390,26 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
 
     S::<'a,W,L> { vec: self, ix: 0 }
   }
+
+  pub fn split<'a, const W1: usize, const L1: usize>(&'a self) ->
+    impl Iterator<Item = BitVec<W1,L1>> + 'a {
+
+    struct S<'a, const W:  usize, const L: usize
+               , const W1: usize, const L1: usize> {
+      vec: &'a BitVec<W,L>
+    }
+
+    impl<'b, const W:  usize, const L: usize
+           , const W1: usize, const L1: usize> Iterator for S<'b,W,L,W1,L1> {
+      type Item = BitVec<W1,L1>;
+      fn next(&mut self) -> Option<Self::Item> {
+        None // XXX
+      }
+    }
+
+    S::<'a, W, L, W1, L1> { vec: self }
+  }
+
 }
 
 // -----------------------------------------------------------------------------
@@ -386,6 +418,68 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
 
 
 
+// -----------------------------------------------------------------------------
+// Macros
+
+#[macro_export]
+/// A convenient way to write a `BitVec` type without having to specify
+/// the number of limbs.
+macro_rules! BitVec {
+
+  // XXX: we can add extra cases here to handle small bit-vectors
+  // (e.g., <= 32)
+
+  ($w:expr) => { $crate::bitvec_fixed::BitVec
+                       < $w
+                       , {$crate::bitvec_fixed::limbs_for_bits($w)}
+                       >
+  };
+}
+
+#[macro_export]
+macro_rules! append {
+  ($FRONT:expr,$BACK:expr,$xs:expr,$ys:expr) => { {
+    const L2: usize = $crate::bitvec_fixed::limbs_for_bits($BACK);
+    const W3: usize = $FRONT + $BACK;
+    const L3: usize = $crate::bitvec_fixed::limbs_for_bits(W3);
+    $xs.append::<$BACK, L2, W3, L3>($ys)
+  } }
+}
+
+#[macro_export]
+macro_rules! join {
+  ($PARTS:expr,$EACH:expr,$xs:expr) => { {
+    const EACH_L: usize = $crate::bitvec_fixed::limbs_for_bits($EACH);
+    const OUT_W:  usize = $PARTS * $EACH;
+    const OUT_L:  usize = $crate::bitvec_fixed::limbs_for_bits(OUT_W);
+    $crate::bitvec_fixed
+        ::BitVec::<OUT_W,OUT_L>::join::<{$PARTS},{$EACH},EACH_L>($xs)
+  } }
+}
+
+#[macro_export]
+macro_rules! take {
+  ($FRONT:expr,$xs:expr) => { {
+    const L : usize = $crate::bitvec_fixed::limbs_for_bits($FRONT);
+    $xs.take::<{$FRONT},L>()
+  } }
+}
+
+
+#[macro_export]
+macro_rules! drop {
+  ($FRONT:expr,$BACK:expr,$xs:expr) => { {
+    const L : usize = $crate::bitvec_fixed::limbs_for_bits($BACK);
+    $xs.drop::<{$BACK},L>()
+  } }
+}
+
+
+
+
+
+// -----------------------------------------------------------------------------
+// Tests
 
 #[cfg(test)]
 mod tests {
@@ -475,6 +569,15 @@ mod tests {
       assert_eq!(i,true);
     }
     assert_eq!(count,3);
+  }
+
+
+  #[test]
+  fn test_take_drop() {
+    let x = <BitVec!(4)>::from(0b101_u64);
+    assert_eq!(take!(2,x), <BitVec!(2)>::from(0b01_u64));
+    assert_eq!(drop!(2,2,x), <BitVec!(2)>::from(0b01_u64));
+    assert_eq!(drop!(1,3,x), <BitVec!(3)>::from(0b101_u64));
   }
 
 }
