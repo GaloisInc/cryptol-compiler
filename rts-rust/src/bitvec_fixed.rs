@@ -1,6 +1,7 @@
 use std::ops::{Add,Sub,Neg,Mul,Div,Rem};
 use crypto_bigint as c;
 use num::bigint as n;
+use std::fmt::*;
 
 /// BitVec is a wrapper around crypto_bigint::Uint, that allows us to handle
 /// bit vectors whose sizes are not multiples of 64.   We represent such values
@@ -98,23 +99,26 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
     let start = L - i / c::Limb::BITS;  // 1 bigger than where we read
     let off   = i % c::Limb::BITS;
 
-    // Slice aligned
     if off == 0 {
+
+      // Slice aligned
       out.copy_from_slice(&ws[(start - L1) .. start]);
-      result.fix_underflow();
-      return result;
+
+    } else {
+
+      // Slice unaligned
+      let mut prev = ws[start - 1] << off;
+      let other = c::Limb::BITS - off;
+      for j in 1 .. L1 {
+        let w = ws[start - j - 1];
+        out[L1 - j] = prev | (w >> other);
+        prev = w << off;
+      }
+      out[0] = prev;
+
     }
 
-    // Slice unaligned
-    let mut prev = ws[start - 1] << off;
-    let other = c::Limb::BITS - off;
-    for j in 1 .. L1 {
-      let w = ws[start - j - 1];
-      out[L1 - j] = prev | (w >> other);
-      prev = w << off;
-    }
-    out[0] = prev;
-
+    result.fix_underflow();
     result
   }
 
@@ -134,8 +138,21 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
 
 
 // -----------------------------------------------------------------------------
-// From
+// From and To
 
+/// Get the least significant bits
+impl<const W: usize, const L: usize> From<&BitVec<W,L>> for u8 {
+  fn from(x: &BitVec<W,L>) -> Self {
+    let pad = BitVec::<W,L>::PAD;
+    let have = c::Limb::BITS - pad;
+    let ws = x.as_words();
+    let mut w = ws[0] >> pad;
+    if W >= 8 && have < 8 {
+      w |= ws[1] << have;
+    }
+    w as u8
+  }
+}
 
 // From u32
 impl<const W: usize, const L: usize> From<u32> for BitVec<W,L> {
@@ -373,65 +390,128 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
 // -----------------------------------------------------------------------------
 // Traversal
 
+/// Traverse BitVec<W,L> as bits, starting from most significant.
+pub struct TraverseBits<'a, const W: usize, const L: usize> {
+  vec: &'a BitVec<W,L>,
+  ix:  usize
+}
+
+impl<'a, const W: usize, const L: usize> Iterator for TraverseBits<'a,W,L> {
+  type Item = bool;
+  fn next(&mut self) -> Option<Self::Item> {
+    if self.ix >= W {
+      None
+    } else {
+      let i = self.ix;
+      self.ix += 1;
+      Some(self.vec.index_front(i))
+    }
+  }
+}
+
+impl<'a, const W: usize, const L: usize> IntoIterator for &'a BitVec<W,L> {
+  type Item     = bool;
+  type IntoIter = TraverseBits<'a,W,L>;
+  fn into_iter(self) -> Self::IntoIter { TraverseBits { vec: self, ix: 0 } }
+}
+
+
+/// Traverse BitVec<W,L> as words BitVec<W1,L1>
+/// Starting from most significant end.
+pub
+struct TraverseWords <'a, const W: usize, const L: usize
+                        , const EACH_W: usize, const EACH_L: usize> {
+  vec:  &'a BitVec<W,L>,
+  ix: usize,
+}
+
+impl<'a, const W:  usize, const L: usize
+       , const EACH_W: usize, const EACH_L: usize>
+   Iterator for TraverseWords<'a,W,L,EACH_W,EACH_L> {
+
+  type Item = BitVec<EACH_W,EACH_L>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    let todo = if EACH_W == 0 { 0 } else { W / EACH_W };
+    if self.ix >= todo { return None }
+    let res = self.vec.slice(self.ix * EACH_W);
+    self.ix += 1;
+    Some(res)
+  }
+}
+
 impl<const W: usize, const L: usize> BitVec<W,L> {
 
-  /// Visit the bits, starting with the most significant one.
-  pub fn traverse_bits<'a>(&'a self) -> impl Iterator<Item = bool> + 'a {
+  pub fn split<'a, const EACH_W: usize, const EACH_L: usize>(&'a self) ->
+    TraverseWords<'a, W, L, EACH_W, EACH_L> {
 
-    struct S<'a, const W: usize, const L: usize> {
-      vec: &'a BitVec<W,L>,
-      ix: usize
-    }
+    assert!(if EACH_W == 0 { W == 0 } else { W % EACH_W == 0 });
 
-    impl<'b, const W: usize, const L: usize> Iterator for S<'b, W,L> {
-      type Item = bool;
-      fn next(&mut self) -> Option<Self::Item> {
-        if self.ix >= W {
-          None
-        } else {
-          let i = self.ix;
-          self.ix += 1;
-          Some(self.vec.index_front(i))
-        }
-      }
-    }
-
-    S::<'a,W,L> { vec: self, ix: 0 }
-  }
-
-  pub fn split<'a, const W1: usize, const L1: usize>(&'a self) ->
-    impl Iterator<Item = BitVec<W1,L1>> + 'a {
-
-    struct S< 'a
-            , const W:  usize, const L:  usize
-            , const W1: usize, const L1: usize
-            > {
-      vec:  &'a BitVec<W,L>,
-      ix: usize,
-    }
-
-    impl<'b, const W:  usize, const L: usize
-           , const W1: usize, const L1: usize> Iterator for S<'b,W,L,W1,L1> {
-      type Item = BitVec<W1,L1>;
-      fn next(&mut self) -> Option<Self::Item> {
-        let todo = if W1 == 0 { 0 } else { W / W1 };
-        if self.ix >= todo { return None }
-        let res = self.vec.slice(self.ix * W1);
-        self.ix += 1;
-        Some(res)
-      }
-    }
-
-    assert!(if W1 == 0 { W == 0 } else { W % W1 == 0 });
-
-    S::<'a, W, L, W1, L1> { vec: self, ix: 0 }
+    TraverseWords { vec: self, ix: 0 }
   }
 
 }
 
 // -----------------------------------------------------------------------------
 // Formatting
-// XXX
+
+
+impl<const W: usize, const L: usize> Binary for BitVec<W,L> {
+  fn fmt(&self, f: &mut Formatter) -> Result {
+    let mut s = String::new();
+    if W == 0 {
+      s.push('0'); // special case so that we see something.
+    } else {
+      for b in self.into_iter() {
+        s.push(if b { '1' } else { '0' })
+      }
+    }
+    f.pad_integral(true, "0b", &s)
+  }
+}
+
+impl<const W: usize, const L: usize> BitVec<W,L> {
+  fn fmt_hex(&self, f: &mut Formatter, table: [char; 16]) -> Result {
+    let mut s = String::new();
+    let extra = W % 4;
+    let mut emit = |x| s.push(table[ (x & 0xF) as usize ]);
+
+    match extra {
+      1 => emit(u8::from(&self.slice::<1,1>(0))),
+      2 => emit(u8::from(&self.slice::<2,1>(0))),
+      3 => emit(u8::from(&self.slice::<3,1>(0))),
+      _ => ()
+    }
+
+    for i in 0 .. W / 4 {
+      emit(u8::from(&self.slice::<4,1>(extra + 4 * i)))
+    }
+
+
+    f.pad_integral(true, "0x", &s)
+
+  }
+}
+
+impl<const W: usize, const L: usize> UpperHex for BitVec<W,L> {
+  fn fmt(&self, f: &mut Formatter) -> Result {
+    self.fmt_hex(f, ['0','1','2','3','4','5','6','7','8','9'
+                    ,'A','B','C','D','E','F'])
+  }
+}
+
+impl<const W: usize, const L: usize> LowerHex for BitVec<W,L> {
+  fn fmt(&self, f: &mut Formatter) -> Result {
+    self.fmt_hex(f, ['0','1','2','3','4','5','6','7','8','9'
+                    ,'a','b','c','d','e','f'])
+  }
+}
+
+
+
+
+
+
 
 
 
@@ -473,6 +553,20 @@ macro_rules! join {
         ::BitVec::<OUT_W,OUT_L>::join::<{$EACH},EACH_L>($xs)
   } }
 }
+
+#[macro_export]
+macro_rules! split {
+  ($PARTS:expr,$EACH:expr,$xs:expr) => { {
+    const IN_W: usize = $PARTS * $EACH;
+    const IN_L: usize = $crate::bitvec_fixed::limbs_for_bits(IN_W);
+    let xs : &$crate::bitvec_fixed::BitVec<IN_W, IN_L> = $xs;
+
+    const EACH_L: usize = $crate::bitvec_fixed::limbs_for_bits($EACH);
+    xs.split::<{$EACH},EACH_L>()
+  } }
+}
+
+
 
 #[macro_export]
 macro_rules! take {
@@ -585,19 +679,24 @@ mod tests {
   fn test_traverse_bits() {
     let x = <BitVec!(3)>::from(0b111_u64);
     let mut count = 0;
-    for i in x.traverse_bits() {
+    for i in x.into_iter() {
       count += 1;
       assert_eq!(i,true);
     }
     assert_eq!(count,3);
   }
 
-  /*
   #[test]
   fn test_split() {
-    let x = <BitVec!(64)>::from(
+    let x = <BitVec!(64)>::from(0x_00_01_02_03_04_05_06_07_u64);
+    assert_eq!( split!(16,4,&x)
+                .collect::<Vec<BitVec!(4)>>()
+              , vec![0_u64,0,0,1,0,2,0,3,0,4,0,5,0,6,0,7]
+                .into_iter()
+                .map(|v| <BitVec!(4)>::from(v))
+                .collect::<Vec<BitVec!(4)>>()
+                );
   }
-  */
 
 
   #[test]
