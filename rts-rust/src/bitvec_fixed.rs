@@ -72,6 +72,7 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
     self.as_internal_uint_mut().as_words_mut()
   }
 
+
   /// Get the bit at the given position. 0 is most significant bit.
   pub fn index_front(&self, i: usize) -> bool {
     assert!(i < W);
@@ -133,6 +134,41 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
     self.slice(W - W1)
   }
 
+  /// Convert to a vector in base 2^32.  Least significant first
+  /// Convenient for conversion to bignum
+  pub fn as_vec_u32(&self) -> Vec<u32> {
+    let mut result = Vec::<u32>::new();
+    if W == 0 { return result; }
+
+    let ws = self.as_words();
+    let pad = BitVec::<W,L>::PAD;
+    // we assume that c::Limb::BITS + 32 <= 128
+    let mut w = (ws[0] >> pad) as u128;
+    let mut have = c::Limb::BITS - pad;
+
+    while have >= 32 {
+      result.push(w as u32);
+      w = w >> 32;
+      have -= 32;
+    };
+
+    for v in &ws[1..] {
+      w = ((*v as u128) << have) | w;
+      have += c::Limb::BITS;
+      while have >= 32 {
+        result.push(w as u32);
+        w = w >> 32;
+        have -= 32;
+      };
+    }
+    if have > 0 {
+      result.push(w as u32);
+    }
+    result
+  }
+
+
+
 }
 
 
@@ -140,6 +176,7 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
 // -----------------------------------------------------------------------------
 // From and To
 
+// To u8
 /// Get the least significant bits
 impl<const W: usize, const L: usize> From<&BitVec<W,L>> for u8 {
   fn from(x: &BitVec<W,L>) -> Self {
@@ -153,6 +190,20 @@ impl<const W: usize, const L: usize> From<&BitVec<W,L>> for u8 {
     w as u8
   }
 }
+
+
+// To num::BigUint
+/// Get the least significant bits
+impl<const W: usize, const L: usize> From<&BitVec<W,L>> for n::BigUint {
+  fn from(x: &BitVec<W,L>) -> Self {
+    Self::new(x.as_vec_u32())
+  }
+}
+
+
+
+
+
 
 // From u32
 impl<const W: usize, const L: usize> From<u32> for BitVec<W,L> {
@@ -474,7 +525,7 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
   fn fmt_hex(&self, f: &mut Formatter, table: [char; 16]) -> Result {
     let mut s = String::new();
     let extra = W % 4;
-    let mut emit = |x| s.push(table[ (x & 0xF) as usize ]);
+    let mut emit = |x| s.push(table[ x as usize ]);
 
     match extra {
       1 => emit(u8::from(&self.slice::<1,1>(0))),
@@ -486,7 +537,6 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
     for i in 0 .. W / 4 {
       emit(u8::from(&self.slice::<4,1>(extra + 4 * i)))
     }
-
 
     f.pad_integral(true, "0x", &s)
 
@@ -507,7 +557,36 @@ impl<const W: usize, const L: usize> LowerHex for BitVec<W,L> {
   }
 }
 
+impl<const W: usize, const L: usize> Octal for BitVec<W,L> {
+  fn fmt(&self, f: &mut Formatter) -> Result {
+    let mut s = String::new();
+    let extra = W % 3;
+    let table = ['0','1','2','3','4','5','6','7'];
+    let mut emit = |x| s.push(table[ x as usize ]);
 
+    match extra {
+      1 => emit(u8::from(&self.slice::<1,1>(0))),
+      2 => emit(u8::from(&self.slice::<2,1>(0))),
+      _ => ()
+    }
+
+    for i in 0 .. W / 3 {
+      emit(u8::from(&self.slice::<3,1>(extra + 3 * i)))
+    }
+
+    f.pad_integral(true, "0o", &s)
+  }
+}
+
+
+/// Base 10.  Base 16 is probably more useful, but the hex traits
+/// cover those.
+impl<const W: usize, const L: usize> Display for BitVec<W,L> {
+  fn fmt(&self, f: &mut Formatter) -> Result {
+    let s = n::BigUint::from(self).to_string();
+    f.pad_integral(true, "", &s)
+  }
+}
 
 
 
