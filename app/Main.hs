@@ -8,7 +8,10 @@ import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.List(intersperse)
 import Data.Maybe(mapMaybe)
+import System.Directory(createDirectoryIfMissing)
+import System.FilePath (splitDirectories, (</>), joinPath)
 
+import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Pretty qualified as Rust
 
 import Cryptol.TypeCheck.AST qualified  as Cry
@@ -110,9 +113,34 @@ doSimpleCompile =
                       }
 
      srcFile <- doIO $ genModule gi declList
-     doIO (print (Rust.pretty' srcFile))
+     doIO (saveExample "example" srcFile)
+     -- doIO (print (Rust.pretty' srcFile))
 
+saveExample :: FilePath -> Rust.SourceFile () -> IO ()
+saveExample dir rust =
+  do createDirectoryIfMissing True dir
+     let rtsPath = joinPath (map (const "..") (splitDirectories dir))
+               </> "rts-rust"
+     writeFile (dir </> "Cargo.toml") $ unlines
+       [ "[package]"
+       , "name    = \"test-program\""
+       , "version = \"0.1.0\""
+       , "edition = \"2021\""
+       , "[dependencies]"
+       , "cryptol = { path = " ++ show rtsPath ++ "}"
+       ]
 
+     let src = dir </> "src"
+     createDirectoryIfMissing True src
+     writeFile (src </> "main.rs") $
+      unlines
+        [ "use cryptol::*;"
+        , "use cryptol::traits::*;"
+        ,  show (Rust.pretty' rust)
+        , "pub fn main() {"
+        , "  print!(\"{}\\n\",cryMain())"
+        , "}"
+        ]
 
 
 
