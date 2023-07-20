@@ -31,6 +31,7 @@ main =
   do opts <- getOptions
      runCryC
        case optCommand opts of
+
          ShowHelp ->
            doIO showHelp
 
@@ -98,25 +99,18 @@ doSimpleCompile :: CryC ()
 doSimpleCompile =
   do ms <- getLoadedModules
      forM_ ms \m ->
-        do doIO (putStrLn ("Compiling: " ++ show (cryPP (Cry.mName m))))
+        do doIO (putStrLn ("Converting to IR: " ++ show (cryPP (Cry.mName m))))
+           doIO (print (cryPP m))
            compileModule m
-           decls <- getCompiled
-           let declList = concatMap instanceMapToList (Map.elems decls)
-               gi = GenInfo { genCurModule = Cry.mName m
-                            , genExternalModules = mempty
-                            }
-               srcFile  = genModule gi declList
-           doIO (print (Rust.pretty' srcFile))
 
-{-
-           forM_ fs \(f,im) ->
-             unless (isPrel f)
-              do s <- getSchemaOf (Cry.EVar f)
-                 doIO $ do putStrLn "---------"
-                           print (cryPP f <+> ":" <+> cryPP s)
-                           print (pp im)
-                           putStrLn "---------"
--}
+     decls <- getCompiled
+     let declList = concatMap instanceMapToList (Map.elems decls)
+         gi = GenInfo { genCurModule       = Cry.mName (last ms)
+                      , genExternalModules = mempty
+                      }
+         srcFile  = genModule gi declList
+     doIO (print (Rust.pretty' srcFile))
+
 
 
 

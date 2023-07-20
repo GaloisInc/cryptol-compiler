@@ -138,23 +138,27 @@ genFunDecl decl =
     --       of implemented primitives is complete?
     IRFunPrim -> pure Nothing
     IRFunDef argNames expr ->
-      do name <- bindFun (irfName decl)
-         let ft       = irfType decl
+      do isLocal <- isFunNameLocal (irfName decl)
+         if isLocal then doCompile argNames expr else pure Nothing
+  where
+  doCompile argNames expr =
+    do name <- bindFun (irfName decl)
+       let ft = irfType decl
 
-         localScope
-           do tNames <- mapM (bindLocal addLocalType) (ftTypeParams ft)
-              aNames <- mapM (bindLocal addLocalVar) argNames
-              argTys <- mapM rustTy (ftParams ft)
-              quals  <- mapM genTrait (ftTraits ft)
-              returnTy <- rustTy (ftResult ft)
-              funExpr <- genBlock expr
+       localScope
+         do tNames <- mapM (bindLocal addLocalType) (ftTypeParams ft)
+            aNames <- mapM (bindLocal addLocalVar) argNames
+            argTys <- mapM rustTy (ftParams ft)
+            quals  <- mapM genTrait (ftTraits ft)
+            returnTy <- rustTy (ftResult ft)
+            funExpr <- genBlock expr
 
-              let params = zip aNames argTys
-              let tyParams = [ Rust.TyParam [] i [] Nothing () | i <- tNames ]
-                  lifetimes   = []
-                  whereClause = Rust.WhereClause quals ()
-                  generics    = mkGenerics lifetimes tyParams whereClause
-              pure (Just (mkFnItem name generics params returnTy funExpr))
+            let params = zip aNames argTys
+            let tyParams = [ Rust.TyParam [] i [] Nothing () | i <- tNames ]
+                lifetimes   = []
+                whereClause = Rust.WhereClause quals ()
+                generics    = mkGenerics lifetimes tyParams whereClause
+            pure (Just (mkFnItem name generics params returnTy funExpr))
 
 
 -- | Given a set of FunDecls, make a Rust SourceFile
@@ -165,3 +169,5 @@ genSourceFile decls =
 
 genModule :: GenInfo -> [FunDecl] -> Rust.SourceFile ()
 genModule gi ds = runRustM gi (genSourceFile ds)
+
+

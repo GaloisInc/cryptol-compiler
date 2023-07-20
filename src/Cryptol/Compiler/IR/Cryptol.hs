@@ -5,7 +5,10 @@ module Cryptol.Compiler.IR.Cryptol
   ) where
 
 import Cryptol.TypeCheck.AST qualified as Cry
+import Cryptol.ModuleSystem.Name qualified as Cry
+import Cryptol.Utils.Ident qualified as Cry
 
+import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Type as M
 import Cryptol.Compiler.IR as M
@@ -48,6 +51,14 @@ data NameId =
     AnonId !Int
   | NameId Cry.Name
     deriving (Eq,Ord)
+
+-- | Get the Crytpol module for a top-level `NameId`.
+nameIdModule :: NameId -> Cry.ModName
+nameIdModule f =
+  Cry.nameTopModule
+  case f of
+    NameId x -> x
+    AnonId {} -> panic "nameIdModule" [ "Unexpected anonymous function name" ]
 
 instance PP NameId where
   pp name =

@@ -125,18 +125,21 @@ lookupNameId x =
          path  = Rust.Path False [seg] ()
      pure (Rust.PathExpr [] Nothing path ())
 
+-- | Is this name in the module that we are currently compiling.
+isFunNameLocal :: FunName -> Rust Bool
+isFunNameLocal fu =
+  do cur <- roModName <$> Rust ask
+     pure case irfnName fu of
+            IRDeclaredFunName name -> nameIdModule name == cur
+            _ -> False
+
 -- | Get an expression corresponding to a named function
 lookupFunName :: FunName -> Rust (Either IRPrim RustExpr)
 lookupFunName fu =
   case irfnName fu of
     IRPrimName p -> pure (Left p)
     IRDeclaredFunName f ->
-      do let mo = Cry.nameTopModule
-                  case f of
-                    NameId x -> x
-                    AnonId {} ->
-                       panic "lookupFunName"
-                         [ "Unexpected anonymous function name" ]
+      do let mo = nameIdModule f
          ro <- Rust ask
          rw <- Rust get
          Right . (\x -> Rust.PathExpr [] Nothing x ()) <$>
@@ -149,8 +152,14 @@ lookupFunName fu =
                do ext <- case Map.lookup mo (roExternalNames ro) of
                            Just e -> pure e
                            Nothing ->
-                             panic "lookupFunName"
-                               [ "Missing module", show (cryPP mo) ]
+                             panic "lookupFunName" $
+                               [ "Function that failed to resolve"
+                               , show (pp fu)
+                               , "Missing module"
+                               , show (cryPP mo)
+                               , "External modules"
+                               ] ++ map (show.cryPP)
+                                   (Map.keys (roExternalNames ro))
                   let Rust.Path glob segs _ = extModuleName ext
                   i <- case Map.lookup fu (extModuleNames ext) of
                          Just it -> pure it
