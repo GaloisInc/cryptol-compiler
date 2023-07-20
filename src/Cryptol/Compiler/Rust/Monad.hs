@@ -23,8 +23,8 @@ data GenInfo =
     , genExternalModules :: Map Cry.ModName ExtModule
     }
 
-runGenM :: GenInfo -> Gen a -> a
-runGenM gi (Gen m) = fst $ runId $ runStateT rw $ runReaderT ro m
+runRustM :: GenInfo -> Rust a -> a
+runRustM gi (Rust m) = fst $ runId $ runStateT rw $ runReaderT ro m
   where
   ro =
     RO
@@ -38,14 +38,14 @@ runGenM gi (Gen m) = fst $ runId $ runStateT rw $ runReaderT ro m
       }
 
 
-type GenM =
+type RustImpl =
   WithBase Id
     [ ReaderT RO
     , StateT  RW
     ]
 
-newtype Gen a = Gen (GenM a)
-  deriving (Functor,Applicative,Monad) via GenM
+newtype Rust a = Rust (RustImpl a)
+  deriving (Functor,Applicative,Monad) via RustImpl
 
 -- | Information about previously compiled modules.
 data ExtModule = ExtModule
@@ -86,21 +86,21 @@ data RW = RW
 bindLocal ::
   (a -> LocalNames -> (Rust.Ident,LocalNames)) -> {- ^ How to bind it -}
   a -> {- ^ Name of the local thing -}
-  Gen Rust.Ident
+  Rust Rust.Ident
 bindLocal how x =
-  Gen $ sets \rw -> let (i,ls) = how x (rwLocalNames rw)
+  Rust $ sets \rw -> let (i,ls) = how x (rwLocalNames rw)
                     in (i, rw { rwLocalNames = ls })
 
 -- | Bind a function in this module
-bindFun :: FunName -> Gen Rust.Ident
+bindFun :: FunName -> Rust Rust.Ident
 bindFun x =
-  Gen $ sets \rw -> let (i,fs) = addName x (rwLocalFunNames rw)
+  Rust $ sets \rw -> let (i,fs) = addName x (rwLocalFunNames rw)
                     in (i, rw { rwLocalFunNames = fs })
 
 
-getTParams :: Gen (Cry.TParam -> RustType)
+getTParams :: Rust (Cry.TParam -> RustType)
 getTParams =
-  do tys <- lTypeNames . rwLocalNames <$> Gen get
+  do tys <- lTypeNames . rwLocalNames <$> Rust get
      pure \x ->
        let i = lookupName x tys
            seg   = Rust.PathSegment i Nothing ()
@@ -108,25 +108,25 @@ getTParams =
        in Rust.PathTy Nothing path ()
 
 -- | Get the type corresponding to a type parameter.
-lookupTParam :: Cry.TParam -> Gen RustType
+lookupTParam :: Cry.TParam -> Rust RustType
 lookupTParam x =
-  Gen
+  Rust
   do i <- lookupName x . lTypeNames . rwLocalNames <$> get
      let seg   = Rust.PathSegment i Nothing ()
          path  = Rust.Path False [seg] ()
      pure (Rust.PathTy Nothing path ())
 
 -- | Get the expresssion for a local.
-lookupNameId :: NameId -> Gen RustExpr
+lookupNameId :: NameId -> Rust RustExpr
 lookupNameId x =
-  Gen
+  Rust
   do i <- lookupName x . lValNames . rwLocalNames <$> get
      let seg   = Rust.PathSegment i Nothing ()
          path  = Rust.Path False [seg] ()
      pure (Rust.PathExpr [] Nothing path ())
 
 -- | Get an expression corresponding to a named function
-lookupFunName :: FunName -> Gen (Either IRPrim RustExpr)
+lookupFunName :: FunName -> Rust (Either IRPrim RustExpr)
 lookupFunName fu =
   case irfnName fu of
     IRPrimName p -> pure (Left p)
@@ -137,8 +137,8 @@ lookupFunName fu =
                     AnonId {} ->
                        panic "lookupFunName"
                          [ "Unexpected anonymous function name" ]
-         ro <- Gen ask
-         rw <- Gen get
+         ro <- Rust ask
+         rw <- Rust get
          Right . (\x -> Rust.PathExpr [] Nothing x ()) <$>
            if roModName ro == mo
              then
@@ -165,9 +165,9 @@ lookupFunName fu =
                   pure (Rust.Path glob (segs ++ [seg]) ())
 
 -- | Evaluate a computation, forgetting any locally bound variables afterward.
-localScope :: Gen a -> Gen a
-localScope (Gen ma) =
-  Gen
+localScope :: Rust a -> Rust a
+localScope (Rust ma) =
+  Rust
   do  names <- rwLocalNames <$> get
       r <- ma
       _ <- sets_ (\s -> s { rwLocalNames = names })

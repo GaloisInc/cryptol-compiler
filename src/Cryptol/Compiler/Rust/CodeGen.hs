@@ -14,7 +14,7 @@ import Cryptol.Compiler.Rust.Types (rustRep)
 import Data.Maybe (catMaybes)
 
 -- | Generate Rust code for a Cryptol IR primitive call
-callPrim :: IRPrim -> [RustExpr] -> Gen RustExpr
+callPrim :: IRPrim -> [RustExpr] -> Rust RustExpr
 callPrim p es =
   case p of
     CryPrim name  -> todo
@@ -32,18 +32,18 @@ callPrim p es =
   primE =  undefined
 
 -- | Generate Rust code for a Cryptol IR expression, creating a block if
-doGenExpr :: Expr -> Gen RustExpr
+doGenExpr :: Expr -> Rust RustExpr
 doGenExpr e =
   do (stmts,expr) <- genExpr e
      pure (blockExprIfNeeded stmts expr)
 
 -- | Generate a Rust block corresponding to a Cryptol IR expression
-genBlock :: Expr -> Gen RustBlock
+genBlock :: Expr -> Rust RustBlock
 genBlock e = uncurry block' <$> genExpr e
 
 -- | From a Cryptol IR expression, generate a Rust expressions along with
 --   a set of Rust statements that contextualize it, such as let bindings
-genExpr :: Expr -> Gen ([RustStmt], RustExpr)
+genExpr :: Expr -> Rust ([RustStmt], RustExpr)
 genExpr (IRExpr e0) =
   let justExpr e = ([],e)
   in
@@ -96,13 +96,13 @@ genExpr (IRExpr e0) =
           pure (letBind:stms,e)
 
 -- | Build the associated Rust type for the IR type
-rustTy :: Type -> Gen RustType
+rustTy :: Type -> Rust RustType
 rustTy ty =
   do tys <- getTParams
      let ?poly = tys
      pure (rustRep ty)
 
-genTrait :: Trait -> Gen RustWherePredicate
+genTrait :: Trait -> Rust RustWherePredicate
 genTrait (IRTrait name arg) =
   do tparam <- getTParams
      pure (Rust.BoundPredicate [] (tparam arg) [bound] ())
@@ -131,7 +131,7 @@ genTrait (IRTrait name arg) =
 
 -- | Generate a RustItem corresponding to a function declaration.
 --   Returns `Nothing` if the declaration is for an IR primitive.
-genFunDecl :: FunDecl -> Gen (Maybe RustItem)
+genFunDecl :: FunDecl -> Rust (Maybe RustItem)
 genFunDecl decl =
   case irfDef decl of
     -- TODO: maybe this would be a good place to check that the set
@@ -158,10 +158,10 @@ genFunDecl decl =
 
 
 -- | Given a set of FunDecls, make a Rust SourceFile
-genSourceFile :: [FunDecl] -> Gen (Rust.SourceFile ())
+genSourceFile :: [FunDecl] -> Rust (Rust.SourceFile ())
 genSourceFile decls =
   do  fnItems <- catMaybes <$> (genFunDecl `traverse` decls)
       pure $ Rust.SourceFile Nothing [] fnItems
 
 genModule :: GenInfo -> [FunDecl] -> Rust.SourceFile ()
-genModule gi ds = runGenM gi (genSourceFile ds)
+genModule gi ds = runRustM gi (genSourceFile ds)
