@@ -89,7 +89,7 @@ pub trait Ring {
   /// Note that the Cryptol the power is polymorphic,
   /// but here we use `usize`, so we don't support raising
   /// things to value that do not fit in `usize`.
-  fn exp(x: &Self, y: usize) -> Self;
+  fn exp(x: &Self, y: u32) -> Self;
 }
 
 

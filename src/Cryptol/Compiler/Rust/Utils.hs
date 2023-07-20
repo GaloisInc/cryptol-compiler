@@ -21,8 +21,14 @@ type RustWhereClause = Rust.WhereClause ()
 dummySpan :: Rust.Span
 dummySpan = Rust.Span Rust.NoPosition Rust.NoPosition
 
-simplePath :: Rust.Ident -> Rust.Path ()
+simplePath :: Rust.Ident -> RustPath
 simplePath n = Rust.Path False [Rust.PathSegment n Nothing ()] ()
+
+simplePath' :: [Rust.Ident] -> RustPath
+simplePath' ns = Rust.Path False [Rust.PathSegment n Nothing () | n <- ns] ()
+
+pathExpr :: RustPath -> RustExpr
+pathExpr p = Rust.PathExpr [] Nothing p ()
 
 block :: [RustStmt] -> RustBlock
 block stmts = Rust.Block stmts Rust.Normal ()
@@ -121,9 +127,12 @@ fixedArrayOfType ty i = Rust.Array ty sizeExpr ()
   where
     sizeExpr = Rust.Lit [] (Rust.Int Rust.Dec i Rust.Unsuffixed ()) ()
 
-
-
-
-
+fixedSizeWordType :: Integer -> RustType
+fixedSizeWordType bits = Rust.MacTy mac ()
+  where
+      mac = Rust.Mac (simplePath "BitVec") tokenStream ()
+      tokenStream = Rust.Tree tt
+      tt = Rust.Delimited dummySpan Rust.Paren (Rust.Tree lengthTok)
+      lengthTok = Rust.Token dummySpan $ Rust.LiteralTok (Rust.IntegerTok (show bits)) Nothing
 
 

@@ -8,16 +8,35 @@ import Language.Rust.Syntax qualified as Rust
 
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Cryptol
+import Cryptol.Utils.Ident qualified as Cry
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.Types (rustRep)
 import Data.Maybe (catMaybes)
+import Data.Text qualified as Text
+import Data.Text(Text)
+
+callPreludePrim :: Text -> [RustExpr] -> Rust RustExpr
+callPreludePrim name args =
+  case (name, args) of
+    ("+", [e1, e2]) -> pure $ ring "add" args
+    _ -> todo
+  where
+    mkTraitCall trait method =
+      mkRustCall (pathExpr (simplePath' [trait, method]))
+    ring  = mkTraitCall "Ring"
+    todo = pure (todoExp ("prelude primitive: " <> Text.unpack name))
+
 
 -- | Generate Rust code for a Cryptol IR primitive call
 callPrim :: IRPrim -> [RustExpr] -> Rust RustExpr
 callPrim p es =
   case p of
-    CryPrim name  -> todo
+    CryPrim (Cry.PrimIdent mod name)
+      | mod == Cry.preludeName -> callPreludePrim name es
+      | otherwise -> todo
+
+
     MakeSeq       -> todo
     Tuple         -> todo
     TupleSel n _  -> todo

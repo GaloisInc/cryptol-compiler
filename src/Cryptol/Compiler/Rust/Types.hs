@@ -21,15 +21,8 @@ rustRep ty =
 
     IR.TWord sz ->
       case IR.isKnownSize sz of
-        Just i
-          | i == 0    -> unitType
-          | i == 1    -> boolType
-          | i == 8    -> rustSimpleType "u8"
-          | i == 16   -> rustSimpleType "u16"
-          | i == 32   -> rustSimpleType "u32"
-          | i == 64   -> rustSimpleType "u64"
-          | i == 128  -> rustSimpleType "u128"
-        _ -> rustSimpleType "BitVector"
+        Just i -> fixedSizeWordType i
+        Nothing -> rustSimpleType "BitVector"
 
     IR.TArray sz t ->
       case IR.isKnownSize sz of
