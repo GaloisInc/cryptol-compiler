@@ -47,7 +47,7 @@ type GenM =
 newtype Gen a = Gen (GenM a)
   deriving (Functor,Applicative,Monad) via GenM
 
--- | Information about previously compile modules.
+-- | Information about previously compiled modules.
 data ExtModule = ExtModule
   { extModuleName  :: RustPath
     -- ^ Name of module
@@ -63,7 +63,7 @@ data RO = RO
   { roModName :: Cry.ModName
     -- ^ The current module we are working on
 
-    -- XXX: The segiments of a mod name are cryptol identifiers
+    -- XXX: The segments of a mod name are cryptol identifiers
     -- so we'd need to translate those too, although more commonly
     -- these are file names so they are not likely to contain weird
     -- things such as '
