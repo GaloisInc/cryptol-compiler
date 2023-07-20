@@ -5,6 +5,7 @@ module Cryptol.Compiler.Rust.Utils where
 import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
 import Language.Rust.Data.Position qualified as Rust
+import Language.Rust.Syntax (QSelf(QSelf))
 
 type RustPath     = Rust.Path ()
 type RustType     = Rust.Ty ()
@@ -17,6 +18,7 @@ type RustLifetimeDef = Rust.LifetimeDef ()
 type RustTyParam = Rust.TyParam ()
 type RustWherePredicate = Rust.WherePredicate ()
 type RustWhereClause = Rust.WhereClause ()
+type RustLit = Rust.Lit ()
 
 dummySpan :: Rust.Span
 dummySpan = Rust.Span Rust.NoPosition Rust.NoPosition
@@ -26,6 +28,9 @@ simplePath n = Rust.Path False [Rust.PathSegment n Nothing ()] ()
 
 simplePath' :: [Rust.Ident] -> RustPath
 simplePath' ns = Rust.Path False [Rust.PathSegment n Nothing () | n <- ns] ()
+
+typePath :: RustType -> RustPath -> RustExpr
+typePath ty n = Rust.PathExpr [] (Just (QSelf ty 0)) n ()
 
 pathExpr :: RustPath -> RustExpr
 pathExpr p = Rust.PathExpr [] Nothing p ()
@@ -98,6 +103,18 @@ mkFnItem name generics params returnTy body =
     decl =
       Rust.FnDecl (mkArg <$> params) (Just returnTy) False ()
 
+mkIntLit :: Rust.Suffix -> Integer -> RustLit
+mkIntLit s i = Rust.Int Rust.Dec i s ()
+
+mkU64Lit :: Integer -> RustLit
+mkU64Lit = mkIntLit Rust.U64
+
+mkUSizeLit :: Integer -> RustLit
+mkUSizeLit = mkIntLit Rust.Us
+
+unitExpr :: RustExpr
+unitExpr = Rust.TupExpr [] [] ()
+
 
 --------------------------------------------------------------------------------
 
@@ -134,5 +151,4 @@ fixedSizeWordType bits = Rust.MacTy mac ()
       tokenStream = Rust.Tree tt
       tt = Rust.Delimited dummySpan Rust.Paren (Rust.Tree lengthTok)
       lengthTok = Rust.Token dummySpan $ Rust.LiteralTok (Rust.IntegerTok (show bits)) Nothing
-
 

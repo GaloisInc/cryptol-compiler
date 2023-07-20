@@ -23,8 +23,8 @@ data GenInfo =
     , genExternalModules :: Map Cry.ModName ExtModule
     }
 
-runRustM :: GenInfo -> Rust a -> a
-runRustM gi (Rust m) = fst $ runId $ runStateT rw $ runReaderT ro m
+runRustM :: GenInfo -> Rust a -> IO a
+runRustM gi (Rust m) = fst <$> runStateT rw (runReaderT ro m)
   where
   ro =
     RO
@@ -39,13 +39,17 @@ runRustM gi (Rust m) = fst $ runId $ runStateT rw $ runReaderT ro m
 
 
 type RustImpl =
-  WithBase Id
+  WithBase IO
     [ ReaderT RO
     , StateT  RW
     ]
 
 newtype Rust a = Rust (RustImpl a)
   deriving (Functor,Applicative,Monad) via RustImpl
+
+-- | Run an IO computation in the Rust monad
+doIO :: IO a -> Rust a
+doIO io = Rust (inBase io)
 
 -- | Information about previously compiled modules.
 data ExtModule = ExtModule

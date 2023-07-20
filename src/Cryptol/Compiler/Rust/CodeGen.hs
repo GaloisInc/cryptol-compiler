@@ -11,17 +11,21 @@ import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Utils.Ident qualified as Cry
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
+import Cryptol.Compiler.Rust.CompileSize
 import Cryptol.Compiler.Rust.Types (rustRep)
 import Data.Maybe (catMaybes)
 import Data.Text qualified as Text
 import Data.Text(Text)
 
-callPreludePrim :: Text -> [RustExpr] -> Rust RustExpr
-callPreludePrim name args =
-  case (name, args) of
-    ("+", [e1, e2]) -> pure $ ring "add" args
+callPreludePrim :: Text -> Call -> Rust RustExpr
+callPreludePrim name call =
+  case name of
+    "number" ->
+
+    -- ("+", [e1, e2]) -> pure $ ring "add" args
     _ -> todo
   where
+    args = genExpr `traverse` ircArgs call
     mkTraitCall trait method =
       mkRustCall (pathExpr (simplePath' [trait, method]))
     ring  = mkTraitCall "Ring"
@@ -29,11 +33,11 @@ callPreludePrim name args =
 
 
 -- | Generate Rust code for a Cryptol IR primitive call
-callPrim :: IRPrim -> [RustExpr] -> Rust RustExpr
-callPrim p es =
+callPrim :: IRPrim -> Call -> Rust RustExpr
+callPrim p call =
   case p of
     CryPrim (Cry.PrimIdent mod name)
-      | mod == Cry.preludeName -> callPreludePrim name es
+      | mod == Cry.preludeName -> callPreludePrim name call
       | otherwise -> todo
 
 
@@ -71,8 +75,7 @@ genExpr (IRExpr e0) =
 
     IRCallFun call ->
       justExpr <$>
-      do  args' <- doGenExpr `traverse` ircArgs call
-          -- XXX: adapt arguments if needed.  For example, a function that
+      do  -- XXX: adapt arguments if needed.  For example, a function that
           -- works with polymorphic arguments expects a vector.
           -- If we call this function with a known size argument, we need
           -- to turn the array into a vector.
@@ -85,8 +88,10 @@ genExpr (IRExpr e0) =
             IRTopFun tf ->
               do  name <- lookupFunName (irtfName tf)
                   case name of
-                    Left prim -> callPrim prim args'
-                    Right nameExpr -> pure $ mkRustCall nameExpr args'
+                    Left prim -> callPrim prim call
+                    -- Right nameExpr ->
+                    --   args' <- doGenExpr `traverse` ircArgs call
+                    --   pure $ mkRustCall nameExpr args'
 
     IRClosure call -> pure (justExpr (todoExp (show (pp call))))
 
@@ -161,7 +166,8 @@ genFunDecl decl =
          if isLocal then doCompile argNames expr else pure Nothing
   where
   doCompile argNames expr =
-    do name <- bindFun (irfName decl)
+    do doIO (print $ pp decl)
+       name <- bindFun (irfName decl)
        let ft = irfType decl
 
        localScope
@@ -186,7 +192,7 @@ genSourceFile decls =
   do  fnItems <- catMaybes <$> (genFunDecl `traverse` decls)
       pure $ Rust.SourceFile Nothing [] fnItems
 
-genModule :: GenInfo -> [FunDecl] -> Rust.SourceFile ()
+genModule :: GenInfo -> [FunDecl] -> IO (Rust.SourceFile ())
 genModule gi ds = runRustM gi (genSourceFile ds)
 
 

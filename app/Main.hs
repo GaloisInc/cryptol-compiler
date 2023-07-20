@@ -108,7 +108,8 @@ doSimpleCompile =
          gi = GenInfo { genCurModule       = Cry.mName (last ms)
                       , genExternalModules = mempty
                       }
-         srcFile  = genModule gi declList
+
+     srcFile <- doIO $ genModule gi declList
      doIO (print (Rust.pretty' srcFile))
 
 

@@ -42,3 +42,6 @@ instance PP CompilerWarning where
   pp warn =
     case warn of
       LoadWarning w -> pp (Cry.pp w)
+
+unsupported :: Text -> a
+unsupported what = throw (Unsupported what)

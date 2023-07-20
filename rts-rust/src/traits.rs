@@ -115,7 +115,7 @@ pub trait Literal {
   type Length;
 
   fn number_u64(n: Self::Length, x: u64) -> Self;
-  fn number_integer(n: Self::Length, x: &num::BigInt) -> Self;
+  fn number_integer(n: Self::Length, x: &num::BigUint) -> Self;
 }
 
 

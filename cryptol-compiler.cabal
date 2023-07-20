@@ -71,6 +71,7 @@ library
       Cryptol.Compiler.Rust.NameMap
       Cryptol.Compiler.Rust.Types
       Cryptol.Compiler.Rust.CodeGen
+      Cryptol.Compiler.Rust.CompileSize
       Cryptol.Compiler.Rust.Utils
       Cryptol.Compiler.Rust.Monad
 

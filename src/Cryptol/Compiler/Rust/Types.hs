@@ -7,32 +7,37 @@ import Cryptol.TypeCheck.Type qualified as Cry
 
 import Cryptol.Compiler.IR.Cryptol qualified as IR
 import Cryptol.Compiler.Rust.Utils
+import Cryptol.Compiler.Error (unsupported)
+import Cryptol.Compiler.Rust.Monad
+
+type TypeParams = (?poly :: Cry.TParam -> RustType)
 
 -- compute the rust type used to represent the given cryptol type
-rustRep :: (?poly :: Cry.TParam -> RustType) => IR.Type -> RustType
-rustRep ty =
+compileType :: IR.Type -> Rust RustType
+compileType ty =
   case ty of
-    IR.TBool          -> boolType
-    IR.TInteger       -> rustSimpleType "Integer"
-    IR.TIntegerMod _  -> rustSimpleType "Integer"
-    IR.TRational      -> rustSimpleType "Rational"
-    IR.TFloat         -> rustSimpleType "f32"
-    IR.TDouble        -> rustSimpleType "f64"
+    IR.TBool          -> pure boolType
+    IR.TInteger       -> pure $ rustSimpleType "Integer"
+    IR.TIntegerMod _  -> pure $ rustSimpleType "Integer"
+    IR.TRational      -> pure $ rustSimpleType "Rational"
+    IR.TFloat         -> pure $ rustSimpleType "f32"
+    IR.TDouble        -> pure $ rustSimpleType "f64"
 
     IR.TWord sz ->
       case IR.isKnownSize sz of
-        Just i -> fixedSizeWordType i
-        Nothing -> rustSimpleType "BitVector"
+        Just i -> pure $ fixedSizeWordType i
+        Nothing -> unsupported "compile arbitrary sized word type"
 
     IR.TArray sz t ->
       case IR.isKnownSize sz of
-        Just i  -> fixedArrayOfType (rustRep t) i
-        Nothing -> vectorOfType (rustRep t)
+        Just i  -> fixedArrayOfType <$> compileType t <*> pure i
+        Nothing -> vectorOfType <$> compileType t
 
-    IR.TStream _sz t  -> streamOfType (rustRep t)
-    IR.TTuple ts      -> tupleType (rustRep <$> ts)
-    IR.TPoly x        -> ?poly x
-    IR.TFun args ret  -> funType (map rustRep args) (rustRep ret)
+    IR.TStream _sz t  -> streamOfType <$> compileType t
+    IR.TTuple ts      -> tupleType <$> compileType `traverse` ts
+    IR.TPoly x        -> lookupTParam x
+    IR.TFun args ret  -> funType <$> traverse compileType args
+                                 <*> compileType ret
 
 
 -- types
