@@ -11,8 +11,8 @@ import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Utils.Ident qualified as Cry
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
-import Cryptol.Compiler.Rust.CompileSize
-import Cryptol.Compiler.Rust.Types (rustRep)
+import Cryptol.Compiler.Rust.Types
+import Cryptol.Compiler.Rust.CompilePrim
 import Data.Maybe (catMaybes)
 import Data.Text qualified as Text
 import Data.Text(Text)
@@ -20,7 +20,7 @@ import Data.Text(Text)
 callPreludePrim :: Text -> Call -> Rust RustExpr
 callPreludePrim name call =
   case name of
-    "number" ->
+    "number" -> primNumber call
 
     -- ("+", [e1, e2]) -> pure $ ring "add" args
     _ -> todo
@@ -81,9 +81,11 @@ genExpr (IRExpr e0) =
           -- to turn the array into a vector.
 
           case ircFun call of
+{-
             IRFunVal fnIR ->
               do  fnExpr <- doGenExpr fnIR
                   pure $ mkRustCall fnExpr args'
+-}
 
             IRTopFun tf ->
               do  name <- lookupFunName (irtfName tf)
@@ -118,13 +120,6 @@ genExpr (IRExpr e0) =
               letBind = Rust.Local (identPat boundIdent) ty (Just eBound') [] ()
           (stms,e) <- genExpr eIn
           pure (letBind:stms,e)
-
--- | Build the associated Rust type for the IR type
-rustTy :: Type -> Rust RustType
-rustTy ty =
-  do tys <- getTParams
-     let ?poly = tys
-     pure (rustRep ty)
 
 genTrait :: Trait -> Rust RustWherePredicate
 genTrait (IRTrait name arg) =
@@ -171,12 +166,13 @@ genFunDecl decl =
        let ft = irfType decl
 
        localScope
-         do tNames <- mapM (bindLocal addLocalType) (ftTypeParams ft)
-            aNames <- mapM (bindLocal addLocalVar) argNames
-            argTys <- mapM rustTy (ftParams ft)
-            quals  <- mapM genTrait (ftTraits ft)
-            returnTy <- rustTy (ftResult ft)
-            funExpr <- genBlock expr
+         do tNames    <- mapM (bindLocal addLocalType) (ftTypeParams ft)
+            sNames    <- mapM (bindLocal addLocalType . irsName) (ftSizeParams ft)
+            aNames    <- mapM (bindLocal addLocalVar) argNames
+            argTys    <- mapM compileType (ftParams ft)
+            quals     <- mapM genTrait (ftTraits ft)
+            returnTy  <- compileType (ftResult ft)
+            funExpr   <- genBlock expr
 
             let params = zip aNames argTys
             let tyParams = [ Rust.TyParam [] i [] Nothing () | i <- tNames ]

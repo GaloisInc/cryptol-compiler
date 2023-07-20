@@ -1,10 +1,12 @@
 module Cryptol.Compiler.Rust.CompilePrim where
+
+import Cryptol.Compiler.Error (panic,unsupported)
+import Cryptol.Compiler.IR.Cryptol
+
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.Utils
-import Cryptol.Compiler.IR.Cryptol
-import Cryptol.Compiler.Error (panic)
 import Cryptol.Compiler.Rust.Types (compileType)
-import Cryptol.Compiler.Cry2IR.Specialize (compileSizeType)
+import Cryptol.Compiler.Rust.CompileSize(compileSize)
 
 primNumber :: Call -> Rust RustExpr
 primNumber c =
@@ -13,18 +15,16 @@ primNumber c =
 
         -- `<rustTy>::number_u64()
         MemSize ->
-          do  sizeExpr <- compileSizeType size sizeType
-              let path = pathExpr $ typePath rustTy (simplePath "number_u64")
+          do  sizeExpr <- compileSize size sizeType
+              let path = typePath rustTy (simplePath "number_u64")
               pure $ mkRustCall path [unitExpr, sizeExpr]
 
         LargeSize -> unsupported "primNumber: LargeSize not supported"
 
   where
-  (size, sizeType) =
+  (ty, (size, sizeType)) =
     case ircFun c of
-      IRTopFun tf | [arg] <- irtfSizeArgs tf -> arg
-      IRFunVal _ -> panic "primNumber" ["Unexpected ircFun"]
-  ty =
-    case ircArgTypes c of
-      [t] -> t
-      _ -> panic "primNumber" ["Unexpected type args"]
+      IRTopFun tf | [t]   <- irtfTypeArgs tf
+                  , [arg] <- irtfSizeArgs tf -> (t,arg)
+      _ -> panic "primNumber" ["Unexpected ircFun"]
+

@@ -1,4 +1,5 @@
 use cryptol::*;
+use cryptol::traits::Literal;
 use num::bigint as n;
 //use crypto_bigint as c;
 //
@@ -8,6 +9,12 @@ fn main() {
   let i = 5_u32 >> 2_i8;
   print!("{}", i);
 
-  let x = <BitVec!(64)>::from(0x_1000000000_u64);
-  print!("{} {:#x}\n", x,x);
+  //let x = <BitVec!(64)>::from(0x_1000000000_u64);
+  print!("{} {:#x}\n", x(),x());
 }
+
+
+pub fn x() -> BitVec![ 8 ] {
+  <BitVec![ 8 ]>::number_u64((), 1u64)
+}
+

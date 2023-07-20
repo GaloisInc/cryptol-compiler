@@ -224,10 +224,6 @@ catchablePanic m ms = throwError (CatchablePanic m ms)
 catchError :: CryC a -> CryC (Either CompilerError a)
 catchError (CryC m) = CryC ((Right <$> m) `MLib.handle` (pure . Left))
 
--- | Abort due to an unsupported feature.
-unsupported :: Text -> CryC a
-unsupported msg = throwError (Unsupported msg)
-
 -- | Get all loaded modules.
 -- These are in dependency oreder, where later modules only depend on
 -- earlier ones.

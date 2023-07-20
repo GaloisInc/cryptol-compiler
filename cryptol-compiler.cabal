@@ -72,6 +72,7 @@ library
       Cryptol.Compiler.Rust.Types
       Cryptol.Compiler.Rust.CodeGen
       Cryptol.Compiler.Rust.CompileSize
+      Cryptol.Compiler.Rust.CompilePrim
       Cryptol.Compiler.Rust.Utils
       Cryptol.Compiler.Rust.Monad
 

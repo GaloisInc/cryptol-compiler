@@ -100,7 +100,7 @@ doSimpleCompile =
   do ms <- getLoadedModules
      forM_ ms \m ->
         do doIO (putStrLn ("Converting to IR: " ++ show (cryPP (Cry.mName m))))
-           doIO (print (cryPP m))
+           -- doIO (print (cryPP m))
            compileModule m
 
      decls <- getCompiled

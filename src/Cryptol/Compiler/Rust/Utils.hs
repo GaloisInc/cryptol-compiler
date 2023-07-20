@@ -35,6 +35,9 @@ typePath ty n = Rust.PathExpr [] (Just (QSelf ty 0)) n ()
 pathExpr :: RustPath -> RustExpr
 pathExpr p = Rust.PathExpr [] Nothing p ()
 
+pathType :: RustPath -> RustType
+pathType path = Rust.PathTy Nothing path ()
+
 block :: [RustStmt] -> RustBlock
 block stmts = Rust.Block stmts Rust.Normal ()
 
@@ -97,7 +100,7 @@ mkFnItem name generics params returnTy body =
   where
     vis = Rust.PublicV
     unsafety = Rust.Normal
-    constness = Rust.Const
+    constness = Rust.NotConst
     abi = Rust.Rust
     mkArg (n, t) = Rust.Arg (Just $ identPat n) t ()
     decl =
@@ -111,6 +114,9 @@ mkU64Lit = mkIntLit Rust.U64
 
 mkUSizeLit :: Integer -> RustLit
 mkUSizeLit = mkIntLit Rust.Us
+
+litExpr :: RustLit -> RustExpr
+litExpr l = Rust.Lit [] l ()
 
 unitExpr :: RustExpr
 unitExpr = Rust.TupExpr [] [] ()
@@ -148,7 +154,8 @@ fixedSizeWordType :: Integer -> RustType
 fixedSizeWordType bits = Rust.MacTy mac ()
   where
       mac = Rust.Mac (simplePath "BitVec") tokenStream ()
-      tokenStream = Rust.Tree tt
+      -- tokenStream = Rust.Tree tt
+      tokenStream = Rust.Tree lengthTok
       tt = Rust.Delimited dummySpan Rust.Paren (Rust.Tree lengthTok)
       lengthTok = Rust.Token dummySpan $ Rust.LiteralTok (Rust.IntegerTok (show bits)) Nothing
 

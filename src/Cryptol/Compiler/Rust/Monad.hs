@@ -114,20 +114,17 @@ getTParams =
 -- | Get the type corresponding to a type parameter.
 lookupTParam :: Cry.TParam -> Rust RustType
 lookupTParam x =
-  Rust
-  do i <- lookupName x . lTypeNames . rwLocalNames <$> get
-     let seg   = Rust.PathSegment i Nothing ()
-         path  = Rust.Path False [seg] ()
-     pure (Rust.PathTy Nothing path ())
+  Rust (pathType . simplePath . lookupName x . lTypeNames . rwLocalNames <$> get)
+
+-- | Get the expresssion for a size parameter.
+lookupSizeParam :: Cry.TParam -> Rust RustExpr
+lookupSizeParam x =
+  Rust (pathExpr . simplePath . lookupName x . lTypeNames . rwLocalNames <$> get)
 
 -- | Get the expresssion for a local.
 lookupNameId :: NameId -> Rust RustExpr
 lookupNameId x =
-  Rust
-  do i <- lookupName x . lValNames . rwLocalNames <$> get
-     let seg   = Rust.PathSegment i Nothing ()
-         path  = Rust.Path False [seg] ()
-     pure (Rust.PathExpr [] Nothing path ())
+  Rust (pathExpr . simplePath . lookupName x . lValNames . rwLocalNames <$> get)
 
 -- | Is this name in the module that we are currently compiling.
 isFunNameLocal :: FunName -> Rust Bool
