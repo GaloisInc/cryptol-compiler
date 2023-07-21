@@ -4,13 +4,16 @@ module Cryptol.Compiler.Rust.CodeGen
   , GenInfo(..)
   )  where
 
+import Data.Set qualified as Set
 import Language.Rust.Syntax qualified as Rust
+import Control.Monad(forM, mapAndUnzipM)
 
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Utils.Ident qualified as Cry
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
+import Cryptol.Compiler.Rust.CompileSize
 import Cryptol.Compiler.Rust.CompileType
 import Cryptol.Compiler.Rust.CompileTrait
 import Cryptol.Compiler.Rust.CompilePrim
@@ -141,16 +144,36 @@ genFunDecl decl =
        let ft = irfType decl
 
        localScope
-         do tNames    <- mapM (bindLocal addLocalType) (ftTypeParams ft)
-            sNames    <- mapM (bindLocal addLocalType . irsName) (ftSizeParams ft)
-            aNames    <- mapM (bindLocal addLocalVar) argNames
-            argTys    <- mapM compileType (ftParams ft)
-            quals     <- mapM compileTrait (ftTraits ft)
+         do -- Type parameters
+            tNames <- mapM (bindLocal addLocalType) (ftTypeParams ft)
+
+            -- Traits
+            (needLen,quals) <- mapAndUnzipM compileTrait (ftTraits ft)
+            let allNeedLen = Set.unions needLen
+                lenParamTs = filter (`Set.member` allNeedLen) (ftTypeParams ft)
+
+            -- Lenght parameters for Traits that need them
+            lParams <- forM lenParamTs \tp ->
+                          do i <- bindLocal addLocalLenghtParam tp
+                             t <- lenParamType tp
+                             pure (i,t)
+
+            -- Size parameters
+            sParams <- forM (ftSizeParams ft) \sp ->
+                        do i <- bindLocal addLocalType (irsName sp)
+                           pure (i, compileSizeType (irsSize sp))
+
+            -- Normal parameters
+            nParams <- forM (argNames `zip` ftParams ft) \(arg,ty) ->
+                        do i <- bindLocal addLocalVar arg
+                           t <- compileType ty
+                           pure (i,t)
+
             returnTy  <- compileType (ftResult ft)
             funExpr   <- genBlock expr
 
-            let params = zip aNames argTys
-            let tyParams = [ Rust.TyParam [] i [] Nothing () | i <- tNames ]
+            let tyParams    = [ Rust.TyParam [] i [] Nothing () | i <- tNames ]
+                params      = lParams ++ sParams ++ nParams
                 lifetimes   = []
                 whereClause = Rust.WhereClause quals ()
                 generics    = mkGenerics lifetimes tyParams whereClause

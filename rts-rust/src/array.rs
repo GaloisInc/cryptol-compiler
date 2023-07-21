@@ -1,5 +1,16 @@
 use crate::traits::*;
 
+
+impl<T : Length, const N: usize> Length for [T; N] {
+  type Length = T::Length;
+}
+
+impl<T: Zero, const N: usize> Zero for [T; N] {
+  fn zero(n: Self::Length) -> Self { std::array::from_fn(|i| T::zero(n)) }
+}
+
+
+
 impl<T : Clone, const N: usize> Sequence for [T; N] {
   type Item = T;
 
@@ -7,8 +18,8 @@ impl<T : Clone, const N: usize> Sequence for [T; N] {
 
   fn cry_index(&self, i: usize) -> T { self[i].clone() }
 
-  fn cry_shift_right(&self, n: <T as Zero>::Length, amt: usize) -> Self
-    where T : Zero
+  fn cry_shift_right(&self, n: <T as Length>::Length, amt: usize) -> Self
+    where T : Zero + Length
   {
     std::array::from_fn(|i| if i < amt { T::zero(n) }
                             else { self.cry_index(i-amt) })
@@ -26,7 +37,7 @@ impl<T : Clone, const N: usize> Sequence for [T; N] {
   }
 
 
-  fn cry_shift_left(&self, n: <T as Zero>::Length, amt: usize) -> Self
+  fn cry_shift_left(&self, n: <T as Length>::Length, amt: usize) -> Self
     where T : Zero
   {
     std::array::from_fn(|i| {

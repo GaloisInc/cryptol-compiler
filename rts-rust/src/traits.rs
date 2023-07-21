@@ -14,7 +14,7 @@ pub trait Sequence {
   ///   * `n`   - length, if the elements are seuqneces of dynamic size or ()
   ///   * `xs`  - sequence
   ///   * `amt` - how much to shift by
-  fn cry_shift_right(&self, n: <Self::Item as Zero>::Length, amt: usize) -> Self
+  fn cry_shift_right(&self, n: <Self::Item as Length>::Length, amt: usize) -> Self
     where Self::Item : Zero;
 
   /// Shift a sequence to the right.
@@ -33,7 +33,7 @@ pub trait Sequence {
   ///   * `n`   - length, if the elements are seuqneces of dynamic size or ()
   ///   * `xs`  - sequence
   ///   * `amt` - how much to shift by
-  fn cry_shift_left(&self, n: <Self::Item as Zero>::Length, amt: usize) -> Self
+  fn cry_shift_left(&self, n: <Self::Item as Length>::Length, amt: usize) -> Self
     where Self::Item : Zero;
 
   /// Rotate the elements of a sequence to left.
@@ -48,11 +48,17 @@ pub trait Sequence {
 
 }
 
-
-pub trait Zero {
+/// The type of an extra parameter specifying the length of thing.
+/// This is used when we want to make a new value whose size is
+/// not statically known (e.g., a `Vec`)
+pub trait Length {
 
   /// Extra information for allocating sequences.
   type Length : Copy;
+}
+
+
+pub trait Zero : Length {
 
   /// The value tha acts like 0.
   fn zero(n : Self::Length) -> Self;
@@ -111,9 +117,7 @@ pub trait Integral {
 }
 
 
-pub trait Literal {
-  type Length;
-
+pub trait Literal : Length {
   fn number_u64(n: Self::Length, x: u64) -> Self;
   fn number_integer(n: Self::Length, x: &num::BigUint) -> Self;
 }

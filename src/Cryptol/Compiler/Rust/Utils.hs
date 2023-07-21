@@ -140,8 +140,13 @@ mkUSizeLit = mkIntLit Rust.Us
 litExpr :: RustLit -> RustExpr
 litExpr l = Rust.Lit [] l ()
 
+
+
 unitExpr :: RustExpr
-unitExpr = Rust.TupExpr [] [] ()
+unitExpr = tupleExpr []
+
+tupleExpr :: [RustExpr] -> RustExpr
+tupleExpr es = Rust.TupExpr [] es ()
 
 
 --------------------------------------------------------------------------------

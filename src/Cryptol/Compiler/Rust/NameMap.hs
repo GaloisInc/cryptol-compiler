@@ -32,6 +32,7 @@ addName x mp =
   used = lUsed mp
   i    = rustIdentAvoiding used (rustIdent x)
 
+
 -- | Lookup a name.  Panics if not defined.
 lookupName :: (PP a, Ord a) => a -> NameMap a -> Rust.Ident
 lookupName x mp =

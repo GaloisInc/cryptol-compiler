@@ -1,1 +1,3 @@
-cryMain = 1:[8]
+// cryMain = 1:[8]
+// cryMain = 1
+cryMain = 1 : [_]

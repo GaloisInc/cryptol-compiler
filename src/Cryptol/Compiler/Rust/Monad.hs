@@ -2,6 +2,7 @@ module Cryptol.Compiler.Rust.Monad where
 
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Set qualified as Set
 import MonadLib
 
 import Language.Rust.Syntax qualified as Rust
@@ -14,6 +15,7 @@ import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.PP(pp,cryPP)
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
+import Cryptol.Compiler.Rust.Names
 import Cryptol.Compiler.Rust.NameMap
 
 data GenInfo =
@@ -125,6 +127,20 @@ lookupNameId :: NameId -> Rust RustExpr
 lookupNameId x =
   Rust (pathExpr . simplePath . lookupName x . lValNames . rwLocalNames <$> get)
 
+-- | Get the expression for a length parametes associated with the given
+-- type parameter.
+lookupLenParam :: Cry.TParam -> Rust RustExpr
+lookupLenParam x =
+  Rust (pathExpr . simplePath . doLookup . lLenParams . rwLocalNames <$> get)
+  where
+  doLookup mp =
+    case Map.lookup x mp of
+      Just a  -> a
+      Nothing -> panic "lookupLenParam"
+                   [ "Undefined length parameter."
+                   , show (pp x)
+                   ]
+
 -- | Is this name in the module that we are currently compiling.
 isFunNameLocal :: FunName -> Rust Bool
 isFunNameLocal fu =
@@ -187,8 +203,11 @@ localScope (Rust ma) =
 
 -- | Names local to a declaration
 data LocalNames = LocalNames
-  { lTypeNames  :: NameMap Cry.TParam
-  , lValNames   :: NameMap NameId
+  { lTypeNames  :: NameMap Cry.TParam           -- ^ Names for type params
+  , lValNames   :: NameMap NameId               -- ^ Names for local values
+  , lLenParams  :: Map Cry.TParam Rust.Ident
+    -- ^ Names for Length params.  When generating these we use the "used"
+    -- set of `lValNames`, because they are values.
   }
 
 -- | Empty local names, useful when starting a new declaration.
@@ -196,6 +215,7 @@ emptyLocalNames :: LocalNames
 emptyLocalNames = LocalNames
   { lTypeNames  = emptyNameMap
   , lValNames   = emptyNameMap
+  , lLenParams  = mempty
   }
 
 -- | Bind a type parameter.
@@ -209,6 +229,21 @@ addLocalVar :: NameId -> LocalNames -> (Rust.Ident, LocalNames)
 addLocalVar x ns = (i, ns { lValNames = mp })
   where
   (i, mp) = addName x (lValNames ns)
+
+-- | Bind a local parameter used for the Length trait.
+addLocalLenghtParam :: Cry.TParam -> LocalNames -> (Rust.Ident, LocalNames)
+addLocalLenghtParam t ns = (i, ns { lValNames  = newVals
+                                  , lLenParams = newPa
+                                  })
+  where
+  vals    = lValNames ns
+  used    = lUsed vals
+  i       = rustIdentAvoiding used (rustIdent (TraitLengthName t))
+  newVals = vals { lUsed = Set.insert i used }
+  newPa   = Map.insert t i (lLenParams ns)
+
+
+
 
 --------------------------------------------------------------------------------
 

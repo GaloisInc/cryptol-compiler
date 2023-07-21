@@ -1,11 +1,18 @@
 
 use crate::traits::*;
 
-impl Zero for u8   { type Length = (); fn zero(_: ()) -> Self { 0 } }
-impl Zero for u16  { type Length = (); fn zero(_: ()) -> Self { 0 } }
-impl Zero for u32  { type Length = (); fn zero(_: ()) -> Self { 0 } }
-impl Zero for u64  { type Length = (); fn zero(_: ()) -> Self { 0 } }
-impl Zero for u128 { type Length = (); fn zero(_: ()) -> Self { 0 } }
+impl Length for u8   { type Length = (); }
+impl Length for u16  { type Length = (); }
+impl Length for u32  { type Length = (); }
+impl Length for u64  { type Length = (); }
+impl Length for u128 { type Length = (); }
+
+
+impl Zero for u8   { fn zero(_: ()) -> Self { 0 } }
+impl Zero for u16  { fn zero(_: ()) -> Self { 0 } }
+impl Zero for u32  { fn zero(_: ()) -> Self { 0 } }
+impl Zero for u64  { fn zero(_: ()) -> Self { 0 } }
+impl Zero for u128 { fn zero(_: ()) -> Self { 0 } }
 
 impl Sequence for u8 {
   type Item = bool;

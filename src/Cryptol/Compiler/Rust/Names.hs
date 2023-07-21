@@ -1,8 +1,7 @@
 -- | Translation of names from IR to Rust.
 module Cryptol.Compiler.Rust.Names
   ( RustIdent(..)
-  , TraitLiteralLengthName(..)
-  , TraitZeroLengthName(..)
+  , TraitLengthName(..)
   , rustIdentAvoiding
   , changeIdent
   , snakeCase
@@ -85,19 +84,12 @@ class RustIdent a where
   rustIdent :: a -> [Rust.Ident]
 
 
--- | Name of the length parameter for the `Literal` trait
-newtype TraitLiteralLengthName = TraitLiteralLengthName Cry.TParam
+-- | Name of the length parameter for the methods that require a dynamic length.
+newtype TraitLengthName = TraitLengthName Cry.TParam
 
--- | Name of the length parameter for the `Zero` trait
-newtype TraitZeroLengthName   = TraitZeroLengthName   Cry.TParam
-
-instance RustIdent TraitLiteralLengthName where
-  rustIdent (TraitLiteralLengthName tp) =
-    map (changeIdent ((++ "_lit_len") . snakeCase)) (rustIdent tp)
-
-instance RustIdent TraitZeroLengthName where
-  rustIdent (TraitZeroLengthName tp) =
-    map (changeIdent ((++ "_zero_len") . snakeCase)) (rustIdent tp)
+instance RustIdent TraitLengthName where
+  rustIdent (TraitLengthName tp) =
+    map (changeIdent ((++ "_len") . snakeCase)) (rustIdent tp)
 
 instance RustIdent Cry.TParam where
   rustIdent tp =
