@@ -134,11 +134,9 @@ saveExample dir rust =
      createDirectoryIfMissing True src
      writeFile (src </> "main.rs") $
       unlines
-        [ "use cryptol::*;"
-        , "use cryptol::traits::*;"
-        ,  show (Rust.pretty' rust)
+        [ show (Rust.pretty' rust)
         , "pub fn main() {"
-        , "  print!(\"{}\\n\",cryMain())"
+        , "  print!(\"{}\\n\",cry_main())"
         , "}"
         ]
 

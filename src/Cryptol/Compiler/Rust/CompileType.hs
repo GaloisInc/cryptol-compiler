@@ -1,27 +1,23 @@
 -- | Translation of names from IR to Rust.
-module Cryptol.Compiler.Rust.Types where
+module Cryptol.Compiler.Rust.CompileType where
 
 import qualified Language.Rust.Syntax as Rust
-
-import Cryptol.TypeCheck.Type qualified as Cry
 
 import Cryptol.Compiler.IR.Cryptol qualified as IR
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Error (unsupported)
 import Cryptol.Compiler.Rust.Monad
 
-type TypeParams = (?poly :: Cry.TParam -> RustType)
-
 -- compute the rust type used to represent the given cryptol type
 compileType :: IR.Type -> Rust RustType
 compileType ty =
   case ty of
     IR.TBool          -> pure boolType
-    IR.TInteger       -> pure $ rustSimpleType "Integer"
-    IR.TIntegerMod _  -> pure $ rustSimpleType "Integer"
-    IR.TRational      -> pure $ rustSimpleType "Rational"
-    IR.TFloat         -> pure $ rustSimpleType "f32"
-    IR.TDouble        -> pure $ rustSimpleType "f64"
+    IR.TInteger       -> pure $ simpleType "Integer" -- XXX: num::BigInt
+    IR.TIntegerMod _  -> pure $ simpleType "Integer"
+    IR.TRational      -> pure $ simpleType "Rational"     -- XXX: ?
+    IR.TFloat         -> pure $ simpleType "f32"
+    IR.TDouble        -> pure $ simpleType "f64"
 
     IR.TWord sz ->
       case IR.isKnownSize sz of
@@ -52,4 +48,10 @@ funType funArgs funRes = Rust.PathTy Nothing path ()
   params = Rust.AngleBracketed [] (funArgs ++ [funRes]) [] ()
 
 
+fixedSizeWordType :: Integer -> RustType
+fixedSizeWordType bits = Rust.MacTy mac ()
+  where
+      mac = Rust.Mac (simplePath' ["cryptol", "BitVec"]) tokenStream ()
+      tokenStream = Rust.Tree lengthTok
+      lengthTok = Rust.Token dummySpan $ Rust.LiteralTok (Rust.IntegerTok (show bits)) Nothing
 

@@ -8,7 +8,6 @@ import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
 
 import Cryptol.Utils.Ident qualified as Cry
-import Cryptol.ModuleSystem.Name qualified as Cry
 import Cryptol.TypeCheck.AST qualified as Cry
 
 import Cryptol.Compiler.Error(panic)

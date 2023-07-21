@@ -11,7 +11,8 @@ import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Utils.Ident qualified as Cry
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
-import Cryptol.Compiler.Rust.Types
+import Cryptol.Compiler.Rust.CompileType
+import Cryptol.Compiler.Rust.CompileTrait
 import Cryptol.Compiler.Rust.CompilePrim
 import Data.Maybe (catMaybes)
 import Data.Text qualified as Text
@@ -121,32 +122,6 @@ genExpr (IRExpr e0) =
           (stms,e) <- genExpr eIn
           pure (letBind:stms,e)
 
-genTrait :: Trait -> Rust RustWherePredicate
-genTrait (IRTrait name arg) =
-  do tparam <- getTParams
-     pure (Rust.BoundPredicate [] (tparam arg) [bound] ())
-  where
-  bound     = Rust.TraitTyParamBound traitName Rust.None ()
-  traitName = Rust.PolyTraitRef [] (Rust.TraitRef path) ()
-  -- XXX: qualify these?
-  path =
-    simplePath
-      case name of
-        PZero         -> "Zero"
-        PLogic        -> "Logic"
-        PRing         -> "Ring"
-        PIntegral     -> "Integral"
-        PField        -> "Field"
-        PRound        -> "Round"
-
-        PEq           -> "Eq" -- Reuse Rust's?
-        PCmp          -> "Cmp"
-        PSignedCmp    -> "SignedCmp"
-
-        PLiteral      -> "Literal"
-        PFLiteral     -> "FLiteral"
-
-
 
 -- | Generate a RustItem corresponding to a function declaration.
 --   Returns `Nothing` if the declaration is for an IR primitive.
@@ -170,7 +145,7 @@ genFunDecl decl =
             sNames    <- mapM (bindLocal addLocalType . irsName) (ftSizeParams ft)
             aNames    <- mapM (bindLocal addLocalVar) argNames
             argTys    <- mapM compileType (ftParams ft)
-            quals     <- mapM genTrait (ftTraits ft)
+            quals     <- mapM compileTrait (ftTraits ft)
             returnTy  <- compileType (ftResult ft)
             funExpr   <- genBlock expr
 
@@ -186,9 +161,12 @@ genFunDecl decl =
 genSourceFile :: [FunDecl] -> Rust (Rust.SourceFile ())
 genSourceFile decls =
   do  fnItems <- catMaybes <$> (genFunDecl `traverse` decls)
-      pure $ Rust.SourceFile Nothing [] fnItems
+      let imports = [ mkUseGlob ["cryptol","trait_methods"]
+                    ]
+      pure $ Rust.SourceFile Nothing [] (imports ++ fnItems)
 
 genModule :: GenInfo -> [FunDecl] -> IO (Rust.SourceFile ())
 genModule gi ds = runRustM gi (genSourceFile ds)
 
+--------------------------------------------------------------------------------
 

@@ -7,6 +7,12 @@ import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
 
+compileSizeType :: SizeVarSize -> RustType
+compileSizeType szT =
+  case szT of
+    MemSize   -> simpleType "u64"
+    LargeSize -> pathType (simplePath' ["num","BigUint"])
+
 compileSize :: Size -> SizeVarSize -> Rust RustExpr
 compileSize sz szT =
   case sz of
@@ -18,7 +24,8 @@ compileSize sz szT =
     IRPolySize x
       | irsSize x == szT -> lookupSizeParam (irsName x)
       | otherwise -> panic "compileSize" [ "Size type mismatch" ]
-    IRComputedSize f args -> unsupported "computed sizes"
+
+    IRComputedSize {} -> unsupported "computed sizes"
 
 -- | Returning `Nothing` indicates `inf`
 compileStreamSize :: StreamSize -> SizeVarSize -> Rust (Maybe RustExpr)

@@ -5,7 +5,7 @@ import Cryptol.Compiler.IR.Cryptol
 
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.Utils
-import Cryptol.Compiler.Rust.Types (compileType)
+import Cryptol.Compiler.Rust.CompileType(compileType)
 import Cryptol.Compiler.Rust.CompileSize(compileSize)
 
 primNumber :: Call -> Rust RustExpr

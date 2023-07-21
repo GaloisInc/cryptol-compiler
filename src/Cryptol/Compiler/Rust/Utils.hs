@@ -23,20 +23,20 @@ type RustLit = Rust.Lit ()
 dummySpan :: Rust.Span
 dummySpan = Rust.Span Rust.NoPosition Rust.NoPosition
 
+--------------------------------------------------------------------------------
+-- Paths
 simplePath :: Rust.Ident -> RustPath
 simplePath n = Rust.Path False [Rust.PathSegment n Nothing ()] ()
 
 simplePath' :: [Rust.Ident] -> RustPath
 simplePath' ns = Rust.Path False [Rust.PathSegment n Nothing () | n <- ns] ()
+--------------------------------------------------------------------------------
 
 typePath :: RustType -> RustPath -> RustExpr
 typePath ty n = Rust.PathExpr [] (Just (QSelf ty 0)) n ()
 
 pathExpr :: RustPath -> RustExpr
 pathExpr p = Rust.PathExpr [] Nothing p ()
-
-pathType :: RustPath -> RustType
-pathType path = Rust.PathTy Nothing path ()
 
 block :: [RustStmt] -> RustBlock
 block stmts = Rust.Block stmts Rust.Normal ()
@@ -92,6 +92,10 @@ todoBlock txt = block [stmtNoSemi (todoExp txt)]
 exprStmt :: RustExpr -> RustStmt
 exprStmt e = Rust.NoSemi e ()
 
+
+--------------------------------------------------------------------------------
+-- Top Delcarations
+
 mkFnItem ::
   Rust.Ident -> RustGenerics -> [(Rust.Ident, RustType)] -> RustType ->
   RustBlock ->  RustItem
@@ -105,6 +109,24 @@ mkFnItem name generics params returnTy body =
     mkArg (n, t) = Rust.Arg (Just $ identPat n) t ()
     decl =
       Rust.FnDecl (mkArg <$> params) (Just returnTy) False ()
+
+-- | Make a simple use path
+mkUse :: [Rust.Ident] -> RustItem
+mkUse xs = Rust.Use [] Rust.InheritedV useTree ()
+  where
+  useTree = Rust.UseTreeSimple (simplePath' xs) Nothing ()
+
+-- | Make a simple use path
+mkUseGlob :: [Rust.Ident] -> RustItem
+mkUseGlob xs = Rust.Use [] Rust.InheritedV useTree ()
+  where
+  useTree = Rust.UseTreeGlob (simplePath' xs) ()
+
+
+
+
+--------------------------------------------------------------------------------
+-- Literals and Constants
 
 mkIntLit :: Rust.Suffix -> Integer -> RustLit
 mkIntLit s i = Rust.Int Rust.Dec i s ()
@@ -123,12 +145,16 @@ unitExpr = Rust.TupExpr [] [] ()
 
 
 --------------------------------------------------------------------------------
+-- Types
 
-rustSimpleType :: String -> RustType
-rustSimpleType i = Rust.PathTy Nothing path ()
+simpleType :: String -> RustType
+simpleType i = Rust.PathTy Nothing path ()
   where
     path  = Rust.Path False [Rust.PathSegment ident Nothing ()] ()
     ident = Rust.mkIdent i
+
+pathType :: RustPath -> RustType
+pathType path = Rust.PathTy Nothing path ()
 
 unitType :: RustType
 unitType = tupleType []
@@ -137,7 +163,7 @@ tupleType :: [RustType] -> RustType
 tupleType tys = Rust.TupTy tys ()
 
 boolType :: RustType
-boolType = rustSimpleType "bool"
+boolType = simpleType "bool"
 
 vectorOfType :: RustType -> RustType
 vectorOfType elT = Rust.PathTy Nothing path ()
@@ -150,12 +176,4 @@ fixedArrayOfType ty i = Rust.Array ty sizeExpr ()
   where
     sizeExpr = Rust.Lit [] (Rust.Int Rust.Dec i Rust.Unsuffixed ()) ()
 
-fixedSizeWordType :: Integer -> RustType
-fixedSizeWordType bits = Rust.MacTy mac ()
-  where
-      mac = Rust.Mac (simplePath "BitVec") tokenStream ()
-      -- tokenStream = Rust.Tree tt
-      tokenStream = Rust.Tree lengthTok
-      tt = Rust.Delimited dummySpan Rust.Paren (Rust.Tree lengthTok)
-      lengthTok = Rust.Token dummySpan $ Rust.LiteralTok (Rust.IntegerTok (show bits)) Nothing
 

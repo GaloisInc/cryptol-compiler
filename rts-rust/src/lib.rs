@@ -5,5 +5,12 @@ pub mod bit;
 pub mod bitvec_fixed;
 pub mod bitvec_fixed_impls;
 
+pub use traits::*;
+
+pub mod trait_methods {
+  pub use crate::traits::Zero as _;
+  pub use crate::traits::Literal as _;
+  /* XXX: Add other traits */
+}
 
 

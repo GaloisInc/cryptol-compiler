@@ -1,8 +1,10 @@
 -- | Translation of names from IR to Rust.
 module Cryptol.Compiler.Rust.Names
   ( RustIdent(..)
+  , TraitLiteralLengthName(..)
+  , TraitZeroLengthName(..)
   , rustIdentAvoiding
-  , changeCase
+  , changeIdent
   , snakeCase
   , screamingSnakeCase
   , upperCamelCase
@@ -44,9 +46,9 @@ rustIdentAvoiding avoid names =
 --------------------------------------------------------------------------------
 -- Cases
 
--- | Change the case of an indentifier.
-changeCase :: (String -> String) -> Rust.Ident -> Rust.Ident
-changeCase f n = (Rust.mkIdent (f (Rust.name n))) { Rust.raw = Rust.raw n }
+-- | Change a rust identifier.  Preserves the rawness.
+changeIdent :: (String -> String) -> Rust.Ident -> Rust.Ident
+changeIdent f n = (Rust.mkIdent (f (Rust.name n))) { Rust.raw = Rust.raw n }
 -- We preserve the rawness just in case
 
 -- | Use snake_case
@@ -82,22 +84,37 @@ class RustIdent a where
   -- identifiers earlier on are to be preferred.
   rustIdent :: a -> [Rust.Ident]
 
+
+-- | Name of the length parameter for the `Literal` trait
+newtype TraitLiteralLengthName = TraitLiteralLengthName Cry.TParam
+
+-- | Name of the length parameter for the `Zero` trait
+newtype TraitZeroLengthName   = TraitZeroLengthName   Cry.TParam
+
+instance RustIdent TraitLiteralLengthName where
+  rustIdent (TraitLiteralLengthName tp) =
+    map (changeIdent ((++ "_lit_len") . snakeCase)) (rustIdent tp)
+
+instance RustIdent TraitZeroLengthName where
+  rustIdent (TraitZeroLengthName tp) =
+    map (changeIdent ((++ "_zero_len") . snakeCase)) (rustIdent tp)
+
 instance RustIdent Cry.TParam where
   rustIdent tp =
-    map (changeCase upperCamelCase)
-    case Cry.tpName tp of
-      Just n  -> rustIdent n
-      Nothing -> [ Rust.mkIdent "T" ]
+      map (changeIdent upperCamelCase)
+    $ maybe [ Rust.mkIdent "T" ] rustIdent
+    $ Cry.tpName tp
 
 
 instance RustIdent a => RustIdent (IRFunName a) where
   rustIdent = rustIdent . irfnName
   -- XXX: Use instance to pick a more readable name
-  -- Currently we use the same name for all instance, relying
+  -- Currently we use the same name for all instances, relying
   -- on disambiguation to pick different names
 
 instance RustIdent a => RustIdent (IRFunNameFlavor a) where
   rustIdent i =
+    map (changeIdent snakeCase)
     case i of
       IRPrimName p -> rustIdent p
       IRDeclaredFunName x -> rustIdent x
