@@ -120,6 +120,7 @@ callPrim prim es tgtT =
                , irtfTypeArgs = []
                , irtfSizeArgs = []
                }
+      , ircFunType = monoFunType (map typeOf es) tgtT
       , ircArgTypes = map typeOf es
       , ircResType = tgtT
       , ircArgs = es
@@ -460,6 +461,7 @@ compileVar x ts args tgtT =
                        let call = IRCall
                                     { ircFun  = IRFunVal (IRExpr (IRVar n))
                                     , ircArgTypes = haveTs
+                                    , ircFunType = monoFunType haveTs b
                                     , ircResType = b
                                     , ircArgs = ces
                                     }
@@ -523,6 +525,7 @@ compileCall f ts es tgtT =
                                            , irtfTypeArgs = typeArgs
                                            , irtfSizeArgs = sizeArgs
                                            }
+                       , ircFunType   = funTy
                        , ircArgTypes  = haveTs
                        , ircResType   = resT
                        , ircArgs      = ces

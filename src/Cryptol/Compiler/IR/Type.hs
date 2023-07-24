@@ -87,6 +87,17 @@ data IRFunType tname = IRFunType
   , ftResult     :: IRType tname       -- ^ Function result.
   } deriving (Functor, Foldable, Traversable)
 
+monoFunType :: [IRType tname] -> IRType tname -> IRFunType tname
+monoFunType args res =
+  IRFunType
+    { ftTypeParams = []
+    , ftTraits     = []
+    , ftSizeParams = []
+    , ftParams     = args
+    , ftResult     = res
+    }
+
+
 
 --------------------------------------------------------------------------------
 -- Access to the tname parameter

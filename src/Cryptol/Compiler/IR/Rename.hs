@@ -74,6 +74,7 @@ instance RenameF IRCall where
   frenameIP c =
     IRCall
       <$> frenameIP (ircFun c)
+      <*> traverse ?renameT (ircFunType c)
       <*> traverse (traverse ?renameT) (ircArgTypes c)
       <*> traverse ?renameT (ircResType c)
       <*> sequenceA (ircArgs c)

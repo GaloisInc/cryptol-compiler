@@ -178,9 +178,11 @@ instance
 instance
   (Ord tname, ApSubst expr, TName expr ~ tname) =>
                                       ApSubst (IRCall tname name expr) where
-  apSubstMaybe su (IRCall f at t es) =
+  apSubstMaybe su (IRCall f ft at t es) =
     do (f',((at',t'),es')) <- apSubstMaybe su (f,((at,t),es))
-       pure (IRCall f' at' t' es')
+       -- Note that we don't apply the subtitution to the original type of
+       -- the function.
+       pure (IRCall f' ft at' t' es')
 
 
 instance (Ord tname) => ApSubst (IRFunDef tname name) where
