@@ -26,6 +26,7 @@ compileSize sz szT =
       | otherwise -> panic "compileSize" [ "Size type mismatch" ]
 
     IRComputedSize {} -> unsupported "computed sizes"
+    -- XXX
 
 -- | Returning `Nothing` indicates `inf`
 compileStreamSize :: StreamSize -> SizeVarSize -> Rust (Maybe RustExpr)

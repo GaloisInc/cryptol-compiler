@@ -15,6 +15,6 @@ fn main() {
 
 
 pub fn x() -> BitVec![ 8 ] {
-  <BitVec![ 8 ]>::number_u64((), 1u64)
+  <BitVec![ 8 ]>::number((), 1)
 }
 

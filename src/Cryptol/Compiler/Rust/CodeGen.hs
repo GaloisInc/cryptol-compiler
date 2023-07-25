@@ -5,143 +5,19 @@ module Cryptol.Compiler.Rust.CodeGen
   )  where
 
 import Data.Set qualified as Set
-import Language.Rust.Syntax qualified as Rust
+import Data.Maybe (catMaybes)
 import Control.Monad(forM, mapAndUnzipM)
+
+import Language.Rust.Syntax qualified as Rust
 
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Cryptol
-import Cryptol.Utils.Ident qualified as Cry
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.CompileSize
 import Cryptol.Compiler.Rust.CompileType
 import Cryptol.Compiler.Rust.CompileTrait
 import Cryptol.Compiler.Rust.CompilePrim
-import Data.Maybe (catMaybes)
-import Data.Text qualified as Text
-import Data.Text(Text)
-import Cryptol.Compiler.Monad (panic)
-
--- callPreludePrim :: Text -> Call -> Rust ([RustStmt], RustExpr)
--- callPreludePrim name call =
---   case name of
---     -- Literal --
---     "number" -> primNumber call
-
---     -- Ring --
---     "+" -> ring "add"
---     "-" -> ring "sub"
---     "*" -> ring "mul"
---     "negate" -> ring "negate"
---     "fromInteger" -> ring "from_integer"
---     -- TODO: do we need to figure out if the exponent will fit in
---     --       a u32 before calling this? (or call `Integral::to_usize`?)
---     "^^" -> todo
-
---     -- Integral --
---     "/" -> integral "div"
---     "%" -> integral "modulo"
---     "toInteger" -> integral "to_integer"
-
---     -- Zero
---     "zero" -> callTrait "Zero" "zero"
-
---     -- Logic
---     "&&" -> logic "and"
---     "||" -> logic "or"
---     "^" -> logic "xor"
---     "complement" -> logic "complement"
-
---     _ -> todo
---   where
---     callTrait trait fnName =
---       withEvalArgs' $ \es ->
---         justExpr (mkTraitCall trait fnName es)
-
---     ring = callTrait "Ring"
---     integral = callTrait "Integral"
---     logic = callTrait "Logic"
-
---     args = ircArgs call
---     withEvalArgs' f = withEvalArgs (pure . f)
---     withEvalArgs f =
---       do  (stmts, exps) <- unzip <$> genExpr `traverse` args
---           (fstmts, fexp) <- f exps
---           pure (concat stmts ++ fstmts, fexp)
-
---     mkTraitCall trait method =
---       mkRustCall (pathExpr (simplePath' [trait, method]))
---     todo =
---       pure $ justExpr (todoExp ("prelude primitive: " <> Text.unpack name))
-
-
-getPreludePrimFnExpr :: Text -> Maybe RustExpr
-getPreludePrimFnExpr name =
-  case name of
-      -- Ring --
-    "+" -> ring "add"
-    "-" -> ring "sub"
-    "*" -> ring "mul"
-    "negate" -> ring "negate"
-    "fromInteger" -> ring "from_integer"
-    -- TODO: do we need to figure out if the exponent will fit in
-    --       a u32 before calling this? (or call `Integral::to_usize`?)
-    "^^" -> Nothing
-
-    -- Integral --
-    "/" -> integral "div"
-    "%" -> integral "modulo"
-    "toInteger" -> integral "to_integer"
-
-    -- Zero
-    "zero" -> Nothing -- TODO
-
-    -- Logic
-    "&&" -> logic "and"
-    "||" -> logic "or"
-    "^" -> logic "xor"
-    "complement" -> logic "complement"
-    _ -> Nothing
-  where
-    ring = mkTraitFnExpr "Ring"
-    integral = mkTraitFnExpr "Integral"
-    logic = mkTraitFnExpr "Logic"
-
-
-
-    mkTraitFnExpr trait method =
-      Just (pathExpr (simplePath' [trait, method]))
-
-getPrimFnExpr :: IRPrim -> Maybe RustExpr
-getPrimFnExpr prim =
-  case prim of
-    CryPrim (Cry.PrimIdent mod name)
-      | mod == Cry.preludeName -> getPreludePrimFnExpr name
-      | otherwise -> Nothing
-    _ -> Nothing
-
-
--- -- | Generate Rust code for a Cryptol IR primitive call
--- callPrim :: IRPrim -> Call -> Rust ([RustStmt], RustExpr)
--- callPrim p call =
---   case p of
---     CryPrim (Cry.PrimIdent mod name)
---       | mod == Cry.preludeName -> callPreludePrim name call
---       | otherwise -> todo
-
-
---     MakeSeq       -> todo
---     Tuple         -> todo
---     TupleSel n _  -> todo
---     Map           -> todo
---     FlatMap       -> todo
---     Zip           -> todo
-
---     Collect       -> todo
---     Iter          -> todo
---   where
---   todo = pure $ justExpr (todoExp (show (pp p)))
---   primE =  undefined
 
 -- | Generate Rust code for a Cryptol IR expression, creating a block if
 doGenExpr :: Expr -> Rust RustExpr
@@ -154,47 +30,70 @@ genBlock :: Expr -> Rust RustBlock
 genBlock e = uncurry block' <$> genExpr e
 
 
+-- | Length arguments for the `Length` trait
+genCallLenArgs :: Call -> Rust [RustExpr]
+genCallLenArgs call =
+  traverse lenParamFor
+    [ arg | (t, arg) <- ftTypeParams funTy `zip` typeArgs
+          , t `Set.member` needLen
+    ]
+  where
+  funTy = ircFunType call
+  needLen = Set.unions (map traitNeedsLen (ftTraits funTy))
+  typeArgs =
+    case ircFun call of
+      IRFunVal _ -> []
+      IRTopFun tf -> irtfTypeArgs tf
 
+-- | Size arguments for a call
+genCallSizeArgs :: Call -> Rust [RustExpr]
+genCallSizeArgs call =
+  case ircFun call of
+    IRFunVal _ -> pure []
+    IRTopFun tf -> traverse (uncurry compileSize) (irtfSizeArgs tf)
 
-genCall :: Call -> Rust ([RustStmt], RustExpr)
+-- | Normal arguments for a call
+genCallArgs :: Call -> Rust ([RustStmt], [RustExpr])
+genCallArgs call =
+  do (stmtss,es) <- unzip <$> traverse genExpr (ircArgs call)
+     pure (concat stmtss, es)
+
+genCall :: Call -> Rust (PartialBlock RustExpr)
 genCall call =
-  do  argExprs <- traverse doGenExpr (ircArgs call)
-      let funTy = ircFunType call
-          needLen = Set.unions (map traitNeedsLen (ftTraits funTy))
-          typeArgs =
-            case ircFun call of
-              IRFunVal _ -> []
-              IRTopFun tf -> irtfTypeArgs tf
 
-          lenParams = [ arg | (t, arg) <- ftTypeParams funTy `zip` typeArgs
-                            , t `Set.member` needLen ]
+  case ircFun call of
 
-      lenParamExprs <- traverse lenParamFor lenParams
+    -- Closures don't have polymorphic arguments, and so shouldn't have
+    -- size or lenght arguments. Captured length arguments should be in scope.
+    IRFunVal fnIR ->
+      do fnExpr       <- doGenExpr fnIR
+         (stmts,args) <- genCallArgs call
+         pure (stmts, mkRustCall fnExpr args)
 
-      szExprs <-
-        case ircFun call of
-          IRFunVal _ -> pure []
-          IRTopFun tf -> traverse (uncurry compileSize) (irtfSizeArgs tf)
+    IRTopFun tf ->
+      do typeArgs <- traverse compileType (irtfTypeArgs tf)
+         lenArgs      <- genCallLenArgs call
+         szArgs       <- genCallSizeArgs call
+         (stmts,args) <- genCallArgs call
+         name         <- lookupFunName (irtfName tf)
+         val <- case name of
+                 Left prim -> compilePrim prim
+                              PrimArgs
+                                { primTypeArgs = typeArgs
+                                , primLenArgs  = lenArgs
+                                , primSizeArgs = szArgs
+                                , primArgs     = args
+                                }
+                 Right path ->
+                   do let fun = pathExpr (pathAddTypeSuffix path typeArgs)
+                          allArgs = lenArgs ++ szArgs ++ args
+                      pure (mkRustCall fun allArgs)
+         pure (stmts,val)
 
-      fnExpr <-
-        case ircFun call of
-          IRFunVal fnIR -> doGenExpr fnIR
-          IRTopFun tf ->
-            do  name <- lookupFunName (irtfName tf)
-                case name of
-                  Left prim ->
-                    case getPrimFnExpr prim of
-                      Nothing -> panic "genCall" ["primitive not implemented"]
-                      Just p -> pure p
-                  Right path ->
-                    do  tys' <- traverse compileType (irtfTypeArgs tf)
-                        pure $ pathExpr (pathAddTypeSuffix path tys')
-
-      pure $ justExpr (mkRustCall fnExpr (lenParamExprs ++ szExprs ++ argExprs))
 
 -- | From a Cryptol IR expression, generate a Rust expressions along with
 --   a set of Rust statements that contextualize it, such as let bindings
-genExpr :: Expr -> Rust ([RustStmt], RustExpr)
+genExpr :: Expr -> Rust (PartialBlock RustExpr)
 genExpr (IRExpr e0) =
   case e0 of
     IRVar (IRName name _) -> justExpr <$> lookupNameId name

@@ -6,9 +6,10 @@ import Language.Rust.Syntax qualified as Rust
 
 import Cryptol.TypeCheck.AST qualified as Cry
 
+import Cryptol.Compiler.Error(unsupported)
 import Cryptol.Compiler.IR.Cryptol
-
 import Cryptol.Compiler.Rust.Utils
+import Cryptol.Compiler.Rust.CompileSize
 import Cryptol.Compiler.Rust.Monad
 
 traitNeedsLen :: Trait -> Set Cry.TParam
@@ -68,14 +69,21 @@ compileTrait t@(IRTrait name arg) =
 lenParamFor :: Type -> Rust RustExpr
 lenParamFor ty =
   case ty of
-    TBool                     -> pure unitExpr
-    TInteger                  -> pure unitExpr
-    TIntegerMod _             -> pure unitExpr
-    TRational                 -> pure unitExpr
-    TFloat                    -> pure unitExpr
-    TDouble                   -> pure unitExpr
-    TWord sz | Just _ <- isKnownSize sz -> pure unitExpr
-             | otherwise                -> compileSize sz MemSize
+    TBool           -> pure unitExpr
+    TInteger        -> pure unitExpr
+
+    TIntegerMod n
+      | Just _ <- isKnownSize n -> pure unitExpr
+      | otherwise  -> unsupported "IntdegerMod dynamic size"
+                 -- XXX: the representation of the bound needs to be a
+                 -- type parameter is it can be either MemSize or LargeSize
+
+    TRational -> pure unitExpr
+    TFloat    -> pure unitExpr
+    TDouble   -> pure unitExpr
+    TWord sz
+      | Just _ <- isKnownSize sz -> pure unitExpr
+      | otherwise                -> compileSize sz MemSize
 
     TArray sz elT
       | Just _ <- isKnownSize sz  -> lenParamFor elT
@@ -85,9 +93,11 @@ lenParamFor ty =
            pure (tupleExpr [vecLen,elemLen])
 
     TStream {} -> unsupported "lenStream"
-    TTuple ts       -> tupleExpr <$> mapM lenParamFor ts
-    TFun _ t        -> lenParamFor t
-    TPoly tp        -> lookupLenParam tp
+    TTuple ts  -> tupleExpr <$> mapM lenParamFor ts
+    TFun _ t   -> lenParamFor t
+    TPoly tp   -> lookupLenParam tp
+
+
 
 lenParamForSize :: Size -> Rust RustExpr
 lenParamForSize = undefined

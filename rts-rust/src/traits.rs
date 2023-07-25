@@ -119,7 +119,19 @@ pub trait Integral {
 
 pub trait Literal : Length {
   fn number_u64(n: Self::Length, x: u64) -> Self;
-  fn number_integer(n: Self::Length, x: &num::BigUint) -> Self;
+  fn number_int(n: Self::Length, x: &num::BigUint) -> Self;
+}
+
+pub trait LiteralNumber<T> : Literal {
+  fn number(n: Self::Length, x:T) -> Self;
+}
+
+impl<T : Literal> LiteralNumber<u64> for T {
+  fn number(n: Self::Length, x:u64) -> Self { Self::number_u64(n,x) }
+}
+
+impl<T : Literal> LiteralNumber<&num::BigUint> for T {
+  fn number(n: Self::Length, x:&num::BigUint) -> Self { Self::number_int(n,x) }
 }
 
 

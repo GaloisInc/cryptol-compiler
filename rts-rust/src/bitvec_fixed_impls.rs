@@ -6,13 +6,8 @@ impl<const W: usize, const L: usize> Length for BitVec<W, L> {
 }
 
 impl<const W: usize, const L: usize> Literal for BitVec<W, L> {
-  fn number_u64(_n: Self::Length, x: u64) -> Self {
-    Self::from(x)
-  }
-
-  fn number_integer(_n: Self::Length, x: &num::BigUint) -> Self {
-    Self::from(x)
-  }
+  fn number_u64(_n: Self::Length, x: u64) -> Self { Self::from(x) }
+  fn number_int(_n: Self::Length, x: &num::BigUint) -> Self { Self::from(x) }
 }
 
 impl<const W: usize, const L: usize> Zero for BitVec<W, L> {

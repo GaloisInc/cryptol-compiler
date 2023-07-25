@@ -11,6 +11,7 @@ pub use traits::*;
 pub mod trait_methods {
   pub use crate::traits::Zero as _;
   pub use crate::traits::Literal as _;
+  pub use crate::traits::LiteralNumber as _;
   /* XXX: Add other traits */
 }
 

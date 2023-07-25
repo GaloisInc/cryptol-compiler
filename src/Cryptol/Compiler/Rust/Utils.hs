@@ -22,6 +22,17 @@ type RustWherePredicate = Rust.WherePredicate ()
 type RustWhereClause = Rust.WhereClause ()
 type RustLit = Rust.Lit ()
 
+-- | A block under construction
+type PartialBlock a = ([RustStmt], a)
+
+-- | Make a partial block with no statememtns.
+justExpr :: a -> PartialBlock a
+justExpr e = ([],e)
+
+-- | Turn a partial block into an actual block.
+finishBlock :: PartialBlock RustExpr -> RustBlock
+finishBlock (xs,e) = block' xs e
+
 dummySpan :: Rust.Span
 dummySpan = Rust.Span Rust.NoPosition Rust.NoPosition
 

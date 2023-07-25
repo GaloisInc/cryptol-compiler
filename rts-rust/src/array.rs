@@ -6,10 +6,8 @@ impl<T : Length, const N: usize> Length for [T; N] {
 }
 
 impl<T: Zero, const N: usize> Zero for [T; N] {
-  fn zero(n: Self::Length) -> Self { std::array::from_fn(|i| T::zero(n)) }
+  fn zero(n: Self::Length) -> Self { std::array::from_fn(|_i| T::zero(n)) }
 }
-
-
 
 impl<T : Clone, const N: usize> Sequence for [T; N] {
   type Item = T;
