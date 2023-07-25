@@ -20,43 +20,128 @@ import Cryptol.Compiler.Rust.CompilePrim
 import Data.Maybe (catMaybes)
 import Data.Text qualified as Text
 import Data.Text(Text)
+import Cryptol.Compiler.Monad (panic)
 
-callPreludePrim :: Text -> Call -> Rust RustExpr
-callPreludePrim name call =
+-- callPreludePrim :: Text -> Call -> Rust ([RustStmt], RustExpr)
+-- callPreludePrim name call =
+--   case name of
+--     -- Literal --
+--     "number" -> primNumber call
+
+--     -- Ring --
+--     "+" -> ring "add"
+--     "-" -> ring "sub"
+--     "*" -> ring "mul"
+--     "negate" -> ring "negate"
+--     "fromInteger" -> ring "from_integer"
+--     -- TODO: do we need to figure out if the exponent will fit in
+--     --       a u32 before calling this? (or call `Integral::to_usize`?)
+--     "^^" -> todo
+
+--     -- Integral --
+--     "/" -> integral "div"
+--     "%" -> integral "modulo"
+--     "toInteger" -> integral "to_integer"
+
+--     -- Zero
+--     "zero" -> callTrait "Zero" "zero"
+
+--     -- Logic
+--     "&&" -> logic "and"
+--     "||" -> logic "or"
+--     "^" -> logic "xor"
+--     "complement" -> logic "complement"
+
+--     _ -> todo
+--   where
+--     callTrait trait fnName =
+--       withEvalArgs' $ \es ->
+--         justExpr (mkTraitCall trait fnName es)
+
+--     ring = callTrait "Ring"
+--     integral = callTrait "Integral"
+--     logic = callTrait "Logic"
+
+--     args = ircArgs call
+--     withEvalArgs' f = withEvalArgs (pure . f)
+--     withEvalArgs f =
+--       do  (stmts, exps) <- unzip <$> genExpr `traverse` args
+--           (fstmts, fexp) <- f exps
+--           pure (concat stmts ++ fstmts, fexp)
+
+--     mkTraitCall trait method =
+--       mkRustCall (pathExpr (simplePath' [trait, method]))
+--     todo =
+--       pure $ justExpr (todoExp ("prelude primitive: " <> Text.unpack name))
+
+
+getPreludePrimFnExpr :: Text -> Maybe RustExpr
+getPreludePrimFnExpr name =
   case name of
-    "number" -> primNumber call
+      -- Ring --
+    "+" -> ring "add"
+    "-" -> ring "sub"
+    "*" -> ring "mul"
+    "negate" -> ring "negate"
+    "fromInteger" -> ring "from_integer"
+    -- TODO: do we need to figure out if the exponent will fit in
+    --       a u32 before calling this? (or call `Integral::to_usize`?)
+    "^^" -> Nothing
 
-    -- ("+", [e1, e2]) -> pure $ ring "add" args
-    _ -> todo
+    -- Integral --
+    "/" -> integral "div"
+    "%" -> integral "modulo"
+    "toInteger" -> integral "to_integer"
+
+    -- Zero
+    "zero" -> Nothing -- TODO
+
+    -- Logic
+    "&&" -> logic "and"
+    "||" -> logic "or"
+    "^" -> logic "xor"
+    "complement" -> logic "complement"
+    _ -> Nothing
   where
-    args = genExpr `traverse` ircArgs call
-    mkTraitCall trait method =
-      mkRustCall (pathExpr (simplePath' [trait, method]))
-    ring  = mkTraitCall "Ring"
-    todo = pure (todoExp ("prelude primitive: " <> Text.unpack name))
+    ring = mkTraitFnExpr "Ring"
+    integral = mkTraitFnExpr "Integral"
+    logic = mkTraitFnExpr "Logic"
 
 
--- | Generate Rust code for a Cryptol IR primitive call
-callPrim :: IRPrim -> Call -> Rust RustExpr
-callPrim p call =
-  case p of
+
+    mkTraitFnExpr trait method =
+      Just (pathExpr (simplePath' [trait, method]))
+
+getPrimFnExpr :: IRPrim -> Maybe RustExpr
+getPrimFnExpr prim =
+  case prim of
     CryPrim (Cry.PrimIdent mod name)
-      | mod == Cry.preludeName -> callPreludePrim name call
-      | otherwise -> todo
+      | mod == Cry.preludeName -> getPreludePrimFnExpr name
+      | otherwise -> Nothing
+    _ -> Nothing
 
 
-    MakeSeq       -> todo
-    Tuple         -> todo
-    TupleSel n _  -> todo
-    Map           -> todo
-    FlatMap       -> todo
-    Zip           -> todo
+-- -- | Generate Rust code for a Cryptol IR primitive call
+-- callPrim :: IRPrim -> Call -> Rust ([RustStmt], RustExpr)
+-- callPrim p call =
+--   case p of
+--     CryPrim (Cry.PrimIdent mod name)
+--       | mod == Cry.preludeName -> callPreludePrim name call
+--       | otherwise -> todo
 
-    Collect       -> todo
-    Iter          -> todo
-  where
-  todo = pure (todoExp (show (pp p)))
-  primE =  undefined
+
+--     MakeSeq       -> todo
+--     Tuple         -> todo
+--     TupleSel n _  -> todo
+--     Map           -> todo
+--     FlatMap       -> todo
+--     Zip           -> todo
+
+--     Collect       -> todo
+--     Iter          -> todo
+--   where
+--   todo = pure $ justExpr (todoExp (show (pp p)))
+--   primE =  undefined
 
 -- | Generate Rust code for a Cryptol IR expression, creating a block if
 doGenExpr :: Expr -> Rust RustExpr
@@ -68,36 +153,53 @@ doGenExpr e =
 genBlock :: Expr -> Rust RustBlock
 genBlock e = uncurry block' <$> genExpr e
 
+
+
+
+genCall :: Call -> Rust ([RustStmt], RustExpr)
+genCall call =
+  do  argExprs <- traverse doGenExpr (ircArgs call)
+      let funTy = ircFunType call
+          needLen = Set.unions (map traitNeedsLen (ftTraits funTy))
+          typeArgs =
+            case ircFun call of
+              IRFunVal _ -> []
+              IRTopFun tf -> irtfTypeArgs tf
+
+          lenParams = [ arg | (t, arg) <- ftTypeParams funTy `zip` typeArgs
+                            , t `Set.member` needLen ]
+
+      lenParamExprs <- traverse lenParamFor lenParams
+
+      szExprs <-
+        case ircFun call of
+          IRFunVal _ -> pure []
+          IRTopFun tf -> traverse (uncurry compileSize) (irtfSizeArgs tf)
+
+      fnExpr <-
+        case ircFun call of
+          IRFunVal fnIR -> doGenExpr fnIR
+          IRTopFun tf ->
+            do  name <- lookupFunName (irtfName tf)
+                case name of
+                  Left prim ->
+                    case getPrimFnExpr prim of
+                      Nothing -> panic "genCall" ["primitive not implemented"]
+                      Just p -> pure p
+                  Right path ->
+                    do  tys' <- traverse compileType (irtfTypeArgs tf)
+                        pure $ pathExpr (pathAddTypeSuffix path tys')
+
+      pure $ justExpr (mkRustCall fnExpr (lenParamExprs ++ szExprs ++ argExprs))
+
 -- | From a Cryptol IR expression, generate a Rust expressions along with
 --   a set of Rust statements that contextualize it, such as let bindings
 genExpr :: Expr -> Rust ([RustStmt], RustExpr)
 genExpr (IRExpr e0) =
-  let justExpr e = ([],e)
-  in
   case e0 of
     IRVar (IRName name _) -> justExpr <$> lookupNameId name
 
-    IRCallFun call ->
-      justExpr <$>
-      do  -- XXX: adapt arguments if needed.  For example, a function that
-          -- works with polymorphic arguments expects a vector.
-          -- If we call this function with a known size argument, we need
-          -- to turn the array into a vector.
-
-          case ircFun call of
-{-
-            IRFunVal fnIR ->
-              do  fnExpr <- doGenExpr fnIR
-                  pure $ mkRustCall fnExpr args'
--}
-
-            IRTopFun tf ->
-              do  name <- lookupFunName (irtfName tf)
-                  case name of
-                    Left prim -> callPrim prim call
-                    -- Right nameExpr ->
-                    --   args' <- doGenExpr `traverse` ircArgs call
-                    --   pure $ mkRustCall nameExpr args'
+    IRCallFun call -> genCall call
 
     IRClosure call -> pure (justExpr (todoExp (show (pp call))))
 

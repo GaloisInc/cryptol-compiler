@@ -8,10 +8,12 @@ import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.CompileType(compileType)
 import Cryptol.Compiler.Rust.CompileSize(compileSize)
+import Cryptol.Compiler.Rust.CompileTrait (lenParamFor)
 
+justExpr :: RustExpr -> ([RustStmt], RustExpr)
+justExpr e = ([],e)
 
-
-primNumber :: Call -> Rust RustExpr
+primNumber :: Call -> Rust ([RustStmt], RustExpr)
 primNumber c =
   do  rustTy <- compileType ty
       case sizeType of
@@ -21,7 +23,7 @@ primNumber c =
           do  sizeExpr <- compileSize size sizeType
               let path = typePath rustTy (simplePath "number_u64")
               lenP <- lenParamFor ty
-              pure $ mkRustCall path [lenP, sizeExpr]
+              pure $ justExpr (mkRustCall path [lenP, sizeExpr])
 
         LargeSize -> unsupported "primNumber: LargeSize not supported"
 
@@ -31,32 +33,4 @@ primNumber c =
       IRTopFun tf | [t]   <- irtfTypeArgs tf
                   , [arg] <- irtfSizeArgs tf -> (t,arg)
       _ -> panic "primNumber" ["Unexpected ircFun"]
-
-
-lenParamFor :: Type -> Rust RustExpr
-lenParamFor ty =
-  case ty of
-    TBool                     -> pure unitExpr
-    TInteger                  -> pure unitExpr
-    TIntegerMod _             -> pure unitExpr
-    TRational                 -> pure unitExpr
-    TFloat                    -> pure unitExpr
-    TDouble                   -> pure unitExpr
-    TWord sz | Just _ <- isKnownSize sz -> pure unitExpr
-             | otherwise                -> compileSize sz MemSize
-
-    TArray sz elT
-      | Just _ <- isKnownSize sz  -> lenParamFor elT
-      | otherwise ->
-        do vecLen  <- compileSize sz MemSize
-           elemLen <- lenParamFor elT
-           pure (tupleExpr [vecLen,elemLen])
-
-    TStream {} -> unsupported "lenStream"
-    TTuple ts       -> tupleExpr <$> mapM lenParamFor ts
-    TFun _ t        -> lenParamFor t
-    TPoly tp        -> lookupLenParam tp
-
-lenParamForSize :: Size -> Rust RustExpr
-lenParamForSize = undefined
 

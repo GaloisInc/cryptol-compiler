@@ -11,6 +11,21 @@ import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
 
+traitNeedsLen :: Trait -> Set Cry.TParam
+traitNeedsLen (IRTrait name arg)  =
+  case name of
+    PZero     -> Set.singleton arg
+    PLiteral  -> Set.singleton arg
+    PLogic    -> mempty
+    PRing     -> mempty
+    PIntegral -> mempty
+    PField    -> mempty
+    PRound    -> mempty
+    PEq       -> mempty
+    PCmp      -> mempty
+    PSignedCmp-> mempty
+    PFLiteral -> mempty
+
 lenParamType :: Cry.TParam -> Rust RustType
 lenParamType tp =
   do ty <- lookupTParam tp
@@ -21,26 +36,13 @@ lenParamType tp =
 -- | Compile a trait.  The set returns type parameters that need
 -- an associated Lenght parmaeter.
 compileTrait :: Trait -> Rust (Set Cry.TParam, RustWherePredicate)
-compileTrait (IRTrait name arg) =
+compileTrait t@(IRTrait name arg) =
   do tparam <- getTParams
-     pure (traitLen, Rust.BoundPredicate [] (tparam arg) [bound] ())
+     pure (traitNeedsLen t, Rust.BoundPredicate [] (tparam arg) [bound] ())
   where
   bound     = Rust.TraitTyParamBound traitName Rust.None ()
   traitName = Rust.PolyTraitRef [] (Rust.TraitRef path) ()
 
-  traitLen  =
-    case name of
-      PZero     -> Set.singleton arg
-      PLiteral  -> Set.singleton arg
-      PLogic    -> mempty
-      PRing     -> mempty
-      PIntegral -> mempty
-      PField    -> mempty
-      PRound    -> mempty
-      PEq       -> mempty
-      PCmp      -> mempty
-      PSignedCmp-> mempty
-      PFLiteral -> mempty
 
   path = simplePath' pathSegments
   pathSegments =
@@ -61,5 +63,31 @@ compileTrait (IRTrait name arg) =
         PFLiteral     -> "FLiteral"
     ]
 
+-- | Given a type, compute the parameter for the `Length`
+--   trait in the Rust run-time system.
+lenParamFor :: Type -> Rust RustExpr
+lenParamFor ty =
+  case ty of
+    TBool                     -> pure unitExpr
+    TInteger                  -> pure unitExpr
+    TIntegerMod _             -> pure unitExpr
+    TRational                 -> pure unitExpr
+    TFloat                    -> pure unitExpr
+    TDouble                   -> pure unitExpr
+    TWord sz | Just _ <- isKnownSize sz -> pure unitExpr
+             | otherwise                -> compileSize sz MemSize
 
+    TArray sz elT
+      | Just _ <- isKnownSize sz  -> lenParamFor elT
+      | otherwise ->
+        do vecLen  <- compileSize sz MemSize
+           elemLen <- lenParamFor elT
+           pure (tupleExpr [vecLen,elemLen])
 
+    TStream {} -> unsupported "lenStream"
+    TTuple ts       -> tupleExpr <$> mapM lenParamFor ts
+    TFun _ t        -> lenParamFor t
+    TPoly tp        -> lookupLenParam tp
+
+lenParamForSize :: Size -> Rust RustExpr
+lenParamForSize = undefined

@@ -7,6 +7,8 @@ import Language.Rust.Data.Ident qualified as Rust
 import Language.Rust.Data.Position qualified as Rust
 import Language.Rust.Syntax (QSelf(QSelf))
 
+import Cryptol.Compiler.Error (panic)
+
 type RustPath     = Rust.Path ()
 type RustType     = Rust.Ty ()
 type RustExpr     = Rust.Expr ()
@@ -30,6 +32,32 @@ simplePath n = Rust.Path False [Rust.PathSegment n Nothing ()] ()
 
 simplePath' :: [Rust.Ident] -> RustPath
 simplePath' ns = Rust.Path False [Rust.PathSegment n Nothing () | n <- ns] ()
+
+pathWithTypes :: [Rust.Ident] -> [RustType] -> RustPath
+pathWithTypes ns0 tys = Rust.Path False (go ns0) ()
+  where
+    go ns =
+      case ns of
+        [] -> panic "pathWithTypes" ["empty names"]
+        [lst] -> [Rust.PathSegment lst (Just pathParams) ()]
+        n:t -> Rust.PathSegment n Nothing () : go t
+    pathParams = Rust.AngleBracketed [] tys [] ()
+
+pathAddTypeSuffix :: RustPath -> [RustType] -> RustPath
+pathAddTypeSuffix (Rust.Path global seg ()) newTys =
+  let seg' = init seg ++ [modSegment (last seg)]
+      modSegment (Rust.PathSegment name mbParams _) =
+        Rust.PathSegment name (modPathParams <$> mbParams) ()
+      modPathParams params =
+        case params of
+          Rust.Parenthesized {} -> panic "pathAddTypeSuffix" ["Parenthesized"]
+          Rust.AngleBracketed _ _ (_:_) () ->
+            panic "pathAddTypeSuffix" ["AngleBracketed with arg 3"]
+          Rust.AngleBracketed lts curTys [] () ->
+            Rust.AngleBracketed lts (curTys++newTys) [] ()
+  in Rust.Path global seg' ()
+
+
 --------------------------------------------------------------------------------
 
 typePath :: RustType -> RustPath -> RustExpr

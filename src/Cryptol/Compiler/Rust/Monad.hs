@@ -150,7 +150,7 @@ isFunNameLocal fu =
             _ -> False
 
 -- | Get an expression corresponding to a named function
-lookupFunName :: FunName -> Rust (Either IRPrim RustExpr)
+lookupFunName :: FunName -> Rust (Either IRPrim RustPath)
 lookupFunName fu =
   case irfnName fu of
     IRPrimName p -> pure (Left p)
@@ -158,7 +158,7 @@ lookupFunName fu =
       do let mo = nameIdModule f
          ro <- Rust ask
          rw <- Rust get
-         Right . (\x -> Rust.PathExpr [] Nothing x ()) <$>
+         Right <$>
            if roModName ro == mo
              then
                do let i = lookupName fu (rwLocalFunNames rw)
