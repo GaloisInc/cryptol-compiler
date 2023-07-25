@@ -6,14 +6,10 @@ import Cryptol.Utils.Ident qualified as Cry
 
 import Cryptol.Compiler.Error (panic,unsupported)
 import Cryptol.Compiler.PP(pp)
-import Cryptol.Compiler.IR.Type
 import Cryptol.Compiler.IR.Cryptol
 
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.Utils
-import Cryptol.Compiler.Rust.CompileType(compileType)
-import Cryptol.Compiler.Rust.CompileSize(compileSize)
-import Cryptol.Compiler.Rust.CompileTrait (lenParamFor)
 
 data PrimArgs = PrimArgs
   { primTypeArgs  :: [RustType]
@@ -27,7 +23,7 @@ compilePrim :: IRPrim -> PrimArgs -> Rust RustExpr
 compilePrim name args =
   case name of
     CryPrim p -> compileCryptolPrim p args
-    _ -> unsupported "compilePrim" [ show (pp name) ] -- XXX
+    _ -> unsupported (Text.pack ("primitive " ++ show (pp name))) -- XXX
 
 
 compileCryptolPrim :: Cry.PrimIdent -> PrimArgs -> Rust RustExpr
