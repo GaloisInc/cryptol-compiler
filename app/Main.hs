@@ -128,6 +128,7 @@ saveExample dir rust =
        , "edition = \"2021\""
        , "[dependencies]"
        , "cryptol = { path = " ++ show rtsPath ++ "}"
+       , "num = \"0.4.0\""
        ]
 
      let src = dir </> "src"

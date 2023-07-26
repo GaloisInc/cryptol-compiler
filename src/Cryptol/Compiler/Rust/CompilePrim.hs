@@ -38,6 +38,7 @@ compileCryptolPrim p@(Cry.PrimIdent mo name) args
 compileCryptolPreludePrim :: Text -> PrimArgs -> Rust RustExpr
 compileCryptolPreludePrim name args =
   case name of
+
     "number" ->
        pure $ mkRustCall (tyTraitMethod "number")
                          (primLenArgs args ++ primSizeArgs args)

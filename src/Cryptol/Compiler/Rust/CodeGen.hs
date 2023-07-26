@@ -53,6 +53,7 @@ genCallSizeArgs call =
     IRTopFun tf -> traverse (uncurry compileSize) (irtfSizeArgs tf)
 
 -- | Normal arguments for a call
+-- XXX: we probably want to pass references
 genCallArgs :: Call -> Rust ([RustStmt], [RustExpr])
 genCallArgs call =
   do (stmtss,es) <- unzip <$> traverse genExpr (ircArgs call)
@@ -165,6 +166,7 @@ genFunDecl decl =
                            pure (i, compileSizeType (irsSize sp))
 
             -- Normal parameters
+            -- XXX: We probably want to use references
             nParams <- forM (argNames `zip` ftParams ft) \(arg,ty) ->
                         do i <- bindLocal addLocalVar arg
                            t <- compileType ty

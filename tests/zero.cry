@@ -1,0 +1,4 @@
+cryMain = y : [_][8]
+
+x = zero
+y = [x,x]

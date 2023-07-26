@@ -131,6 +131,11 @@ todoBlock txt = block [stmtNoSemi (todoExp txt)]
 exprStmt :: RustExpr -> RustStmt
 exprStmt e = Rust.NoSemi e ()
 
+addrOf :: RustExpr -> RustExpr
+addrOf e = Rust.AddrOf [] Rust.Immutable e ()
+
+rustArray :: [RustExpr] -> RustExpr
+rustArray es = Rust.Vec [] es ()
 
 --------------------------------------------------------------------------------
 -- Top Delcarations
@@ -169,6 +174,9 @@ mkUseGlob xs = Rust.Use [] Rust.InheritedV useTree ()
 
 mkIntLit :: Rust.Suffix -> Integer -> RustLit
 mkIntLit s i = Rust.Int Rust.Dec i s ()
+
+mkU8Lit :: Integer -> RustLit
+mkU8Lit = mkIntLit Rust.U8
 
 mkU64Lit :: Integer -> RustLit
 mkU64Lit = mkIntLit Rust.U64
@@ -220,4 +228,5 @@ fixedArrayOfType ty i = Rust.Array ty sizeExpr ()
   where
     sizeExpr = Rust.Lit [] (Rust.Int Rust.Dec i Rust.Unsuffixed ()) ()
 
-
+refType :: RustType -> RustType
+refType ty = Rust.Rptr Nothing Rust.Immutable ty ()

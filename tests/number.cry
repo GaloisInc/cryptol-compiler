@@ -1,6 +1,5 @@
-x = 1
 
-cryMain = x : [8]
+cryMain = 0xFFFFFFFFFFFFFFFFFF
 
 
 //:[8]
