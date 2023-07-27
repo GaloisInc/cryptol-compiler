@@ -87,7 +87,7 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
 
   /// Extract a sub-bitvector of the given length, starting at the given
   /// position. 0 is the most significant bit.
-  pub fn slice<const W1: usize, const L1: usize>
+  pub fn slice_be<const W1: usize, const L1: usize>
     (&self, i: usize) -> BitVec<W1,L1> {
     assert!((i + W1) <= W);
     let ws = self.as_words();
@@ -123,15 +123,21 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
     result
   }
 
+  pub fn slice_le<const W1: usize, const L1: usize>
+    (&self, i: usize) -> BitVec<W1,L1> {
+    assert!((i + W1) <= W);
+    self.slice_be(W - W1 - i)
+  }
+
 
   pub fn take<const W1: usize, const L1: usize>(&self) -> BitVec<W1,L1> {
-    self.slice(0)
+    self.slice_be(0)
   }
 
   /// Note that the parameters are the size of the result,
   /// NOT how much to drop.
   pub fn drop<const W1: usize, const L1: usize>(&self) -> BitVec<W1,L1> {
-    self.slice(W - W1)
+    self.slice_be(W - W1)
   }
 
   /// Convert to a vector in base 2^32.  Least significant first
@@ -180,14 +186,23 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
 /// Get the least significant bits
 impl<const W: usize, const L: usize> From<&BitVec<W,L>> for u8 {
   fn from(x: &BitVec<W,L>) -> Self {
-    let pad = BitVec::<W,L>::PAD;
-    let have = c::Limb::BITS - pad;
-    let ws = x.as_words();
+    let pad   = BitVec::<W,L>::PAD;
+    let have  = c::Limb::BITS - pad;
+    let ws    = x.as_words();
     let mut w = ws[0] >> pad;
     if W >= 8 && have < 8 {
       w |= ws[1] << have;
     }
     w as u8
+  }
+}
+
+
+// To Word (aka u64)
+/// Get the least significant bits
+impl<const W: usize, const L: usize> From<&BitVec<W,L>> for c::Word {
+  fn from(x: &BitVec<W,L>) -> Self {
+    x.slice_le::<{c::Limb::BITS},1>(0).as_words()[0]
   }
 }
 
@@ -200,6 +215,11 @@ impl<const W: usize, const L: usize> From<&BitVec<W,L>> for n::BigUint {
   }
 }
 
+// To num::BigInt
+/// Get the least significant bits
+impl<const W: usize, const L: usize> From<&BitVec<W,L>> for n::BigInt {
+  fn from(x: &BitVec<W,L>) -> Self { <_>::from(n::BigUint::from(x)) }
+}
 
 
 
@@ -243,6 +263,34 @@ impl<const W: usize, const L: usize> From<&n::BigUint> for BitVec<W,L> {
   }
 }
 
+// From num::BigInt
+impl<const W: usize, const L: usize> From<&n::BigInt> for BitVec<W,L> {
+  // XXX: We first make uint, then shift it, which does 2 copies.
+  // Should be able to do it in one go.
+  fn from(n: &n::BigInt) -> Self {
+    let mut result = < c::Uint<L> >::default();
+    let pad : u8   = match n.sign() {
+                       num::bigint::Sign::Minus => 255,
+                       _ => 0
+                     };
+    let buf        = result.as_words_mut();
+    let mut bytes  = n.to_signed_bytes_le().into_iter();
+    for i in buf.iter_mut() {
+      let mut w: c::Word = 0;
+      for z in 0 .. c::Limb::BYTES {
+        let b = match bytes.next() {
+                  None    => pad,
+                  Some(x) => x
+                };
+        w |= (b as c::Word) << (8 * z);
+      }
+      *i = w;
+    }
+    let it = Self::from(result);
+    it
+  }
+}
+
 // From c::Uint
 impl<const W: usize, const L: usize> From<c::Uint<L>> for BitVec<W,L> {
   fn from(x: c::Uint<L>) -> Self {
@@ -259,6 +307,7 @@ impl<const W: usize, const L: usize> From<c::Uint<L>> for BitVec<W,L> {
 
 // -----------------------------------------------------------------------------
 // Arithmetic
+
 impl<const W: usize, const L: usize> Add for &BitVec<W,L> {
   type Output = BitVec<W,L>;
 
@@ -309,6 +358,31 @@ impl<const W: usize, const L: usize> Rem for &BitVec<W,L> {
   fn rem(self, other: Self) -> Self::Output {
     BitVec::<W,L>::from(self.to_uint().wrapping_rem(&other.to_uint()))
   }
+}
+
+/// Raise the number to the given power
+/// pow w 0 = 1
+/// pow w (2*n) = pow (w * w) n
+/// pow w (n + 1) = w * pow x n
+
+impl<const W: usize, const L: usize> BitVec<W,L> {
+
+  pub fn exp(&self, mut n: u64) -> Self {
+
+    let mut base = *self;
+    let mut res  = <_>::from(1_u64);
+    while n > 0 {
+      if n & 1 == 1 {
+        res = &res * &base;
+        n -= 1;
+      } else {
+        base = &base * &base;
+        n = n >> 1;
+      }
+    }
+    res
+  }
+
 }
 
 
@@ -485,7 +559,7 @@ impl<'a, const W:  usize, const L: usize
   fn next(&mut self) -> Option<Self::Item> {
     let todo = if EACH_W == 0 { 0 } else { W / EACH_W };
     if self.ix >= todo { return None }
-    let res = self.vec.slice(self.ix * EACH_W);
+    let res = self.vec.slice_be(self.ix * EACH_W);
     self.ix += 1;
     Some(res)
   }
@@ -528,14 +602,14 @@ impl<const W: usize, const L: usize> BitVec<W,L> {
     let mut emit = |x| s.push(table[ x as usize ]);
 
     match extra {
-      1 => emit(u8::from(&self.slice::<1,1>(0))),
-      2 => emit(u8::from(&self.slice::<2,1>(0))),
-      3 => emit(u8::from(&self.slice::<3,1>(0))),
+      1 => emit(u8::from(&self.slice_be::<1,1>(0))),
+      2 => emit(u8::from(&self.slice_be::<2,1>(0))),
+      3 => emit(u8::from(&self.slice_be::<3,1>(0))),
       _ => ()
     }
 
     for i in 0 .. W / 4 {
-      emit(u8::from(&self.slice::<4,1>(extra + 4 * i)))
+      emit(u8::from(&self.slice_be::<4,1>(extra + 4 * i)))
     }
 
     f.pad_integral(true, "0x", &s)
@@ -565,13 +639,13 @@ impl<const W: usize, const L: usize> Octal for BitVec<W,L> {
     let mut emit = |x| s.push(table[ x as usize ]);
 
     match extra {
-      1 => emit(u8::from(&self.slice::<1,1>(0))),
-      2 => emit(u8::from(&self.slice::<2,1>(0))),
+      1 => emit(u8::from(&self.slice_be::<1,1>(0))),
+      2 => emit(u8::from(&self.slice_be::<2,1>(0))),
       _ => ()
     }
 
     for i in 0 .. W / 3 {
-      emit(u8::from(&self.slice::<3,1>(extra + 3 * i)))
+      emit(u8::from(&self.slice_be::<3,1>(extra + 3 * i)))
     }
 
     f.pad_integral(true, "0o", &s)
@@ -781,25 +855,28 @@ mod tests {
   #[test]
   fn test_slice() {
     let x64 = <BitVec!(64)>::from(1_u64 << 63);
-    assert_eq!(x64.slice(0), <BitVec!(1)>::from(1_u64));
-    assert_eq!(x64.slice(1), <BitVec!(1)>::from(0_u64));
-    assert_eq!(x64.slice(0), <BitVec!(2)>::from(10_u64));
-    assert_eq!(x64.slice(1), <BitVec!(2)>::from(00_u64));
-    assert_eq!(x64.slice(0), x64);
+    assert_eq!(x64.slice_be(0), <BitVec!(1)>::from(1_u64));
+    assert_eq!(x64.slice_be(1), <BitVec!(1)>::from(0_u64));
+    assert_eq!(x64.slice_be(0), <BitVec!(2)>::from(10_u64));
+    assert_eq!(x64.slice_be(1), <BitVec!(2)>::from(00_u64));
+    assert_eq!(x64.slice_be(0), x64);
+    assert_eq!(x64.slice_le(0), <BitVec!(1)>::from(0_u64));
+    assert_eq!(x64.slice_le(63), <BitVec!(1)>::from(1_u64));
+    assert_eq!(x64.slice_le(0), x64);
 
     let x123 = <BitVec!(123)>::from(1_u128 << 122);
-    assert_eq!(x123.slice(0), <BitVec!(1)>::from(1_u64));
-    assert_eq!(x123.slice(1), <BitVec!(1)>::from(0_u64));
-    assert_eq!(x123.slice(0), <BitVec!(2)>::from(10_u64));
-    assert_eq!(x123.slice(1), <BitVec!(2)>::from(00_u64));
-    assert_eq!(x123.slice(0), x123);
+    assert_eq!(x123.slice_be(0), <BitVec!(1)>::from(1_u64));
+    assert_eq!(x123.slice_be(1), <BitVec!(1)>::from(0_u64));
+    assert_eq!(x123.slice_be(0), <BitVec!(2)>::from(10_u64));
+    assert_eq!(x123.slice_be(1), <BitVec!(2)>::from(00_u64));
+    assert_eq!(x123.slice_be(0), x123);
 
     let x3 = <BitVec!(3)>::from(1_u64 << 2);
-    assert_eq!(x3.slice(0), <BitVec!(1)>::from(1_u64));
-    assert_eq!(x3.slice(1), <BitVec!(1)>::from(0_u64));
-    assert_eq!(x3.slice(0), <BitVec!(2)>::from(10_u64));
-    assert_eq!(x3.slice(1), <BitVec!(2)>::from(00_u64));
-    assert_eq!(x3.slice(0), x3);
+    assert_eq!(x3.slice_be(0), <BitVec!(1)>::from(1_u64));
+    assert_eq!(x3.slice_be(1), <BitVec!(1)>::from(0_u64));
+    assert_eq!(x3.slice_be(0), <BitVec!(2)>::from(10_u64));
+    assert_eq!(x3.slice_be(1), <BitVec!(2)>::from(00_u64));
+    assert_eq!(x3.slice_be(0), x3);
   }
 
 
@@ -809,6 +886,30 @@ mod tests {
     assert_eq!(take!(2,2,&x), <BitVec!(2)>::from(0b01_u64));
     assert_eq!(drop!(2,2,&x), <BitVec!(2)>::from(0b01_u64));
     assert_eq!(drop!(1,3,&x), <BitVec!(3)>::from(0b101_u64));
+  }
+
+  #[test]
+  fn test_from() {
+    assert_eq!( <BitVec!(8)>::from(&<num::BigInt>::from(255_u64))
+              , <BitVec!(8)>::from(255_u64)
+              );
+    assert_eq!( <BitVec!(8)>::from(&<num::BigInt>::from(-1))
+              , <BitVec!(8)>::from(255_u64)
+              );
+
+    assert_eq!( <BitVec!(128)>::from(&<num::BigInt>::from(-1))
+              , <BitVec!(128)>::from(&<num::BigUint>::from_slice(
+                                                        &[ 0xFFFFFFFF; 4 ]))
+              );
+  }
+
+  #[test]
+  fn test_exp() {
+    assert_eq!(<BitVec!(8)>::from(2_u64).exp(6), <BitVec!(8)>::from(64_u64));
+    assert_eq!(<BitVec!(8)>::from(2_u64).exp(7), <BitVec!(8)>::from(128_u64));
+    assert_eq!(<BitVec!(7)>::from(2_u64).exp(7), <BitVec!(7)>::from(0_u64));
+    let x_7_129 = &<BitVec!(129)>::from(7_u64);
+    assert_eq!(x_7_129.exp(11), &x_7_129.exp(3) * &x_7_129.exp(8));
   }
 
 }

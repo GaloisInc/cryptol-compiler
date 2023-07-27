@@ -39,23 +39,27 @@ compileCryptolPreludePrim :: Text -> PrimArgs -> Rust RustExpr
 compileCryptolPreludePrim name args =
   case name of
 
+    -- Literal
     "number" ->
        pure $ mkRustCall (tyTraitMethod "number")
                          (primLenArgs args ++ primSizeArgs args)
 
+    -- Zero
     "zero" ->
        pure $ mkRustCall (tyTraitMethod "zero") (primLenArgs args)
+
+
+      -- Ring --
+    "+"       -> inferMethod "add"
+    "-"       -> inferMethod "sub"
+    "*"       -> inferMethod "mul"
+    "negate"  -> inferMethod "negate"
 
 
 
     _ -> unsupported ("Primitive " <> name)
 
 {-
-      -- Ring --
-    "+" -> ring "add"
-    "-" -> ring "sub"
-    "*" -> ring "mul"
-    "negate" -> ring "negate"
     "fromInteger" -> ring "from_integer"
     -- TODO: do we need to figure out if the exponent will fit in
     --       a u32 before calling this? (or call `Integral::to_usize`?)
@@ -77,15 +81,23 @@ compileCryptolPreludePrim name args =
     _ -> Nothing
 -}
   where
-  ring     = mkTraitFnExpr "Ring"
-  integral = mkTraitFnExpr "Integral"
-  logic    = mkTraitFnExpr "Logic"
-  mkTraitFnExpr trait method = pathExpr (simplePath' [trait, method])
+  inferMethod method =
+    pure (mkRustCall (typePath inferType (simplePath method))
+                     (map addrOf (primArgs args)))
 
   tyTraitMethod method =
       case primTypeArgs args of
         [ty] -> typePath ty (simplePath method)
         _    -> panic "tyTraitMethod" ["Expected exactly 1 type argument"]
+
+
+
+
+{-
+  integral = mkTraitFnExpr "Integral"
+  logic    = mkTraitFnExpr "Logic"
+  mkTraitFnExpr trait method = pathExpr (simplePath' ["cryptol",trait, method])
+-}
 
 
 -- | Primitives defined in `Float.cry`

@@ -95,7 +95,7 @@ pub trait Ring {
   /// Note that the Cryptol the power is polymorphic,
   /// but here we use `usize`, so we don't support raising
   /// things to value that do not fit in `usize`.
-  fn exp(x: &Self, y: u32) -> Self;
+  fn exp(x: &Self, y: u64) -> Self;
 }
 
 
@@ -104,7 +104,7 @@ pub trait Integral {
   /// This is not a standard Cryptol primitives, but we use it
   /// in places where `Integral` is used for idexing into things or exponents.
   /// Assert: `x` fits in `usize`
-  fn to_usize(x: &Self) -> usize;
+  fn to_u64(x: &Self) -> u64;
 
   /// Convert something to an integer.
   fn to_integer(x: &Self) -> num::BigInt;

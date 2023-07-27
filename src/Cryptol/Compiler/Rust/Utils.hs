@@ -199,6 +199,9 @@ tupleExpr es = Rust.TupExpr [] es ()
 --------------------------------------------------------------------------------
 -- Types
 
+inferType :: RustType
+inferType = Rust.Infer ()
+
 simpleType :: String -> RustType
 simpleType i = Rust.PathTy Nothing path ()
   where
