@@ -55,18 +55,23 @@ pathWithTypes ns0 tys = Rust.Path False (go ns0) ()
     pathParams = Rust.AngleBracketed [] tys [] ()
 
 pathAddTypeSuffix :: RustPath -> [RustType] -> RustPath
-pathAddTypeSuffix (Rust.Path global seg ()) newTys =
-  let seg' = init seg ++ [modSegment (last seg)]
-      modSegment (Rust.PathSegment name mbParams _) =
-        Rust.PathSegment name (modPathParams <$> mbParams) ()
-      modPathParams params =
+pathAddTypeSuffix (Rust.Path global seg an) newTys = Rust.Path global seg' an
+  where
+  seg' = init seg ++ [modSegment (last seg)]
+
+  modSegment (Rust.PathSegment name mbParams a) =
+    Rust.PathSegment name (Just (modPathParams mbParams)) a
+
+  modPathParams mbParams =
+    case mbParams of
+      Nothing -> Rust.AngleBracketed [] newTys [] ()
+      Just params ->
         case params of
           Rust.Parenthesized {} -> panic "pathAddTypeSuffix" ["Parenthesized"]
           Rust.AngleBracketed _ _ (_:_) () ->
             panic "pathAddTypeSuffix" ["AngleBracketed with arg 3"]
           Rust.AngleBracketed lts curTys [] () ->
             Rust.AngleBracketed lts (curTys++newTys) [] ()
-  in Rust.Path global seg' ()
 
 
 --------------------------------------------------------------------------------

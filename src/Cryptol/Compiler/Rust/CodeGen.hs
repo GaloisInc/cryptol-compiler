@@ -72,7 +72,7 @@ genCall call =
          pure (stmts, mkRustCall fnExpr args)
 
     IRTopFun tf ->
-      do typeArgs <- traverse compileType (irtfTypeArgs tf)
+      do typeArgs     <- traverse compileType (irtfTypeArgs tf)
          lenArgs      <- genCallLenArgs call
          szArgs       <- genCallSizeArgs call
          (stmts,args) <- genCallArgs call
