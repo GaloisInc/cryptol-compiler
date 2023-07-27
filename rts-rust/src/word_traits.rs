@@ -15,7 +15,10 @@ impl<const W: usize, const L: usize> Zero for Word<W, L> {
 }
 
 impl<const W: usize, const L: usize> Integral for Word<W, L> {
-  fn to_u64    (x: &Self)       -> u64         { <_>::from(x) }
+  fn to_u64    (x: &Self)       -> u64         {
+    assert!(x <= &Self::from(u64::MAX));
+    <_>::from(x)
+  }
   fn to_integer(x: &Self)       -> num::BigInt { <_>::from(x) }
 
   fn div   (x: &Self, y: &Self) -> Self        { x / y }

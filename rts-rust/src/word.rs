@@ -9,7 +9,7 @@ use std::fmt::*;
 /// The unused least significant bits are set to 0.  This representation allows
 /// us to reuse many operations without any additional overhead
 /// (e.g., add, compare, etc).
-#[derive(Debug,PartialEq,Eq,Copy,Clone)]
+#[derive(Debug,PartialEq,Eq,PartialOrd,Ord,Copy,Clone)]
 pub struct Word<const W: usize, const L: usize>(pub c::Uint<L>);
 
 
@@ -383,6 +383,7 @@ impl<const W: usize, const L: usize> Word<W,L> {
   }
 
 }
+
 
 
 
