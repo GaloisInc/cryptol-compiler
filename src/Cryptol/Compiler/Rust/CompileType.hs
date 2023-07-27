@@ -51,7 +51,7 @@ funType funArgs funRes = Rust.PathTy Nothing path ()
 fixedSizeWordType :: Integer -> RustType
 fixedSizeWordType bits = Rust.MacTy mac ()
   where
-      mac = Rust.Mac (simplePath' ["cryptol", "BitVec"]) tokenStream ()
+      mac = Rust.Mac (simplePath' ["cryptol", "Word"]) tokenStream ()
       tokenStream = Rust.Tree lengthTok
       lengthTok = Rust.Token dummySpan $ Rust.LiteralTok (Rust.IntegerTok (show bits)) Nothing
 
