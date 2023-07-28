@@ -5,33 +5,60 @@ import Data.Text qualified as Text
 import Cryptol.Utils.Ident qualified as Cry
 
 import Cryptol.Compiler.Error (panic,unsupported)
-import Cryptol.Compiler.PP(pp)
+import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Cryptol
 
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.Utils
 
 data PrimArgs = PrimArgs
-  { primTypeArgs  :: [RustType]
-  , primLenArgs   :: [RustExpr]
-  , primSizeArgs  :: [RustExpr]
-  , primArgs      :: [RustExpr]
+  { primTypesOfArgs   :: [Type]         -- ^ Types of arguments (primArgs)
+  , primTypeOfResult  :: Type           -- ^ Type of result
+  , primTypeArgs      :: [RustType]     -- ^ Compiled type arguemt
+  , primLenArgs       :: [RustExpr]     -- ^ Compile length arguments
+  , primSizeArgs      :: [RustExpr]     -- ^ Compiled size arguments
+  , primArgs          :: [RustExpr]     -- ^ Compiled normal arguments
   }
+
+instance PP PrimArgs where
+  pp args =
+    vcat
+      [ "--- PrimArgs ---------------------------------"
+      , parens (commaSep (map pp (primTypesOfArgs args))) <+> "->" <+>
+                              pp (primTypeOfResult args)
+      , " "
+      , "types:"      <+> ppField (primTypeArgs args)
+      , "lengths:"    <+> ppField (primLenArgs args)
+      , "sizes:"      <+> ppField (primSizeArgs args)
+      , "arguments:"  <+> ppField (primArgs args)
+      , "---------------------------------------------------"
+      ]
+    where
+    ppField :: RustPP a => [a] -> Doc
+    ppField = commaSep . map rustPP
+
+unsupportedPrim :: Doc -> PrimArgs -> a
+unsupportedPrim nm args =
+  unsupported (Text.pack (show (vcat [ "primitive" <+> nm, pp args ])))
+
+
 
 -- | Emit code for a primitve.
 compilePrim :: IRPrim -> PrimArgs -> Rust RustExpr
 compilePrim name args =
   case name of
     CryPrim p -> compileCryptolPrim p args
-    _ -> unsupported (Text.pack ("primitive " ++ show (pp name))) -- XXX
+
+    MakeSeq   -> compileSeqLit args
+
+    _         -> unsupportedPrim (pp name) args
 
 
 compileCryptolPrim :: Cry.PrimIdent -> PrimArgs -> Rust RustExpr
 compileCryptolPrim p@(Cry.PrimIdent mo name) args
   | mo == Cry.preludeName = compileCryptolPreludePrim name args
   | mo == Cry.floatName   = compileCryptolFloatPrim name args
-  | otherwise =
-    unsupported ("Cryptol Prim " <> Text.pack (show (pp p)))
+  | otherwise = unsupportedPrim (pp p) args
 
 
 -- | Primitives defined in `Cryptol.cry`
@@ -49,7 +76,7 @@ compileCryptolPreludePrim name args =
        pure $ mkRustCall (tyTraitMethod "zero") (primLenArgs args)
 
 
-      -- Ring --
+    -- Ring --
     "+"       -> inferMethod "add"
     "-"       -> inferMethod "sub"
     "*"       -> inferMethod "mul"
@@ -57,7 +84,7 @@ compileCryptolPreludePrim name args =
 
 
 
-    _ -> unsupported ("Primitive " <> name)
+    _ -> unsupportedPrim (pp name) args
 
 {-
     "fromInteger" -> ring "from_integer"
@@ -91,16 +118,26 @@ compileCryptolPreludePrim name args =
         _    -> panic "tyTraitMethod" ["Expected exactly 1 type argument"]
 
 
-
-
-{-
-  integral = mkTraitFnExpr "Integral"
-  logic    = mkTraitFnExpr "Logic"
-  mkTraitFnExpr trait method = pathExpr (simplePath' ["cryptol",trait, method])
--}
-
-
 -- | Primitives defined in `Float.cry`
 compileCryptolFloatPrim :: Text -> PrimArgs -> Rust RustExpr
 compileCryptolFloatPrim = unsupported "floating point primitve" -- XXX
 
+
+
+
+--------------------------------------------------------------------------------
+compileSeqLit :: PrimArgs -> Rust RustExpr
+compileSeqLit args =
+  case primTypeOfResult args of
+
+    TArray sz _elTy ->
+      case isKnownSize sz of
+        Just _  -> pure (arrayExpr (primArgs args))
+        Nothing -> undefined
+
+
+
+    -- TWord sz
+    -- TStream sz _elTy
+
+    _ -> unsupportedPrim "MakeSeq" args

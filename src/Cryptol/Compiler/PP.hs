@@ -18,14 +18,18 @@ module Cryptol.Compiler.PP
   , nest, hang
   , showPP
 
-    -- * Cryptol pretty printing
+    -- * Pretty printing with external printers
   , cryPP
+  , rustPP
+  , RustPP
   ) where
 
 import Data.Text(Text)
 import qualified Data.Text as Text
 import qualified Text.PrettyPrint as PP
 import Data.String
+
+import Language.Rust.Pretty                 qualified as Rust
 
 import Cryptol.Utils.Ident                  qualified as Cry
 import Cryptol.Utils.PP                     qualified as Cry
@@ -105,6 +109,12 @@ instance PP Cry.Doc where
 -- | Pretty print something using Cryptol's pretty printing.
 cryPP :: Cry.PP a => a -> Doc
 cryPP = pp . Cry.pp
+
+type RustPP a = (Rust.Resolve a, Rust.Pretty a)
+
+-- | Pretty print something using Language.Rust's pretty printing.
+rustPP :: RustPP a => a -> Doc
+rustPP = fromString . show . Rust.pretty'
 
 instance PP Int where
   pp x = lift (PP.int x)

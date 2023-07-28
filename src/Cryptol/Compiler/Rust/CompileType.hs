@@ -13,9 +13,9 @@ compileType :: IR.Type -> Rust RustType
 compileType ty =
   case ty of
     IR.TBool          -> pure boolType
-    IR.TInteger       -> pure $ simpleType "Integer" -- XXX: num::BigInt
+    IR.TInteger       -> pure integerType
     IR.TIntegerMod _  -> pure $ simpleType "Integer"
-    IR.TRational      -> pure $ simpleType "Rational"     -- XXX: ?
+    IR.TRational      -> pure rationalType
     IR.TFloat         -> pure $ simpleType "f32"
     IR.TDouble        -> pure $ simpleType "f64"
 
@@ -47,6 +47,11 @@ funType funArgs funRes = Rust.PathTy Nothing path ()
   path = Rust.Path False [ Rust.PathSegment "Fun" (Just params) () ] ()
   params = Rust.AngleBracketed [] (funArgs ++ [funRes]) [] ()
 
+integerType :: RustType
+integerType = pathType (simplePath' ["num","BigInt"])
+
+rationalType :: RustType
+rationalType = pathType (simplePath' ["num","BigRational"])
 
 fixedSizeWordType :: Integer -> RustType
 fixedSizeWordType bits = Rust.MacTy mac ()

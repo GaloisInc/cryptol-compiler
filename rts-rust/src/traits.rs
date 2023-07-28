@@ -7,44 +7,44 @@ pub trait Sequence {
   type Item : Clone;
 
   /// Length of this sequence
-  fn cry_length(&self) -> usize;
+  fn length(&self) -> usize;
 
   /// Shift a sequence to the right.
   /// New elements on the left will be filled using the `Zero` trait.
   ///   * `n`   - length, if the elements are seuqneces of dynamic size or ()
   ///   * `xs`  - sequence
   ///   * `amt` - how much to shift by
-  fn cry_shift_right(&self, n: <Self::Item as Length>::Length, amt: usize) -> Self
+  fn shift_right(&self, n: <Self::Item as Length>::Length, amt: usize) -> Self
     where Self::Item : Zero;
 
   /// Shift a sequence to the right.
   /// New elements would be copies of most significant element.
   ///   * `xs`  - sequence
   ///   * `amt` - how much to shift by
-  fn cry_shift_right_signed(&self, amt: usize) -> Self;
+  fn shift_right_signed(&self, amt: usize) -> Self;
 
   /// Rotate the elements of a sequence to right.
   ///   * `xs`  - sequence
   ///   * `amt` - how much to rotate by
-  fn cry_rotate_right(&self, amt: usize) -> Self;
+  fn rotate_right(&self, amt: usize) -> Self;
 
   /// Shift a sequence to the left.
   /// New elements on the right will be filled using the `Zero` trait.
   ///   * `n`   - length, if the elements are seuqneces of dynamic size or ()
   ///   * `xs`  - sequence
   ///   * `amt` - how much to shift by
-  fn cry_shift_left(&self, n: <Self::Item as Length>::Length, amt: usize) -> Self
+  fn shift_left(&self, n: <Self::Item as Length>::Length, amt: usize) -> Self
     where Self::Item : Zero;
 
   /// Rotate the elements of a sequence to left.
   ///   * `xs`  - sequence
   ///   * `amt` - how much to rotate by
-  fn cry_rotate_left(&self, amt: usize) -> Self;
+  fn rotate_left(&self, amt: usize) -> Self;
 
 
   /// Get the element at a certain index.
   /// Assert: `i < lengt()`.
-  fn cry_index(&self, i: usize) -> Self::Item;
+  fn index(&self, i: usize) -> Self::Item;
 
 }
 

@@ -200,6 +200,8 @@ unitExpr = tupleExpr []
 tupleExpr :: [RustExpr] -> RustExpr
 tupleExpr es = Rust.TupExpr [] es ()
 
+arrayExpr :: [RustExpr] -> RustExpr
+arrayExpr es = Rust.Vec [] es ()
 
 --------------------------------------------------------------------------------
 -- Types

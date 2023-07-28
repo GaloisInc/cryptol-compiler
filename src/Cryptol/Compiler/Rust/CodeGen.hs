@@ -80,10 +80,12 @@ genCall call =
          val <- case name of
                  Left prim -> compilePrim prim
                               PrimArgs
-                                { primTypeArgs = typeArgs
-                                , primLenArgs  = lenArgs
-                                , primSizeArgs = szArgs
-                                , primArgs     = args
+                                { primTypesOfArgs  = ircArgTypes call
+                                , primTypeOfResult = ircResType call
+                                , primTypeArgs     = typeArgs
+                                , primLenArgs      = lenArgs
+                                , primSizeArgs     = szArgs
+                                , primArgs         = args
                                 }
                  Right path ->
                    do let fun = pathExpr (pathAddTypeSuffix path typeArgs)
