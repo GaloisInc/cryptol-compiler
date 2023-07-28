@@ -132,7 +132,7 @@ compileSeqLit args =
 
     TArray sz _elTy ->
       case isKnownSize sz of
-        Just _  -> pure (arrayExpr (primArgs args))
+        Just _  -> pure (arrayExpr (primArgs args)) -- XXX: turn into Array
         Nothing -> undefined
 
 

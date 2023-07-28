@@ -680,7 +680,7 @@ macro_rules! Word {
   // (e.g., <= 32)
 
   ($w:expr) => { $crate::word::Word
-                       < $w
+                       < {$w}
                        , {$crate::word::limbs_for_bits($w)}
                        >
   };
@@ -692,7 +692,7 @@ macro_rules! append {
     const L2: usize = $crate::word::limbs_for_bits($BACK);
     const W3: usize = $FRONT + $BACK;
     const L3: usize = $crate::word::limbs_for_bits(W3);
-    $xs.append::<$BACK, L2, W3, L3>($ys)
+    $xs.append::<{$BACK}, L2, W3, L3>($ys)
   } }
 }
 

@@ -218,6 +218,9 @@ simpleType i = Rust.PathTy Nothing path ()
 pathType :: RustPath -> RustType
 pathType path = Rust.PathTy Nothing path ()
 
+constType :: Integer -> RustType
+constType n = Rust.ConstTy (litExpr (mkUSizeLit n)) ()
+
 unitType :: RustType
 unitType = tupleType []
 

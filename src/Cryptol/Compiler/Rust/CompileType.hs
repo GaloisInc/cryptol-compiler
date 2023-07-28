@@ -13,20 +13,20 @@ compileType :: IR.Type -> Rust RustType
 compileType ty =
   case ty of
     IR.TBool          -> pure boolType
-    IR.TInteger       -> pure integerType
+    IR.TInteger       -> pure cryIntegerType
     IR.TIntegerMod _  -> pure $ simpleType "Integer"
-    IR.TRational      -> pure rationalType
+    IR.TRational      -> pure cryRationalType
     IR.TFloat         -> pure $ simpleType "f32"
     IR.TDouble        -> pure $ simpleType "f64"
 
     IR.TWord sz ->
       case IR.isKnownSize sz of
-        Just i -> pure $ fixedSizeWordType i
+        Just i  -> pure (cryWordType i)
         Nothing -> unsupported "compile arbitrary sized word type"
 
     IR.TArray sz t ->
       case IR.isKnownSize sz of
-        Just i  -> fixedArrayOfType <$> compileType t <*> pure i
+        Just i  -> cryArrayType i <$> compileType t
         Nothing -> vectorOfType <$> compileType t
 
     IR.TStream _sz t  -> streamOfType <$> compileType t
@@ -47,16 +47,23 @@ funType funArgs funRes = Rust.PathTy Nothing path ()
   path = Rust.Path False [ Rust.PathSegment "Fun" (Just params) () ] ()
   params = Rust.AngleBracketed [] (funArgs ++ [funRes]) [] ()
 
-integerType :: RustType
-integerType = pathType (simplePath' ["num","BigInt"])
+cryIntegerType :: RustType
+cryIntegerType = pathType (simplePath' ["num","BigInt"])
 
-rationalType :: RustType
-rationalType = pathType (simplePath' ["num","BigRational"])
+cryRationalType :: RustType
+cryRationalType = pathType (simplePath' ["num","BigRational"])
 
-fixedSizeWordType :: Integer -> RustType
-fixedSizeWordType bits = Rust.MacTy mac ()
+cryArrayType :: Integer -> RustType -> RustType
+cryArrayType n t = pathType (pathWithTypes arr [ constType n, t ])
+  where
+  arr = ["cryptol", "Array"]
+
+
+cryWordType :: Integer -> RustType
+cryWordType bits = Rust.MacTy mac ()
   where
       mac = Rust.Mac (simplePath' ["cryptol", "Word"]) tokenStream ()
       tokenStream = Rust.Tree lengthTok
-      lengthTok = Rust.Token dummySpan $ Rust.LiteralTok (Rust.IntegerTok (show bits)) Nothing
+      lengthTok = Rust.Token dummySpan
+                    (Rust.LiteralTok (Rust.IntegerTok (show bits)) Nothing)
 
