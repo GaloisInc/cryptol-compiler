@@ -10,6 +10,7 @@ import Cryptol.Compiler.IR.Cryptol
 
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.Utils
+import Cryptol.Compiler.Rust.CompileType
 
 data PrimArgs = PrimArgs
   { primTypesOfArgs   :: [Type]         -- ^ Types of arguments (primArgs)
@@ -130,10 +131,13 @@ compileSeqLit :: PrimArgs -> Rust RustExpr
 compileSeqLit args =
   case primTypeOfResult args of
 
-    TArray sz _elTy ->
+    TArray sz elTy ->
       case isKnownSize sz of
-        Just _  -> pure (arrayExpr (primArgs args)) -- XXX: turn into Array
-        Nothing -> undefined
+        Just n  ->
+          do arrTy <- cryArrayType n <$> compileType elTy
+             pure (mkRustCall (typePath arrTy (simplePath "from"))
+                              [ arrayExpr (primArgs args) ])
+        Nothing -> unsupportedPrim "vec" args
 
 
 

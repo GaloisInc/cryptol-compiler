@@ -1,6 +1,7 @@
 pub mod traits;
 pub mod word;
 pub mod array;
+pub mod vec;
 pub mod prim_bitvec;
 pub mod bit_traits;
 pub mod word_traits;

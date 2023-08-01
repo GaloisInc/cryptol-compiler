@@ -1,35 +1,44 @@
 use crate::traits::*;
 use std::fmt as fmt;
 
-#[derive(Debug,PartialEq,Eq,PartialOrd,Ord,Copy,Clone)]
-pub struct Array<const N: usize, T>(pub [T;N]);
-
+#[derive(Debug,PartialEq,Eq,PartialOrd,Ord,Clone)]
+pub struct Vector<T>(pub Vec<T>);
 
 /* Basic Conversions */
 
-impl<const N: usize, T> From<[T;N]> for Array<N,T> {
-  fn from(x: [T;N]) -> Self { Array(x) }
+impl<T> From<Vec<T>> for Vector<T> {
+  fn from(x: Vec<T>) -> Self { Vector(x) }
 }
 
-impl<const N: usize, T> From<Array<N,T>> for [T;N] {
-  fn from(x: Array<N,T>) -> Self { x.0 }
+impl<T> From<Vector<T>> for Vec<T> {
+  fn from(x: Vector<T>) -> Self { x.0 }
 }
 
-impl<'a, const N: usize, T> From<&'a Array<N,T>> for &'a [T] {
-  fn from(x: &'a Array<N,T>) -> Self { &x.0 }
+impl<'a, T> From<&'a Vector<T>> for &'a Vec<T> {
+  fn from(x: &'a Vector<T>) -> Self { &x.0 }
 }
 
-impl<const N: usize, T> Array<N,T> {
-  pub fn from_fn<F: FnMut(usize) -> T>(f: F) -> Self {
-    std::array::from_fn(f).into()
+impl<const N: usize, T> From<[T;N]> for Vector<T> {
+  fn from(x: [T;N]) -> Self { Vector(x.into()) }
+}
+
+impl<T> Vector<T> {
+  pub fn from_fn<F: FnMut(usize) -> T>(n: usize, mut f: F) -> Self {
+    let mut result = Vec::with_capacity(n);
+    for i in 0 .. n {
+      result.push(f(i))
+    }
+    result.into()
   }
 }
 
 
 
+
+
 /* Indexing */
 
-impl<const N: usize, T> std::ops::Index<usize> for Array<N,T> {
+impl<T> std::ops::Index<usize> for Vector<T> {
   type Output = T;
   fn index(&self, i: usize) -> &T {
     &self.0[i]
@@ -39,13 +48,13 @@ impl<const N: usize, T> std::ops::Index<usize> for Array<N,T> {
 
 /* Iterators */
 
-impl<const N: usize, T> std::iter::IntoIterator for Array<N,T> {
+impl<T> std::iter::IntoIterator for Vector<T> {
   type Item = T;
-  type IntoIter = <[T;N] as std::iter::IntoIterator>::IntoIter;
+  type IntoIter = std::vec::IntoIter<T>;
   fn into_iter(self) -> Self::IntoIter { self.0.into_iter() }
 }
 
-impl<'a, const N: usize, T> std::iter::IntoIterator for &'a Array<N,T> {
+impl<'a, T> std::iter::IntoIterator for &'a Vector<T> {
   type Item = &'a T;
   type IntoIter = std::slice::Iter<'a,T>;
   fn into_iter(self) -> Self::IntoIter { self.0.iter() }
@@ -53,66 +62,71 @@ impl<'a, const N: usize, T> std::iter::IntoIterator for &'a Array<N,T> {
 
 
 
-
-
-
 /* Lenght and Zero */
 
-impl<const N: usize, T: Length> Length for Array<N,T> {
-  type Length = T::Length;
+impl<T: Length> Length for Vector<T> {
+  type Length = (usize,T::Length);
 }
 
-impl<const N: usize, T: Zero> Zero for Array<N,T> {
-  fn zero(n: Self::Length) -> Self { Self::from_fn(|_i| T::zero(n)) }
-}
 
+impl<T: Zero> Zero for Vector<T> {
+  fn zero((vec_len, el_len): Self::Length) -> Self {
+    Self::from_fn(vec_len, |_| T::zero(el_len))
+  }
+}
 
 
 /* Sequence operations */
 
-impl<T : Clone, const N: usize> Sequence for Array<N,T> {
+impl<T : Clone> Sequence for Vector<T> {
   type Item = T;
 
-  fn length(&self) -> usize { N }
+  fn length(&self) -> usize { self.0.len() }
 
   fn index(&self, i: usize) -> T { self[i].clone() }
 
   fn shift_right(&self, n: <T as Length>::Length, amt: usize) -> Self
     where T : Zero + Length
   {
-    Self::from_fn(|i| if i < amt { T::zero(n) } else { self.index(i-amt) })
+    Self::from_fn( self.length()
+                 , |i| if i < amt { T::zero(n) } else { self.index(i-amt) })
   }
 
   fn shift_right_signed(&self, amt: usize) -> Self {
-    Self::from_fn(|i| self.index(if i < amt { 0 } else { i - amt }))
+    Self::from_fn( self.length()
+                 , |i| self.index(if i < amt { 0 } else { i - amt }))
   }
 
   fn rotate_right(&self, amt: usize) -> Self {
-    if N == 0 { return self.clone() };
-    let a = amt % N;
-    Self::from_fn(|i| self.index((N + i - a) % N))
+    let n = self.length();
+    if n == 0 { return self.clone() };
+    let a = amt % n;
+    Self::from_fn(n, |i| self.index((n + i - a) % n))
   }
 
 
   fn shift_left(&self, n: <T as Length>::Length, amt: usize) -> Self
     where T : Zero
   {
-    Self::from_fn(|i| {
+    let vec_len = self.length();
+    Self::from_fn(vec_len, |i| {
       let j = amt + i;
-      if j >= N { T::zero(n) } else { self.index(j) } })
+      if j >= vec_len { T::zero(n) } else { self.index(j) } })
   }
 
   fn rotate_left(&self, amt: usize) -> Self {
-    Self::from_fn(|i| self.index((amt + i) % N))
+    let n = self.length();
+    Self::from_fn(n, |i| self.index((amt + i) % n))
   }
 }
 
 
+
 /* Formatting */
 
-macro_rules! ArrayFormatter {
+macro_rules! VectorFormatter {
   ( $($trait:ident),*) => { $(
-    impl<const N: usize, T: fmt::$trait> fmt::$trait for Array<N,T> {
+    impl<T: fmt::$trait> fmt::$trait for Vector<T> {
       fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 
         write!(f,"[")?;
@@ -133,11 +147,7 @@ macro_rules! ArrayFormatter {
   }
 }
 
-ArrayFormatter! { Display, Binary, Octal, UpperHex, LowerHex }
-
-
-
-
+VectorFormatter! { Display, Binary, Octal, UpperHex, LowerHex }
 
 
 
@@ -152,7 +162,7 @@ mod tests {
 
   #[test]
   fn test_basics() {
-    let x = <Array<3,u8>>::from([1,2,3]);
+    let x = Vector::<u8>::from([1,2,3]);
     assert_eq!(x.length(), 3);
     assert_eq!(x.index(2), 3);
 

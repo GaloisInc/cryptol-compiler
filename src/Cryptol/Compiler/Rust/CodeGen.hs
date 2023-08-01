@@ -14,6 +14,7 @@ import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
+import Cryptol.Compiler.Rust.Names
 import Cryptol.Compiler.Rust.CompileSize
 import Cryptol.Compiler.Rust.CompileType
 import Cryptol.Compiler.Rust.CompileTrait
@@ -189,7 +190,7 @@ genFunDecl decl =
 genSourceFile :: [FunDecl] -> Rust (Rust.SourceFile ())
 genSourceFile decls =
   do  fnItems <- catMaybes <$> (genFunDecl `traverse` decls)
-      let imports = [ mkUseGlob ["cryptol","trait_methods"]
+      let imports = [ mkUseGlob [ cryptolCrate, "trait_methods"]
                     ]
       pure $ Rust.SourceFile Nothing [] (imports ++ fnItems)
 

@@ -7,6 +7,9 @@ module Cryptol.Compiler.Rust.Names
   , snakeCase
   , screamingSnakeCase
   , upperCamelCase
+
+    -- * Commonly used names
+  , cryptolCrate
   ) where
 
 import Data.Text (Text)
@@ -26,6 +29,9 @@ import Cryptol.TypeCheck.Type qualified as Cry
 import Cryptol.ModuleSystem.Name qualified as Cry
 import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR.Cryptol
+
+cryptolCrate :: Rust.Ident
+cryptolCrate = "cryptol"
 
 
 -- | Pick a name for something, so that it does not clash with the given names.

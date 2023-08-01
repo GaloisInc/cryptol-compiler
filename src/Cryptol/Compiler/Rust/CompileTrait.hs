@@ -9,8 +9,9 @@ import Cryptol.TypeCheck.AST qualified as Cry
 import Cryptol.Compiler.Error(unsupported)
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
-import Cryptol.Compiler.Rust.CompileSize
 import Cryptol.Compiler.Rust.Monad
+import Cryptol.Compiler.Rust.Names
+import Cryptol.Compiler.Rust.CompileSize
 
 traitNeedsLen :: Trait -> Set Cry.TParam
 traitNeedsLen (IRTrait name arg)  =
@@ -31,7 +32,7 @@ lenParamType :: Cry.TParam -> Rust RustType
 lenParamType tp =
   do ty <- lookupTParam tp
      -- <ty as cryptol::Lenght>::Length
-     let path = simplePath' ["cryptol","Length","Length"]
+     let path = simplePath' [ cryptolCrate,"Length","Length"]
      pure (Rust.PathTy (Just (Rust.QSelf ty 2)) path ())
 
 -- | Compile a trait.  The set returns type parameters that need
@@ -47,7 +48,7 @@ compileTrait t@(IRTrait name arg) =
 
   path = simplePath' pathSegments
   pathSegments =
-    [ "cryptol"
+    [ cryptolCrate
     , case name of
         PZero         -> "Zero"
         PLogic        -> "Logic"

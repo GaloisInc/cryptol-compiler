@@ -3,10 +3,11 @@ module Cryptol.Compiler.Rust.CompileType where
 
 import qualified Language.Rust.Syntax as Rust
 
+import Cryptol.Compiler.Error (unsupported)
 import Cryptol.Compiler.IR.Cryptol qualified as IR
 import Cryptol.Compiler.Rust.Utils
-import Cryptol.Compiler.Error (unsupported)
 import Cryptol.Compiler.Rust.Monad
+import Cryptol.Compiler.Rust.Names
 
 -- compute the rust type used to represent the given cryptol type
 compileType :: IR.Type -> Rust RustType
@@ -56,13 +57,13 @@ cryRationalType = pathType (simplePath' ["num","BigRational"])
 cryArrayType :: Integer -> RustType -> RustType
 cryArrayType n t = pathType (pathWithTypes arr [ constType n, t ])
   where
-  arr = ["cryptol", "Array"]
+  arr = [cryptolCrate, "Array"]
 
 
 cryWordType :: Integer -> RustType
 cryWordType bits = Rust.MacTy mac ()
   where
-      mac = Rust.Mac (simplePath' ["cryptol", "Word"]) tokenStream ()
+      mac = Rust.Mac (simplePath' [cryptolCrate, "Word"]) tokenStream ()
       tokenStream = Rust.Tree lengthTok
       lengthTok = Rust.Token dummySpan
                     (Rust.LiteralTok (Rust.IntegerTok (show bits)) Nothing)
