@@ -5,7 +5,6 @@ module Cryptol.Compiler.Rust.Utils where
 import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
 import Language.Rust.Data.Position qualified as Rust
-import Language.Rust.Syntax (QSelf(QSelf))
 
 import Cryptol.Compiler.Error (panic)
 
@@ -77,7 +76,7 @@ pathAddTypeSuffix (Rust.Path global seg an) newTys = Rust.Path global seg' an
 --------------------------------------------------------------------------------
 
 typePath :: RustType -> RustPath -> RustExpr
-typePath ty n = Rust.PathExpr [] (Just (QSelf ty 0)) n ()
+typePath ty n = Rust.PathExpr [] (Just (Rust.QSelf ty 0)) n ()
 
 pathExpr :: RustPath -> RustExpr
 pathExpr p = Rust.PathExpr [] Nothing p ()
@@ -91,8 +90,15 @@ block' stmts expr = block (stmts ++ [stmtNoSemi expr])
 stmtNoSemi :: RustExpr -> RustStmt
 stmtNoSemi e = Rust.NoSemi e ()
 
+assign :: RustExpr -> RustExpr -> RustStmt
+assign lhs rhs = Rust.Semi (Rust.Assign [] lhs rhs ()) ()
+
 mkRustCall :: RustExpr -> [RustExpr] -> RustExpr
 mkRustCall fn args = Rust.Call [] fn args ()
+
+callMethod :: RustExpr -> Rust.Ident -> [RustExpr] -> RustExpr
+callMethod obj meth args =
+  Rust.MethodCall [] obj meth Nothing args ()
 
 mkClosure :: [Rust.Ident] -> [RustStmt] -> RustExpr -> RustExpr
 mkClosure args stmts expr = Rust.Closure [] move captureBy fnDecl fnExpr ()
@@ -158,6 +164,22 @@ mkFnItem name generics params returnTy body =
     mkArg (n, t) = Rust.Arg (Just $ identPat n) t ()
     decl =
       Rust.FnDecl (mkArg <$> params) (Just returnTy) False ()
+
+mkFnItem_ ::
+  Rust.Ident -> RustGenerics -> [(Rust.Ident, RustType)] ->
+  RustBlock ->  RustItem
+mkFnItem_ name generics params body =
+  Rust.Fn [] vis name decl unsafety constness abi generics body ()
+  where
+    vis = Rust.PublicV
+    unsafety = Rust.Normal
+    constness = Rust.NotConst
+    abi = Rust.Rust
+    mkArg (n, t) = Rust.Arg (Just $ identPat n) t ()
+    decl =
+      Rust.FnDecl (mkArg <$> params) Nothing False ()
+
+
 
 -- | Make a simple use path
 mkUse :: [Rust.Ident] -> RustItem
@@ -243,3 +265,6 @@ fixedArrayOfType ty i = Rust.Array ty sizeExpr ()
 
 refType :: RustType -> RustType
 refType ty = Rust.Rptr Nothing Rust.Immutable ty ()
+
+mutRefType :: RustType -> RustType
+mutRefType ty = Rust.Rptr Nothing Rust.Mutable ty ()

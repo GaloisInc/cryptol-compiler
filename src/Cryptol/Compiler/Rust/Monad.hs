@@ -2,6 +2,7 @@ module Cryptol.Compiler.Rust.Monad where
 
 import Data.Map (Map)
 import Data.Map qualified as Map
+import Data.Set (Set)
 import Data.Set qualified as Set
 import MonadLib
 
@@ -34,8 +35,9 @@ runRustM gi (Rust m) = fst <$> runStateT rw (runReaderT ro m)
       }
   rw =
     RW
-      { rwLocalFunNames = emptyNameMap
-      , rwLocalNames    = emptyLocalNames
+      { rwLocalFunNames   = emptyNameMap
+      , rwLocalNames      = emptyLocalNames
+      , rwLocalVars       = Set.empty
       }
 
 
@@ -83,18 +85,37 @@ data RW = RW
 
   , rwLocalNames    :: LocalNames
     -- ^ Names in the current function
+
+  , rwLocalVars     :: Set Rust.Ident
+    -- ^ Names of local variable (i.e., not arguments)
+
+  , rwPolyArrayParams :: Map Size Rust.Ident
+    -- ^ A Rust type varaible to use for sequences of the given length.
+    -- This is only use for sequences that are not of a fixed known size.
   }
 
 
-
+-- | Reset names local to a function.
+resetFunLocalNames :: Rust ()
+resetFunLocalNames = Rust (sets_ reset)
+  where
+  reset rw = rw { rwLocalNames = emptyLocalNames
+                , rwLocalVars  = Set.empty
+                , rwPolyArrayParams = Map.empty
+                }
 -- | Bind a local names
 bindLocal ::
-  (a -> LocalNames -> (Rust.Ident,LocalNames)) -> {- ^ How to bind it -}
-  a -> {- ^ Name of the local thing -}
+  Bool {- ^ Is this a local variable name (i.e., not parameter -} ->
+  (a -> LocalNames -> (Rust.Ident,LocalNames)) {- ^ How to bind it -} ->
+  a {- ^ Name of the local thing -} ->
   Rust Rust.Ident
-bindLocal how x =
+bindLocal isLocal how x =
   Rust $ sets \rw -> let (i,ls) = how x (rwLocalNames rw)
-                    in (i, rw { rwLocalNames = ls })
+                         rw1 = if isLocal
+                                  then rw { rwLocalVars = Set.insert i
+                                                              (rwLocalVars rw) }
+                                  else rw
+                    in (i, rw1 { rwLocalNames = ls })
 
 -- | Bind a function in this module
 bindFun :: FunName -> Rust Rust.Ident
@@ -122,10 +143,15 @@ lookupSizeParam :: Cry.TParam -> Rust RustExpr
 lookupSizeParam x =
   Rust (pathExpr . simplePath . lookupName x . lTypeNames . rwLocalNames <$> get)
 
--- | Get the expresssion for a local.
-lookupNameId :: NameId -> Rust RustExpr
+-- | Get the expresssion for a local.  It also return `True` if this is
+-- a local variable, as opposed to an argument.
+lookupNameId :: NameId -> Rust (Bool,RustExpr)
 lookupNameId x =
-  Rust (pathExpr . simplePath . lookupName x . lValNames . rwLocalNames <$> get)
+  do rw <- Rust get
+     let rid = lookupName x (lValNames (rwLocalNames rw))
+     let loc = rid `Set.member` rwLocalVars rw
+     pure (loc, pathExpr (simplePath rid))
+
 
 -- | Get the expression for a length parametes associated with the given
 -- type parameter.
@@ -241,6 +267,9 @@ addLocalLenghtParam t ns = (i, ns { lValNames  = newVals
   i       = rustIdentAvoiding used (rustIdent (TraitLengthName t))
   newVals = vals { lUsed = Set.insert i used }
   newPa   = Map.insert t i (lLenParams ns)
+
+
+
 
 
 

@@ -1,17 +1,20 @@
 pub mod traits;
+pub mod display;
 pub mod word;
+pub mod word_traits;
 pub mod array;
 pub mod vec;
 pub mod prim_bitvec;
-pub mod bit_traits;
-pub mod word_traits;
-pub mod int_traits;
-pub mod vec_traits;
+pub mod bit;
+pub mod int;
 
 pub use traits::*;
-pub use array::*;
+pub use display::*;
 
 pub mod trait_methods {
+  pub use crate::display::StdDisplay as _;
+  pub use crate::display::Display as _;
+  pub use crate::traits::Sequence as _;
   pub use crate::traits::Zero as _;
   pub use crate::traits::Literal as _;
   pub use crate::traits::LiteralNumber as _;

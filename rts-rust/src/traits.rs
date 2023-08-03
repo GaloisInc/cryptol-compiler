@@ -1,7 +1,3 @@
-
-
-
-
 /// Non-standard Cryptol trait ranging over sequence representations
 pub trait Sequence {
   type Item : Clone;
@@ -133,5 +129,4 @@ impl<T : Literal> LiteralNumber<u64> for T {
 impl<T : Literal> LiteralNumber<&num::BigUint> for T {
   fn number(n: Self::Length, x:&num::BigUint) -> Self { Self::number_int(n,x) }
 }
-
 

@@ -1,87 +1,43 @@
 use crate::traits::*;
-use std::fmt as fmt;
+use std::fmt;
 
-#[derive(Debug,PartialEq,Eq,PartialOrd,Ord,Clone)]
-pub struct Vector<T>(pub Vec<T>);
-
-/* Basic Conversions */
-
-impl<T> From<Vec<T>> for Vector<T> {
-  fn from(x: Vec<T>) -> Self { Vector(x) }
+pub trait FromFn<T> {
+  fn from_fn<F>(n: usize, f: F) -> Self
+    where F: FnMut(usize) -> T;
 }
 
-impl<T> From<Vector<T>> for Vec<T> {
-  fn from(x: Vector<T>) -> Self { x.0 }
-}
-
-impl<'a, T> From<&'a Vector<T>> for &'a Vec<T> {
-  fn from(x: &'a Vector<T>) -> Self { &x.0 }
-}
-
-impl<const N: usize, T> From<[T;N]> for Vector<T> {
-  fn from(x: [T;N]) -> Self { Vector(x.into()) }
-}
-
-impl<T> Vector<T> {
-  pub fn from_fn<F: FnMut(usize) -> T>(n: usize, mut f: F) -> Self {
-    let mut result = Vec::with_capacity(n);
-    for i in 0 .. n {
-      result.push(f(i))
+impl<T> FromFn<T> for Vec<T>{
+  fn from_fn<F>(n: usize, mut f: F) -> Self
+    where F: FnMut(usize) -> T
+    { let mut i = 0;
+      std::iter::from_fn(|| if i < n {
+                              let j = i;
+                              i += 1;
+                              Some (f(j))
+                            } else { None }
+                       ).collect()
     }
-    result.into()
-  }
-}
-
-
-
-
-
-/* Indexing */
-
-impl<T> std::ops::Index<usize> for Vector<T> {
-  type Output = T;
-  fn index(&self, i: usize) -> &T {
-    &self.0[i]
-  }
-}
-
-
-/* Iterators */
-
-impl<T> std::iter::IntoIterator for Vector<T> {
-  type Item = T;
-  type IntoIter = std::vec::IntoIter<T>;
-  fn into_iter(self) -> Self::IntoIter { self.0.into_iter() }
-}
-
-impl<'a, T> std::iter::IntoIterator for &'a Vector<T> {
-  type Item = &'a T;
-  type IntoIter = std::slice::Iter<'a,T>;
-  fn into_iter(self) -> Self::IntoIter { self.0.iter() }
 }
 
 
 
 /* Lenght and Zero */
-
-impl<T: Length> Length for Vector<T> {
-  type Length = (usize,T::Length);
+impl<T:Length> Length for Vec<T> {
+  type Length = (u64, T::Length);
 }
 
-
-impl<T: Zero> Zero for Vector<T> {
-  fn zero((vec_len, el_len): Self::Length) -> Self {
-    Self::from_fn(vec_len, |_| T::zero(el_len))
+impl<T:Zero> Zero for Vec<T> {
+  fn zero((vec_len,elem_len): Self::Length) -> Self {
+    Self::from_fn(vec_len as usize,|_| T::zero(elem_len))
   }
 }
 
-
 /* Sequence operations */
 
-impl<T : Clone> Sequence for Vector<T> {
+impl<T : Clone> Sequence for Vec<T> {
   type Item = T;
 
-  fn length(&self) -> usize { self.0.len() }
+  fn length(&self) -> usize { self.len() }
 
   fn index(&self, i: usize) -> T { self[i].clone() }
 
@@ -91,6 +47,7 @@ impl<T : Clone> Sequence for Vector<T> {
     Self::from_fn( self.length()
                  , |i| if i < amt { T::zero(n) } else { self.index(i-amt) })
   }
+
 
   fn shift_right_signed(&self, amt: usize) -> Self {
     Self::from_fn( self.length()
@@ -121,38 +78,10 @@ impl<T : Clone> Sequence for Vector<T> {
 }
 
 
-
-/* Formatting */
-
-macro_rules! VectorFormatter {
-  ( $($trait:ident),*) => { $(
-    impl<T: fmt::$trait> fmt::$trait for Vector<T> {
-      fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-
-        write!(f,"[")?;
-        let mut xs = self.into_iter();
-        match xs.next() {
-          Some(x) => fmt::$trait::fmt(x,f)?,
-          None    => { return write!(f,"]") }
-        }
-
-        for i in xs {
-          write!(f,", ")?;
-          fmt::$trait::fmt(i,f)?;
-        }
-        write!(f, "]")
-      }
-    }
-    )*
-  }
+impl<T: crate::Display> crate::Display for Vec<T> {
+  fn display(&self, base: usize, fmt: &mut fmt::Formatter) -> fmt::Result
+  { self.as_slice().display(base,fmt) }
 }
-
-VectorFormatter! { Display, Binary, Octal, UpperHex, LowerHex }
-
-
-
-
-
 
 
 
@@ -162,32 +91,29 @@ mod tests {
 
   #[test]
   fn test_basics() {
-    let x = Vector::<u8>::from([1,2,3]);
+    let x = vec![1_u8,2,3];
     assert_eq!(x.length(), 3);
     assert_eq!(x.index(2), 3);
 
-    assert_eq!(x.shift_left((),1), <_>::from([2,3,0]));
-    assert_eq!(x.shift_left((),0), <_>::from([1,2,3]));
-    assert_eq!(x.shift_left((),10), <_>::from([0,0,0]));
+    assert_eq!(x.shift_left((),1), vec![2,3,0]);
+    assert_eq!(x.shift_left((),0), vec![1,2,3]);
+    assert_eq!(x.shift_left((),10), vec![0,0,0]);
 
-    assert_eq!(x.shift_right((),1), <_>::from([0,1,2]));
-    assert_eq!(x.shift_right((),0), <_>::from([1,2,3]));
-    assert_eq!(x.shift_right((),10), <_>::from([0,0,0]));
+    assert_eq!(x.shift_right((),1), vec![0,1,2]);
+    assert_eq!(x.shift_right((),0), vec![1,2,3]);
+    assert_eq!(x.shift_right((),10), vec![0,0,0]);
 
-    assert_eq!(x.shift_right_signed(1), <_>::from([1,1,2]));
-    assert_eq!(x.shift_right_signed(0), <_>::from([1,2,3]));
-    assert_eq!(x.shift_right_signed(10), <_>::from([1,1,1]));
+    assert_eq!(x.shift_right_signed(1), vec![1,1,2]);
+    assert_eq!(x.shift_right_signed(0), vec![1,2,3]);
+    assert_eq!(x.shift_right_signed(10), vec![1,1,1]);
 
-    assert_eq!(x.rotate_left(1), <_>::from([2,3,1]));
-    assert_eq!(x.rotate_left(0), <_>::from([1,2,3]));
-    assert_eq!(x.rotate_left(11), <_>::from([3,1,2]));
+    assert_eq!(x.rotate_left(1), vec![2,3,1]);
+    assert_eq!(x.rotate_left(0), vec![1,2,3]);
+    assert_eq!(x.rotate_left(11), vec![3,1,2]);
 
-    assert_eq!(x.rotate_right(1), <_>::from([3,1,2]));
-    assert_eq!(x.rotate_right(0), <_>::from([1,2,3]));
-    assert_eq!(x.rotate_right(11), <_>::from([2,3,1]));
+    assert_eq!(x.rotate_right(1), vec![3,1,2]);
+    assert_eq!(x.rotate_right(0), vec![1,2,3]);
+    assert_eq!(x.rotate_right(11), vec![2,3,1]);
 
   }
-
-
 }
-

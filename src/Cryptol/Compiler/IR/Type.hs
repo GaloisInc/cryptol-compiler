@@ -63,7 +63,7 @@ data IRType tname =
 data IRStreamSize tname =
     IRInfSize                                     -- ^ Infinite size
   | IRSize (IRSize tname)                         -- ^ Finite size
-    deriving (Eq,Functor,Foldable,Traversable)
+    deriving (Eq,Ord,Functor,Foldable,Traversable)
 
 -- | The name of a size variable.
 data IRSizeName tname = IRSizeName { irsName :: tname, irsSize :: SizeVarSize }
@@ -75,7 +75,7 @@ data IRSize tname =
     IRFixedSize Integer                           -- ^ A specific size
   | IRPolySize (IRSizeName tname)                 -- ^ Polymorphic size; finite
   | IRComputedSize Cry.TFun [IRStreamSize tname]  -- ^ Computed size
-    deriving (Eq,Functor,Foldable,Traversable)
+    deriving (Eq,Ord,Functor,Foldable,Traversable)
 
 
 -- | The type of a function.

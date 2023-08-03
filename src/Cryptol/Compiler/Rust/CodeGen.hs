@@ -11,6 +11,7 @@ import Control.Monad(forM, mapAndUnzipM)
 import Language.Rust.Syntax qualified as Rust
 
 import Cryptol.Compiler.PP
+import Cryptol.Compiler.Error(unsupported)
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
@@ -57,7 +58,7 @@ genCallSizeArgs call =
 -- XXX: we probably want to pass references
 genCallArgs :: Call -> Rust ([RustStmt], [RustExpr])
 genCallArgs call =
-  do (stmtss,es) <- unzip <$> traverse genExpr (ircArgs call)
+  do (stmtss,es) <- mapAndUnzipM genExpr (ircArgs call)
      pure (concat stmtss, es)
 
 genCall :: Call -> Rust (PartialBlock RustExpr)
@@ -100,7 +101,10 @@ genCall call =
 genExpr :: Expr -> Rust (PartialBlock RustExpr)
 genExpr (IRExpr e0) =
   case e0 of
-    IRVar (IRName name _) -> justExpr <$> lookupNameId name
+    IRVar (IRName name _) ->
+      do (loc,rexpr) <- lookupNameId name
+         let newExpr = if loc then undefined else callMethod rexpr "clone" []
+         pure (justExpr newExpr)
 
     IRCallFun call -> genCall call
 
@@ -109,7 +113,7 @@ genExpr (IRExpr e0) =
     IRLam args expr ->
       justExpr <$>
       do  let args' = irNameName <$> args
-          args'' <- bindLocal addLocalVar `traverse` args'
+          args'' <- bindLocal False addLocalVar `traverse` args'
           (lamStmt, lamE) <- genExpr expr
           pure $ mkClosure args'' lamStmt lamE
 
@@ -123,13 +127,14 @@ genExpr (IRExpr e0) =
 
     IRLet (IRName name _) eBound eIn ->
       do  eBound'    <- doGenExpr eBound
-          boundIdent <- bindLocal addLocalVar name
+          boundIdent <- bindLocal True addLocalVar name
           let -- TODO add explicit type?
               ty = Nothing
               letBind = Rust.Local (identPat boundIdent) ty (Just eBound') [] ()
           (stms,e) <- genExpr eIn
           pure (letBind:stms,e)
 
+    IRStream {} -> unsupported "Stream"
 
 -- | Generate a RustItem corresponding to a function declaration.
 --   Returns `Nothing` if the declaration is for an IR primitive.
@@ -145,12 +150,13 @@ genFunDecl decl =
   where
   doCompile argNames expr =
     do doIO (print $ pp decl)
+       resetFunLocalNames
        name <- bindFun (irfName decl)
        let ft = irfType decl
 
        localScope
          do -- Type parameters
-            tNames <- mapM (bindLocal addLocalType) (ftTypeParams ft)
+            tNames <- mapM (bindLocal False addLocalType) (ftTypeParams ft)
 
             -- Traits
             (needLen,quals) <- mapAndUnzipM compileTrait (ftTraits ft)
@@ -159,23 +165,24 @@ genFunDecl decl =
 
             -- Lenght parameters for Traits that need them
             lParams <- forM lenParamTs \tp ->
-                          do i <- bindLocal addLocalLenghtParam tp
+                          do i <- bindLocal False addLocalLenghtParam tp
                              t <- lenParamType tp
                              pure (i,t)
 
             -- Size parameters
             sParams <- forM (ftSizeParams ft) \sp ->
-                        do i <- bindLocal addLocalType (irsName sp)
+                        do i <- bindLocal False addLocalType (irsName sp)
                            pure (i, compileSizeType (irsSize sp))
 
             -- Normal parameters
             -- XXX: We probably want to use references
             nParams <- forM (argNames `zip` ftParams ft) \(arg,ty) ->
-                        do i <- bindLocal addLocalVar arg
+                        do i <- bindLocal False addLocalVar arg
                            t <- compileType ty
                            pure (i,t)
 
             returnTy  <- compileType (ftResult ft)
+
             funExpr   <- genBlock expr
 
             let tyParams    = [ Rust.TyParam [] i [] Nothing () | i <- tNames ]

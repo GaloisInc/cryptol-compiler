@@ -1,3 +1,4 @@
+use std::fmt;
 use crate::word::Word;
 use crate::traits::*;
 
@@ -32,4 +33,10 @@ impl<const W: usize, const L: usize> Ring for Word<W, L> {
   fn sub         (x: &Self, y: &Self) -> Self { x - y }
   fn exp         (x: &Self, y: u64)   -> Self { x.exp(y) }
   fn from_integer(x: &num::BigInt)    -> Self { Self::from(x) }
+}
+
+impl<const W: usize, const L: usize> crate::Display for Word<W,L> {
+  fn display(&self, base: usize, fmt: &mut fmt::Formatter) -> fmt::Result {
+    crate::std_display(self, base, fmt)
+  }
 }

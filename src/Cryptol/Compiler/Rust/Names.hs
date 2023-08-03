@@ -30,6 +30,7 @@ import Cryptol.ModuleSystem.Name qualified as Cry
 import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR.Cryptol
 
+-- | Qualifier to use when accessing RTS names
 cryptolCrate :: Rust.Ident
 cryptolCrate = "cryptol"
 

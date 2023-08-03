@@ -28,7 +28,7 @@ compileType ty =
     IR.TArray sz t ->
       case IR.isKnownSize sz of
         Just i  -> cryArrayType i <$> compileType t
-        Nothing -> vectorOfType <$> compileType t
+        Nothing -> cryVectorType  <$> compileType t
 
     IR.TStream _sz t  -> streamOfType <$> compileType t
     IR.TTuple ts      -> tupleType <$> compileType `traverse` ts
@@ -55,10 +55,10 @@ cryRationalType :: RustType
 cryRationalType = pathType (simplePath' ["num","BigRational"])
 
 cryArrayType :: Integer -> RustType -> RustType
-cryArrayType n t = pathType (pathWithTypes arr [ constType n, t ])
-  where
-  arr = [cryptolCrate, "Array"]
+cryArrayType _n = cryVectorType -- for now we just use vectors for all
 
+cryVectorType :: RustType -> RustType
+cryVectorType = vectorOfType
 
 cryWordType :: Integer -> RustType
 cryWordType bits = Rust.MacTy mac ()

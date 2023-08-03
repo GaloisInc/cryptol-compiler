@@ -12,6 +12,13 @@ use std::fmt::*;
 #[derive(Debug,PartialEq,Eq,PartialOrd,Ord,Copy,Clone)]
 pub struct Word<const W: usize, const L: usize>(pub c::Uint<L>);
 
+impl<const W: usize, const L: usize> std::default::Default for Word<W,L> {
+  fn default() -> Self {
+    assert_eq!(L, limbs_for_bits(W));
+    Word(c::Uint::<L>::default())
+  }
+}
+
 
 /// How many bits we need to represent the given number of bits.
 pub const fn limbs_for_bits(w: usize) -> usize {
@@ -31,7 +38,7 @@ impl<const W: usize, const L: usize> Word<W,L> {
   /// A vector filled with 0.
   pub fn zero() -> Word<W,L> {
     assert_eq!(L, limbs_for_bits(W));
-    Word(c::Uint::<L>::default())
+    Word(c::Uint::<L>::ZERO)
   }
 
   /// Clear up any bits in the least significant position of the full Uint.
