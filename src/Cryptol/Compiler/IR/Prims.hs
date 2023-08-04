@@ -15,6 +15,14 @@ data IRPrim =
     -- The result type in the call has the type of sequences
     -- we are making.
 
+  | ArrayLookup
+    -- ^ (index : usize, xs: Array n T) -> T
+    -- The index to look at is in the *size* args of the call
+    -- The parameter is the name of the array
+    -- Unspecified behavior if index >= n
+
+
+
   | Tuple
     -- ^ Make a tuple.
 
@@ -38,12 +46,6 @@ data IRPrim =
 
   | Iter      -- ^   (xs : Array n a)  -> Stream n a
               -- or  (xs : Word n)      -> Stream n Bit
-
-  | ArrayLookup
-    -- ^ (index : usize, xs: Array n T) -> T
-    -- The index to look at is in the *size* args of the call
-    -- The parameter is the name of the array
-    -- Unspecified behavior if index >= n
 
 
     deriving (Show,Eq,Ord)

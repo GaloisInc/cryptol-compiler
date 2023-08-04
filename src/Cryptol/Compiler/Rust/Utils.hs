@@ -148,6 +148,10 @@ addrOf e = Rust.AddrOf [] Rust.Immutable e ()
 rustArray :: [RustExpr] -> RustExpr
 rustArray es = Rust.Vec [] es ()
 
+rustIf :: RustExpr -> RustBlock -> RustBlock -> RustExpr
+rustIf eTest eThen eElse =
+  Rust.If [] eTest eThen (Just (Rust.BlockExpr [] eElse ())) ()
+
 --------------------------------------------------------------------------------
 -- Top Delcarations
 

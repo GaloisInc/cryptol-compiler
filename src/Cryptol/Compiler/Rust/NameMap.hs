@@ -32,6 +32,10 @@ addName x mp =
   used = lUsed mp
   i    = rustIdentAvoiding used (rustIdent x)
 
+removeName :: (Ord a) => a -> Rust.Ident -> NameMap a -> NameMap a
+removeName x i nm = nm { lUsed = Set.delete i (lUsed nm)
+                       , lMap  = Map.delete x (lMap nm)
+                       }
 
 -- | Lookup a name.  Panics if not defined.
 lookupName :: (PP a, Ord a) => a -> NameMap a -> Rust.Ident

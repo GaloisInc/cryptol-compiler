@@ -21,15 +21,20 @@ import Cryptol.Compiler.Rust.CompileType
 import Cryptol.Compiler.Rust.CompileTrait
 import Cryptol.Compiler.Rust.CompilePrim
 
+
+data ExprContext =
+    OwnContext    -- ^ We are generating an ownded expression
+  | BorrowContext -- ^ We are generating a borrowed expression
+
 -- | Generate Rust code for a Cryptol IR expression, creating a block if
-doGenExpr :: Expr -> Rust RustExpr
-doGenExpr e =
-  do (stmts,expr) <- genExpr e
+doGenExpr :: ExprContext -> Expr -> Rust RustExpr
+doGenExpr how e =
+  do (stmts,expr) <- genExpr how e
      pure (blockExprIfNeeded stmts expr)
 
 -- | Generate a Rust block corresponding to a Cryptol IR expression
-genBlock :: Expr -> Rust RustBlock
-genBlock e = uncurry block' <$> genExpr e
+genBlock :: ExprContext -> Expr -> Rust RustBlock
+genBlock how e = uncurry block' <$> genExpr how e
 
 
 -- | Length arguments for the `Length` trait
@@ -55,12 +60,12 @@ genCallSizeArgs call =
     IRTopFun tf -> traverse (uncurry compileSize) (irtfSizeArgs tf)
 
 -- | Normal arguments for a call
--- XXX: we probably want to pass references
-genCallArgs :: Call -> Rust ([RustStmt], [RustExpr])
-genCallArgs call =
-  do (stmtss,es) <- mapAndUnzipM genExpr (ircArgs call)
-     pure (concat stmtss, es)
+genCallArgs :: ExprContext -> Call -> Rust ([RustStmt], [RustExpr])
+genCallArgs how call =
+  do (stmtss,es) <- mapAndUnzipM (genExpr how) (reverse (ircArgs call))
+     pure (concat (reverse stmtss), reverse es)
 
+-- | Returns an owned result.
 genCall :: Call -> Rust (PartialBlock RustExpr)
 genCall call =
 
@@ -68,85 +73,119 @@ genCall call =
 
     -- Closures don't have polymorphic arguments, and so shouldn't have
     -- size or lenght arguments. Captured length arguments should be in scope.
-    IRFunVal fnIR ->
-      do fnExpr       <- doGenExpr fnIR
+    IRFunVal fnIR -> unsupported "Call closure"
+{-
+      do fnExpr       <- doGenExpr BorrowContext fnIR
+         -- XXX: is Borrow sufficient here?
+
          (stmts,args) <- genCallArgs call
          pure (stmts, mkRustCall fnExpr args)
+-}
 
     IRTopFun tf ->
       do typeArgs     <- traverse compileType (irtfTypeArgs tf)
          lenArgs      <- genCallLenArgs call
          szArgs       <- genCallSizeArgs call
-         (stmts,args) <- genCallArgs call
          name         <- lookupFunName (irtfName tf)
-         val <- case name of
-                 Left prim -> compilePrim prim
-                              PrimArgs
-                                { primTypesOfArgs  = ircArgTypes call
-                                , primTypeOfResult = ircResType call
-                                , primTypeArgs     = typeArgs
-                                , primLenArgs      = lenArgs
-                                , primSizeArgs     = szArgs
-                                , primArgs         = args
-                                }
-                 Right path ->
-                   do let fun = pathExpr (pathAddTypeSuffix path typeArgs)
-                          allArgs = lenArgs ++ szArgs ++ args
-                      pure (mkRustCall fun allArgs)
-         pure (stmts,val)
+
+         case name of
+           Left prim ->
+              do let ctx = if primIsConstructor prim then OwnContext
+                                                     else BorrowContext
+                 (stmts,args) <- genCallArgs ctx call
+                 rexpr <- compilePrim prim
+                            PrimArgs
+                              { primTypesOfArgs  = ircArgTypes call
+                              , primTypeOfResult = ircResType call
+                              , primTypeArgs     = typeArgs
+                              , primLenArgs      = lenArgs
+                              , primSizeArgs     = szArgs
+                              , primArgs         = args
+                              }
+                 pure (stmts,rexpr)
+
+           Right path ->
+             do (stmts,args) <- genCallArgs BorrowContext call
+                let fun = pathExpr (pathAddTypeSuffix path typeArgs)
+                    allArgs = lenArgs ++ szArgs ++ args
+                pure (stmts, mkRustCall fun allArgs)
 
 
 -- | From a Cryptol IR expression, generate a Rust expressions along with
 --   a set of Rust statements that contextualize it, such as let bindings
-genExpr :: Expr -> Rust (PartialBlock RustExpr)
-genExpr (IRExpr e0) =
+genExpr :: ExprContext -> Expr -> Rust (PartialBlock RustExpr)
+genExpr how (IRExpr e0) =
   case e0 of
     IRVar (IRName name _) ->
-      do (loc,rexpr) <- lookupNameId name
-         let newExpr = if loc then undefined else callMethod rexpr "clone" []
-         pure (justExpr newExpr)
+      do (isLocal,isLastUse,rexpr) <- lookupNameId name
+         pure $ justExpr
+           case how of
+             OwnContext
+               | isLocal ->
+                 if isLastUse
+                    then rexpr
+                    else callMethod rexpr "clone" []
+               | otherwise -> callMethod rexpr "clone" []
+                -- XXX: unless copy type
+             BorrowContext
+               | isLocal   -> addrOf rexpr -- XXX: unless copy type
+               | otherwise -> rexpr
 
-    IRCallFun call -> genCall call
+         -- pure (justExpr newExpr)
 
-    IRClosure call -> pure (justExpr (todoExp (show (pp call))))
-
-    IRLam args expr ->
-      justExpr <$>
-      do  let args' = irNameName <$> args
-          args'' <- bindLocal False addLocalVar `traverse` args'
-          (lamStmt, lamE) <- genExpr expr
-          pure $ mkClosure args'' lamStmt lamE
-
+    IRCallFun call ->
+      do (stmts, rexpr) <- genCall call
+         pure
+           ( stmts
+           , case how of
+               OwnContext    -> rexpr
+               BorrowContext -> addrOf rexpr
+           )
 
     IRIf eTest eThen eElse ->
-      justExpr <$>
-      do  eTest' <- doGenExpr eTest
-          thenBlock <- genBlock eThen
-          elseBlockExpr <- doGenExpr eElse
-          pure $ Rust.If [] eTest' thenBlock (Just elseBlockExpr) ()
+      do ~[ rThen, rElse ] <- withSameCont (map (genBlock how) [ eThen, eElse ])
+         (stmts,rTest) <- genExpr OwnContext eTest
+         pure (stmts, rustIf rTest rThen rElse)
 
     IRLet (IRName name _) eBound eIn ->
-      do  eBound'    <- doGenExpr eBound
-          boundIdent <- bindLocal True addLocalVar name
-          let -- TODO add explicit type?
-              ty = Nothing
-              letBind = Rust.Local (identPat boundIdent) ty (Just eBound') [] ()
-          (stms,e) <- genExpr eIn
-          pure (letBind:stms,e)
+      do (rname,rstmts,rexpr) <-
+           bindLocalLet name \rname ->
+             do (rstmts,e) <- genExpr how eIn
+                pure (rname,rstmts,e)
+
+         eBound' <- doGenExpr OwnContext eBound
+         let ty = Nothing
+             letBind = Rust.Local (identPat rname) ty (Just eBound') [] ()
+
+         pure (letBind : rstmts, rexpr)
+
+    IRClosure {} -> unsupported "Closure" -- pure (justExpr (todoExp (show (pp call))))
+
+    IRLam {} -> unsupported "Lambda"
+  {-
+    justExpr <$>
+      do  let args' = irNameName <$> args
+        args'' <- bindLocal False addLocalVar `traverse` args'
+          (lamStmt, lamE) <- genExpr expr
+          pure $ mkClosure args'' lamStmt lamE
+          -}
 
     IRStream {} -> unsupported "Stream"
 
--- | Generate a RustItem corresponding to a function declaration.
---   Returns `Nothing` if the declaration is for an IR primitive.
+
+
+        -- | Generate a RustItem corresponding to a function declaration.
+  --   Returns `Nothing` if the declaration is for an IR primitive.
 genFunDecl :: FunDecl -> Rust (Maybe RustItem)
 genFunDecl decl =
   case irfDef decl of
-    -- TODO: maybe this would be a good place to check that the set
-    --       of implemented primitives is complete?
-    IRFunPrim -> pure Nothing
-    IRFunDef argNames expr ->
-      do isLocal <- isFunNameLocal (irfName decl)
-         if isLocal then doCompile argNames expr else pure Nothing
+  -- TODO: maybe this would be a good place to check that the set
+  --       of implemented primitives is complete?
+  IRFunPrim -> pure Nothing
+  IRFunDef argNames expr ->
+    do isLocal <- isFunNameLocal (irfName decl)
+       if isLocal then doCompile argNames expr else pure Nothing
+
   where
   doCompile argNames expr =
     do doIO (print $ pp decl)
@@ -156,7 +195,7 @@ genFunDecl decl =
 
        localScope
          do -- Type parameters
-            tNames <- mapM (bindLocal False addLocalType) (ftTypeParams ft)
+            tNames <- mapM (bindLocal addLocalType) (ftTypeParams ft)
 
             -- Traits
             (needLen,quals) <- mapAndUnzipM compileTrait (ftTraits ft)
@@ -165,25 +204,24 @@ genFunDecl decl =
 
             -- Lenght parameters for Traits that need them
             lParams <- forM lenParamTs \tp ->
-                          do i <- bindLocal False addLocalLenghtParam tp
-                             t <- lenParamType tp
-                             pure (i,t)
+              do i <- bindLocal addLocalLenghtParam tp
+                 t <- lenParamType tp
+                 pure (i,t)
 
             -- Size parameters
             sParams <- forM (ftSizeParams ft) \sp ->
-                        do i <- bindLocal False addLocalType (irsName sp)
-                           pure (i, compileSizeType (irsSize sp))
+              do i <- bindLocal addLocalType (irsName sp)
+                 pure (i, compileSizeType (irsSize sp))
 
             -- Normal parameters
-            -- XXX: We probably want to use references
             nParams <- forM (argNames `zip` ftParams ft) \(arg,ty) ->
-                        do i <- bindLocal False addLocalVar arg
-                           t <- compileType ty
-                           pure (i,t)
+              do i <- bindLocal (addLocalVar False) arg
+                 t <- compileType ty
+                 pure (i, refType t) -- XXX: Copy params, polymorphic stuff
 
             returnTy  <- compileType (ftResult ft)
 
-            funExpr   <- genBlock expr
+            funExpr   <- genBlock OwnContext expr
 
             let tyParams    = [ Rust.TyParam [] i [] Nothing () | i <- tNames ]
                 params      = lParams ++ sParams ++ nParams

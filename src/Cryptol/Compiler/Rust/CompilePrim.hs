@@ -43,6 +43,30 @@ unsupportedPrim nm args =
   unsupported (Text.pack (show (vcat [ "primitive" <+> nm, pp args ])))
 
 
+-- | Is this a constructor primitive.
+-- If so, it takes ownership of its arguments.
+primIsConstructor :: IRPrim -> Bool
+primIsConstructor prim =
+  case prim of
+    CryPrim {}  -> False
+
+    MakeSeq     -> True
+    ArrayLookup -> False
+
+    Tuple       -> True
+    TupleSel {} -> False
+
+    EqSize      -> False
+    LeqSize     -> False
+
+    Map         -> notYet
+    FlatMap     -> notYet
+    Zip         -> notYet
+    Collect     -> notYet
+    Iter        -> notYet
+
+  where
+  notYet = unsupported (Text.pack (show ("primitive" <+> pp prim)))
 
 -- | Emit code for a primitve.
 compilePrim :: IRPrim -> PrimArgs -> Rust RustExpr
