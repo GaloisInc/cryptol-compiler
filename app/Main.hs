@@ -137,7 +137,7 @@ saveExample dir rust =
       unlines
         [ show (Rust.pretty' rust)
         , "pub fn main() {"
-        , "  print!(\"{}\\n\",cry_main().displayable())"
+        , "  print!(\"{}\\n\",cry_main().display())"
         , "}"
         ]
 

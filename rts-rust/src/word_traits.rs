@@ -1,6 +1,7 @@
 use std::fmt;
 use crate::word::Word;
 use crate::traits::*;
+use crate::display::Base;
 
 impl<const W: usize, const L: usize> Length for Word<W, L> {
   type Length = ();
@@ -35,8 +36,34 @@ impl<const W: usize, const L: usize> Ring for Word<W, L> {
   fn from_integer(x: &num::BigInt)    -> Self { Self::from(x) }
 }
 
-impl<const W: usize, const L: usize> crate::Display for Word<W,L> {
-  fn display(&self, base: usize, fmt: &mut fmt::Formatter) -> fmt::Result {
-    crate::std_display(self, base, fmt)
+
+impl<const W: usize, const L: usize> Base<2> for Word<W,L> {
+  fn format (&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fmt::Binary::fmt(self, fmt)
   }
 }
+
+impl<const W: usize, const L: usize> Base<8> for Word<W,L> {
+  fn format (&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fmt::Octal::fmt(self, fmt)
+  }
+}
+
+impl<const W: usize, const L: usize> Base<10> for Word<W,L> {
+  fn format (&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fmt::Display::fmt(self, fmt)
+  }
+}
+
+impl<const W: usize, const L: usize> Base<16> for Word<W,L> {
+  fn format (&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fmt::UpperHex::fmt(self, fmt)
+  }
+}
+
+
+
+
+
+
+

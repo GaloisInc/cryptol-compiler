@@ -1,5 +1,6 @@
-use crate::traits::*;
 use std::fmt;
+use crate::traits::*;
+use crate::display::Base;
 
 pub trait FromFn<T> {
   fn from_fn<F>(n: usize, f: F) -> Self
@@ -78,9 +79,10 @@ impl<T : Clone> Sequence for Vec<T> {
 }
 
 
-impl<T: crate::Display> crate::Display for Vec<T> {
-  fn display(&self, base: usize, fmt: &mut fmt::Formatter) -> fmt::Result
-  { self.as_slice().display(base,fmt) }
+impl<const BASE: usize, T: Base<BASE>> Base<BASE> for Vec<T> {
+  fn format(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    Base::<BASE>::format(&self.as_slice(),fmt)
+  }
 }
 
 

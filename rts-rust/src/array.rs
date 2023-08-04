@@ -1,6 +1,7 @@
-use crate::traits::*;
-use std::fmt as fmt;
 use std::array::from_fn;
+use std::fmt as fmt;
+use crate::traits::*;
+use crate::display::Base;
 
 
 
@@ -57,9 +58,9 @@ impl<T : Clone, const N: usize> Sequence for [T;N] {
 
 
 /* Formatting */
-impl<const N: usize, T: crate::Display> crate::Display for [T;N] {
-  fn display(&self, base: usize, fmt: &mut fmt::Formatter) -> fmt::Result {
-    self.as_slice().display(base,fmt)
+impl<const BASE: usize, const N: usize, T: Base<BASE>> Base<BASE> for [T;N] {
+  fn format(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    Base::<BASE>::format(&self.as_slice(),fmt)
   }
 }
 

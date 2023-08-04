@@ -12,8 +12,8 @@ pub use traits::*;
 pub use display::*;
 
 pub mod trait_methods {
-  pub use crate::display::StdDisplay as _;
   pub use crate::display::Display as _;
+  pub use crate::display::Base as _;
   pub use crate::traits::Sequence as _;
   pub use crate::traits::Zero as _;
   pub use crate::traits::Literal as _;

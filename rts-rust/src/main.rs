@@ -4,7 +4,7 @@ use cryptol::trait_methods::*;
 fn main() {
   let x: [ cryptol::Word!(8); 1 ] = [ 1_u64.into() ];
   let y = &x;
-  print!("{:#b}\n",y.displayable());
-  print!("{:#b}\n",x.displayable());
-  print!("{:#b}\n",x.displayable());
+  print!("{:#b}\n",y.display());
+  print!("{:#b}\n",x.display());
+  print!("{:#b}\n",x.display());
 }
