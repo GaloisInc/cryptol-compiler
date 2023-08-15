@@ -2,6 +2,7 @@
 -- Nothing here should be specific to the compiler.
 module Cryptol.Compiler.Rust.Utils where
 
+import Data.List(intersperse)
 import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
 import Language.Rust.Data.Position qualified as Rust
@@ -75,8 +76,8 @@ pathAddTypeSuffix (Rust.Path global seg an) newTys = Rust.Path global seg' an
 
 --------------------------------------------------------------------------------
 
-typePath :: RustType -> RustPath -> RustExpr
-typePath ty n = Rust.PathExpr [] (Just (Rust.QSelf ty 0)) n ()
+typeQualifiedExpr :: RustType -> RustPath -> RustExpr
+typeQualifiedExpr ty n = Rust.PathExpr [] (Just (Rust.QSelf ty 0)) n ()
 
 pathExpr :: RustPath -> RustExpr
 pathExpr p = Rust.PathExpr [] Nothing p ()
@@ -99,6 +100,16 @@ mkRustCall fn args = Rust.Call [] fn args ()
 callMethod :: RustExpr -> Rust.Ident -> [RustExpr] -> RustExpr
 callMethod obj meth args =
   Rust.MethodCall [] obj meth Nothing args ()
+
+callMacro :: RustPath -> [RustExpr] -> RustExpr
+callMacro m es = Rust.MacExpr [] mac ()
+  where
+  mac       = Rust.Mac m args ()
+  args      = Rust.Stream (intersperse comma (map exprToken es))
+  exprToken = Rust.Tree . Rust.Token dummySpan . Rust.Interpolated
+            . Rust.NtExpr . fmap (const dummySpan)
+  comma     = Rust.Tree (Rust.Token dummySpan Rust.Comma)
+
 
 mkClosure :: [Rust.Ident] -> [RustStmt] -> RustExpr -> RustExpr
 mkClosure args stmts expr = Rust.Closure [] move captureBy fnDecl fnExpr ()
@@ -240,6 +251,10 @@ simpleType i = Rust.PathTy Nothing path ()
   where
     path  = Rust.Path False [Rust.PathSegment ident Nothing ()] ()
     ident = Rust.mkIdent i
+
+
+typeQualifiedType:: RustType -> RustPath -> RustType
+typeQualifiedType ty n = Rust.PathTy (Just (Rust.QSelf ty 0)) n ()
 
 pathType :: RustPath -> RustType
 pathType path = Rust.PathTy Nothing path ()

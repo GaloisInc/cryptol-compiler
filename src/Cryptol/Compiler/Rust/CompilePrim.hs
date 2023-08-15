@@ -10,7 +10,6 @@ import Cryptol.Compiler.IR.Cryptol
 
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.Utils
-import Cryptol.Compiler.Rust.CompileType
 
 data PrimArgs = PrimArgs
   { primTypesOfArgs   :: [Type]         -- ^ Types of arguments (primArgs)
@@ -134,12 +133,12 @@ compileCryptolPreludePrim name args =
 -}
   where
   inferMethod method =
-    pure (mkRustCall (typePath inferType (simplePath method))
+    pure (mkRustCall (typeQualifiedExpr inferType (simplePath method))
                      (map addrOf (primArgs args)))
 
   tyTraitMethod method =
       case primTypeArgs args of
-        [ty] -> typePath ty (simplePath method)
+        [ty] -> typeQualifiedExpr ty (simplePath method)
         _    -> panic "tyTraitMethod" ["Expected exactly 1 type argument"]
 
 
@@ -155,15 +154,7 @@ compileSeqLit :: PrimArgs -> Rust RustExpr
 compileSeqLit args =
   case primTypeOfResult args of
 
-    TArray sz elTy ->
-      case isKnownSize sz of
-        Just n  ->
-          do arrTy <- cryArrayType n <$> compileType AsOwned elTy
-             pure (mkRustCall (typePath arrTy (simplePath "from"))
-                              [ arrayExpr (primArgs args) ])
-        Nothing -> unsupportedPrim "vec" args
-
-
+    TArray {} -> pure (callMacro (simplePath "vec") (primArgs args))
 
     -- TWord sz
     -- TStream sz _elTy

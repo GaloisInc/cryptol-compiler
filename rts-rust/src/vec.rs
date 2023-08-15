@@ -1,5 +1,6 @@
 use std::fmt;
 use crate::traits::*;
+use crate::type_traits::*;
 use crate::display::Base;
 
 // Convenince for making vectors from a function.

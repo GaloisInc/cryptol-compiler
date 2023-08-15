@@ -26,19 +26,14 @@ compileType mode ty =
     IR.TDouble        -> pure (simpleType "f64")
 
     IR.TWord sz ->
-      case IR.isKnownSize sz of
-        Just i  -> pure (cryWordType i)   -- maybe by ref for larger sizes?
-        Nothing -> pure (cryVectorType (simpleType "bool"))
+      pure (byRef mode (maybe cryDWordType cryWordType (IR.isKnownSize sz)))
 
-    IR.TArray sz t ->
+    IR.TArray _sz t ->
       do elTy <- compileType AsOwned t
          pure
            case mode of
-             AsArg -> refType (sliceType elTy)
-             AsOwned ->
-               case IR.isKnownSize sz of
-                 Just i  -> cryArrayType i elTy
-                 Nothing -> cryVectorType  elTy
+             AsArg   -> refType (sliceType elTy)
+             AsOwned -> cryVectorType elTy
 
     IR.TStream _sz t -> byRef mode . streamOfType <$> compileType AsOwned t
 
@@ -100,6 +95,9 @@ cryArrayType _n = cryVectorType -- for now we just use vectors for all
 
 cryVectorType :: RustType -> RustType
 cryVectorType = vectorOfType
+
+cryDWordType :: RustType
+cryDWordType = pathType (simplePath' [cryptolCrate,"DWord"])
 
 cryWordType :: Integer -> RustType
 cryWordType bits = Rust.MacTy mac ()

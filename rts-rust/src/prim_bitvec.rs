@@ -1,4 +1,5 @@
 use crate::traits::*;
+use crate::type_traits::*;
 use crate::PrimType;
 
 

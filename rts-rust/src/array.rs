@@ -1,6 +1,7 @@
 use std::array::from_fn;
 use std::fmt as fmt;
 use crate::traits::*;
+use crate::type_traits::*;
 use crate::display::Base;
 
 

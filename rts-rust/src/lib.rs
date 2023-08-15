@@ -1,9 +1,11 @@
+pub mod type_traits;
 pub mod traits;
 pub mod display;
 
 pub mod word;
 
 pub mod word_traits;
+pub mod dword;
 pub mod array;
 pub mod vec;
 
@@ -13,14 +15,18 @@ pub mod int;
 // XXX
 pub mod prim_bitvec;
 
+pub use type_traits::*;
 pub use traits::*;
 pub use display::*;
 
 pub mod trait_methods {
   pub use crate::display::Display as _;
   pub use crate::display::Base as _;
-  pub use crate::traits::Type as _;
-  pub use crate::traits::Sequence as _;
+
+  pub use crate::type_traits::Type as _;
+  pub use crate::type_traits::Sequence as _;
+  pub use crate::type_traits::Word as _;
+
   pub use crate::traits::Zero as _;
   pub use crate::traits::Literal as _;
   pub use crate::traits::LiteralNumber as _;
@@ -37,7 +43,7 @@ macro_rules! PrimType {
 
   ($ty:ty) => {
 
-    impl crate::traits::Type for $ty {
+    impl crate::type_traits::Type for $ty {
       type Length  = ();
       type Arg<'a> = Self;
       fn as_owned(arg: Self::Arg<'_>) -> Self { arg }
@@ -55,7 +61,7 @@ macro_rules! RefType {
 
   ($ty:ty) => {
 
-    impl crate::traits::Type for $ty {
+    impl crate::type_traits::Type for $ty {
       type Length = ();
       type Arg<'a> = &'a Self;
       fn as_owned(arg: Self::Arg<'_>) -> Self { arg.clone() }

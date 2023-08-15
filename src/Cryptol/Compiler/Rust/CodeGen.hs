@@ -128,7 +128,7 @@ genExpr how (IRExpr e0) =
 
                | otherwise ->
                  do rty <- compileType AsOwned ty
-                    let fn = typePath rty (simplePath "as_owned")
+                    let fn = typeQualifiedExpr rty (simplePath "as_owned")
                     pure (mkRustCall fn [rexpr])
 
              BorrowContext

@@ -1,6 +1,6 @@
 use cryptol::trait_methods::*;
 
-fn f<T: cryptol::Type>(x: T::Length) {}
+
 
 // This is just for testing stuff out.
 fn main() {

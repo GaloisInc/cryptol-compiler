@@ -1,6 +1,7 @@
 use std::fmt;
 use crate::word::Word;
 use crate::traits::*;
+use crate::type_traits::*;
 use crate::display::Base;
 
 impl<const W: usize, const L: usize> Type for Word<W,L> {
