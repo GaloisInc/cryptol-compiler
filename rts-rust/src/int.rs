@@ -1,8 +1,7 @@
 use crate::traits::*;
+use crate::RefType;
 
-impl Length for num::BigInt {
-  type Length = ();
-}
+RefType!(num::BigInt);
 
 impl Zero for num::BigInt {
   fn zero(_ : ()) -> Self { <Self as num::Zero>::zero() }

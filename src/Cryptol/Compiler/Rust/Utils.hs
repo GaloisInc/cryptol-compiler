@@ -262,10 +262,13 @@ vectorOfType elT = Rust.PathTy Nothing path ()
   path   = Rust.Path False [ Rust.PathSegment "Vec" (Just params) () ] ()
   params = Rust.AngleBracketed [] [elT] [] ()
 
-fixedArrayOfType :: RustType-> Integer -> RustType
+fixedArrayOfType :: RustType -> Integer -> RustType
 fixedArrayOfType ty i = Rust.Array ty sizeExpr ()
   where
     sizeExpr = Rust.Lit [] (Rust.Int Rust.Dec i Rust.Unsuffixed ()) ()
+
+sliceType :: RustType -> RustType
+sliceType ty = Rust.Slice ty ()
 
 refType :: RustType -> RustType
 refType ty = Rust.Rptr Nothing Rust.Immutable ty ()

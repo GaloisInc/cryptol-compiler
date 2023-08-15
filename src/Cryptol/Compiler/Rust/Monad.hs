@@ -148,10 +148,9 @@ getTParams =
            path  = Rust.Path False [seg] ()
        in Rust.PathTy Nothing path ()
 
--- | Get the type corresponding to a type parameter.
-lookupTParam :: Cry.TParam -> Rust RustType
-lookupTParam x =
-  Rust (pathType . simplePath . lookupName x . lTypeNames . rwLocalNames <$> get)
+-- | Get the identifiier corresponding to a type parameter.
+lookupTParam :: Cry.TParam -> Rust Rust.Ident
+lookupTParam x = Rust (lookupName x . lTypeNames . rwLocalNames <$> get)
 
 -- | Get the expresssion for a size parameter.
 lookupSizeParam :: Cry.TParam -> Rust RustExpr

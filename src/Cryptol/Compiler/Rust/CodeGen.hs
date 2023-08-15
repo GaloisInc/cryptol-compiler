@@ -83,7 +83,7 @@ genCall call =
 -}
 
     IRTopFun tf ->
-      do typeArgs     <- traverse compileType (irtfTypeArgs tf)
+      do typeArgs     <- traverse (compileType AsOwned) (irtfTypeArgs tf)
          lenArgs      <- genCallLenArgs call
          szArgs       <- genCallSizeArgs call
          name         <- lookupFunName (irtfName tf)
@@ -110,28 +110,30 @@ genCall call =
                     allArgs = lenArgs ++ szArgs ++ args
                 pure (stmts, mkRustCall fun allArgs)
 
-
 -- | From a Cryptol IR expression, generate a Rust expressions along with
 --   a set of Rust statements that contextualize it, such as let bindings
 genExpr :: ExprContext -> Expr -> Rust (PartialBlock RustExpr)
 genExpr how (IRExpr e0) =
   case e0 of
-    IRVar (IRName name _) ->
+    IRVar (IRName name ty) ->
       do (isLocal,isLastUse,rexpr) <- lookupNameId name
-         pure $ justExpr
+         justExpr <$>
            case how of
              OwnContext
                | isLocal ->
+                 pure
                  if isLastUse
                     then rexpr
                     else callMethod rexpr "clone" []
-               | otherwise -> callMethod rexpr "clone" []
-                -- XXX: unless copy type
-             BorrowContext
-               | isLocal   -> addrOf rexpr -- XXX: unless copy type
-               | otherwise -> rexpr
 
-         -- pure (justExpr newExpr)
+               | otherwise ->
+                 do rty <- compileType AsOwned ty
+                    let fn = typePath rty (simplePath "as_owned")
+                    pure (mkRustCall fn [rexpr])
+
+             BorrowContext
+               | isLocal   -> pure (callMethod rexpr "as_arg" [])
+               | otherwise -> pure rexpr
 
     IRCallFun call ->
       do (stmts, rexpr) <- genCall call
@@ -139,7 +141,7 @@ genExpr how (IRExpr e0) =
            ( stmts
            , case how of
                OwnContext    -> rexpr
-               BorrowContext -> addrOf rexpr
+               BorrowContext -> callMethod (addrOf rexpr) "as_arg" []
            )
 
     IRIf eTest eThen eElse ->
@@ -198,9 +200,11 @@ genFunDecl decl =
             tNames <- mapM (bindLocal addLocalType) (ftTypeParams ft)
 
             -- Traits
-            (needLen,quals) <- mapAndUnzipM compileTrait (ftTraits ft)
+            (needLen,quals') <- mapAndUnzipM compileTrait (ftTraits ft)
             let allNeedLen = Set.unions needLen
                 lenParamTs = filter (`Set.member` allNeedLen) (ftTypeParams ft)
+            cryTypeConstraints <- mapM isCryType (ftTypeParams ft)
+            let quals = cryTypeConstraints ++ quals'
 
             -- Lenght parameters for Traits that need them
             lParams <- forM lenParamTs \tp ->
@@ -216,10 +220,10 @@ genFunDecl decl =
             -- Normal parameters
             nParams <- forM (argNames `zip` ftParams ft) \(arg,ty) ->
               do i <- bindLocal (addLocalVar False) arg
-                 t <- compileType ty
-                 pure (i, refType t) -- XXX: Copy params, polymorphic stuff
+                 t <- compileType AsArg ty
+                 pure (i, t)
 
-            returnTy  <- compileType (ftResult ft)
+            returnTy  <- compileType AsOwned (ftResult ft)
 
             funExpr   <- genBlock OwnContext expr
 

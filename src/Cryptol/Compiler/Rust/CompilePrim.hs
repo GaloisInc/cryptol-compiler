@@ -158,7 +158,7 @@ compileSeqLit args =
     TArray sz elTy ->
       case isKnownSize sz of
         Just n  ->
-          do arrTy <- cryArrayType n <$> compileType elTy
+          do arrTy <- cryArrayType n <$> compileType AsOwned elTy
              pure (mkRustCall (typePath arrTy (simplePath "from"))
                               [ arrayExpr (primArgs args) ])
         Nothing -> unsupportedPrim "vec" args

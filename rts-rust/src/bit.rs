@@ -1,8 +1,7 @@
 use crate::traits::*;
+use crate::PrimType;
 
-impl Length for bool {
-  type Length = ();
-}
+PrimType!(bool);
 
 impl Zero for bool {
   fn zero(_:Self::Length) -> Self { false }

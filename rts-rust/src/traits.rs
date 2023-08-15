@@ -1,6 +1,25 @@
+
+/// All types supported by the compiler should implement this.
+pub trait Type : Clone {
+
+  /// The type to use when passing Self values as arugments.
+  type Arg<'a> where Self : 'a;
+
+  /// Extra information to pass for types that need dynamic information
+  /// to create a value.
+  type Length : Copy;
+
+  /// Turn an argument form into an owned value, possibly by cloning.
+  fn as_owned(arg: Self::Arg<'_>) -> Self;
+
+  fn as_arg(&self) -> Self::Arg<'_>;
+}
+
+
+
 /// Non-standard Cryptol trait ranging over sequence representations
 pub trait Sequence {
-  type Item : Clone;
+  type Item : Type;
 
   /// Length of this sequence
   fn length(&self) -> usize;
@@ -10,7 +29,7 @@ pub trait Sequence {
   ///   * `n`   - length, if the elements are seuqneces of dynamic size or ()
   ///   * `xs`  - sequence
   ///   * `amt` - how much to shift by
-  fn shift_right(&self, n: <Self::Item as Length>::Length, amt: usize) -> Self
+  fn shift_right(&self, n: <Self::Item as Type>::Length, amt: usize) -> Self
     where Self::Item : Zero;
 
   /// Shift a sequence to the right.
@@ -29,7 +48,7 @@ pub trait Sequence {
   ///   * `n`   - length, if the elements are seuqneces of dynamic size or ()
   ///   * `xs`  - sequence
   ///   * `amt` - how much to shift by
-  fn shift_left(&self, n: <Self::Item as Length>::Length, amt: usize) -> Self
+  fn shift_left(&self, n: <Self::Item as Type>::Length, amt: usize) -> Self
     where Self::Item : Zero;
 
   /// Rotate the elements of a sequence to left.
@@ -44,17 +63,7 @@ pub trait Sequence {
 
 }
 
-/// The type of an extra parameter specifying the length of thing.
-/// This is used when we want to make a new value whose size is
-/// not statically known (e.g., a `Vec`)
-pub trait Length {
-
-  /// Extra information for allocating sequences.
-  type Length : Copy;
-}
-
-
-pub trait Zero : Length {
+pub trait Zero : Type {
 
   /// The value tha acts like 0.
   fn zero(n : Self::Length) -> Self;
@@ -113,7 +122,7 @@ pub trait Integral {
 }
 
 
-pub trait Literal : Length {
+pub trait Literal : Type {
   fn number_u64(n: Self::Length, x: u64) -> Self;
   fn number_int(n: Self::Length, x: &num::BigUint) -> Self;
 }

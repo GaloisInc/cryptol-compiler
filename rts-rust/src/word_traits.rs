@@ -3,8 +3,11 @@ use crate::word::Word;
 use crate::traits::*;
 use crate::display::Base;
 
-impl<const W: usize, const L: usize> Length for Word<W, L> {
+impl<const W: usize, const L: usize> Type for Word<W,L> {
   type Length = ();
+  type Arg<'a> = &'a Word<W,L>;
+  fn as_owned(arg: Self::Arg<'_>) -> Self { *arg }
+  fn as_arg(&self) -> Self::Arg<'_> { self }
 }
 
 impl<const W: usize, const L: usize> Literal for Word<W, L> {

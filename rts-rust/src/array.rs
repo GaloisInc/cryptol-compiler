@@ -4,12 +4,15 @@ use crate::traits::*;
 use crate::display::Base;
 
 
+impl<const N: usize, T: Type> Type for [T;N]  {
+  type Length = T::Length;
+  type Arg<'a> = &'a[T] where T: 'a;
+  fn as_owned(arg: Self::Arg<'_>) -> Self { from_fn(|i| arg[i].clone()) }
+  fn as_arg(&self) -> Self::Arg<'_> { self }
+}
+
 
 /* Lenght and Zero */
-
-impl<const N: usize, T: Length> Length for [T;N] {
-  type Length = T::Length;
-}
 
 impl<const N: usize, T: Zero> Zero for [T;N] {
   fn zero(n: Self::Length) -> Self { from_fn(|_i| T::zero(n)) }
@@ -19,15 +22,15 @@ impl<const N: usize, T: Zero> Zero for [T;N] {
 
 /* Sequence operations */
 
-impl<T : Clone, const N: usize> Sequence for [T;N] {
+impl<T : Type, const N: usize> Sequence for [T;N] {
   type Item = T;
 
   fn length(&self) -> usize { N }
 
   fn index(&self, i: usize) -> T { self[i].clone() }
 
-  fn shift_right(&self, n: <T as Length>::Length, amt: usize) -> Self
-    where T : Zero + Length
+  fn shift_right(&self, n: T::Length, amt: usize) -> Self
+    where T : Zero
   {
     from_fn(|i| if i < amt { T::zero(n) } else { self.index(i-amt) })
   }
@@ -43,7 +46,7 @@ impl<T : Clone, const N: usize> Sequence for [T;N] {
   }
 
 
-  fn shift_left(&self, n: <T as Length>::Length, amt: usize) -> Self
+  fn shift_left(&self, n: T::Length, amt: usize) -> Self
     where T : Zero
   {
     from_fn(|i| {

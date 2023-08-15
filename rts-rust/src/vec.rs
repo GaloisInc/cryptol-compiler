@@ -2,6 +2,7 @@ use std::fmt;
 use crate::traits::*;
 use crate::display::Base;
 
+// Convenince for making vectors from a function.
 pub trait FromFn<T> {
   fn from_fn<F>(n: usize, f: F) -> Self
     where F: FnMut(usize) -> T;
@@ -20,11 +21,16 @@ impl<T> FromFn<T> for Vec<T>{
     }
 }
 
-
-
-/* Lenght and Zero */
-impl<T:Length> Length for Vec<T> {
+/* Crytpol type */
+impl<T: Type> Type for Vec<T> {
   type Length = (u64, T::Length);
+  type Arg<'a> = &'a [T] where T: 'a;
+  fn as_owned(arg: Self::Arg<'_>) -> Self {
+    let mut result = Vec::with_capacity(arg.len());
+    result.extend_from_slice(arg);
+    result
+  }
+  fn as_arg(&self) -> Self::Arg<'_> { &self[..] }
 }
 
 impl<T:Zero> Zero for Vec<T> {
@@ -35,15 +41,15 @@ impl<T:Zero> Zero for Vec<T> {
 
 /* Sequence operations */
 
-impl<T : Clone> Sequence for Vec<T> {
+impl<T: Type> Sequence for Vec<T> {
   type Item = T;
 
   fn length(&self) -> usize { self.len() }
 
   fn index(&self, i: usize) -> T { self[i].clone() }
 
-  fn shift_right(&self, n: <T as Length>::Length, amt: usize) -> Self
-    where T : Zero + Length
+  fn shift_right(&self, n: T::Length, amt: usize) -> Self
+    where T : Zero
   {
     Self::from_fn( self.length()
                  , |i| if i < amt { T::zero(n) } else { self.index(i-amt) })
@@ -63,7 +69,7 @@ impl<T : Clone> Sequence for Vec<T> {
   }
 
 
-  fn shift_left(&self, n: <T as Length>::Length, amt: usize) -> Self
+  fn shift_left(&self, n: T::Length, amt: usize) -> Self
     where T : Zero
   {
     let vec_len = self.length();

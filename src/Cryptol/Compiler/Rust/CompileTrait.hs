@@ -30,10 +30,18 @@ traitNeedsLen (IRTrait name arg)  =
 
 lenParamType :: Cry.TParam -> Rust RustType
 lenParamType tp =
-  do ty <- lookupTParam tp
-     -- <ty as cryptol::Lenght>::Length
-     let path = simplePath' [ cryptolCrate,"Length","Length"]
-     pure (Rust.PathTy (Just (Rust.QSelf ty 2)) path ())
+  do tyI <- lookupTParam tp
+     -- ty::Length
+     pure (pathType (simplePath' [ tyI, "Length"]))
+
+isCryType :: Cry.TParam -> Rust RustWherePredicate
+isCryType arg =
+  do tparams <- getTParams
+     let path = simplePath' [ cryptolCrate, "Type" ]
+     let traitName = Rust.PolyTraitRef [] (Rust.TraitRef path) ()
+     let bound = Rust.TraitTyParamBound traitName Rust.None ()
+     pure (Rust.BoundPredicate [] (tparams arg) [bound] ())
+
 
 -- | Compile a trait.  The set returns type parameters that need
 -- an associated Lenght parmaeter.
