@@ -789,6 +789,26 @@ mod tests {
   use num::bigint::BigUint;
 
   #[test]
+  fn test_word() {
+    assert_eq!(word!(false), <Word!(1)>::from(0b00_u64));
+    assert_eq!(word!(true,false), <Word!(2)>::from(0b10_u64));
+    assert_eq!(word!(
+        true, true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true,
+        true, true, true, true, true, true, true, true
+      )
+      , <Word!(80)>::from(1208925819614629174706175_u128)
+      );
+  }
+
+  #[test]
   fn test_append() {
     let x0  = <Word!(0)>::from(0_u64);
 

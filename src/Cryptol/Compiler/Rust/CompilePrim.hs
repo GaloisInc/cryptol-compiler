@@ -2,6 +2,7 @@ module Cryptol.Compiler.Rust.CompilePrim where
 
 import Data.Text(Text)
 import Data.Text qualified as Text
+import qualified Language.Rust.Syntax as Rust
 import Cryptol.Utils.Ident qualified as Cry
 
 import Cryptol.Compiler.Error (panic,unsupported)
@@ -94,6 +95,8 @@ compileCryptolPreludePrim name args =
     "False" -> pure (litExpr (boolLit False))
     "True"  -> pure (litExpr (boolLit True))
 
+    "#" -> compilePrimAppend args
+
     -- Literal
     "number" ->
        pure $ mkRustCall (tyTraitMethod "number")
@@ -159,8 +162,21 @@ compileSeqLit args =
   case primTypeOfResult args of
 
     TArray {} -> pure (callMacro (simplePath "vec") (primArgs args))
-    TWord {} -> pure (callMacro (simplePath' [cryptolCrate,"word"])
-                                                              (primArgs args))
+    TWord {}  -> pure (callMacro (simplePath' [cryptolCrate,"word"])
+                                                            (primArgs args))
     -- TStream sz _elTy
 
     _ -> unsupportedPrim "MakeSeq" args
+
+
+compilePrimAppend :: PrimArgs -> Rust RustExpr
+compilePrimAppend args =
+  case primTypesOfArgs args of
+    [ TWord (isKnownSize -> Just w1), TWord (isKnownSize -> Just w2) ] ->
+      pure (callMacro (simplePath' [cryptolCrate,"append"])
+                      (map (litExpr . mkIntLit Rust.Unsuffixed) [ w1, w2 ] ++ primArgs args))
+
+    -- XXX: array + array, array + stream, word + stream
+
+    _ -> unsupportedPrim "#" args
+

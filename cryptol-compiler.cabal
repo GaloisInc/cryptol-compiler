@@ -35,6 +35,7 @@ common extensions
       FunctionalDependencies,
       PatternSynonyms,
       TypeOperators,
+      ViewPatterns,
       RankNTypes
 
 common executable
