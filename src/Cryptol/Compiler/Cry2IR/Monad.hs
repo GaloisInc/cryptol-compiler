@@ -209,9 +209,9 @@ addNumProps ps =
 
 
 data SizeConstraint =
-    IsFin
-  | IsFinSize
-  | IsInf
+    IsFin         -- ^ large finite
+  | IsFinSize     -- ^ small finite
+  | IsInf         -- ^ infinite
     deriving Eq
 
 -- | Convert a size constraint to a property on a type.

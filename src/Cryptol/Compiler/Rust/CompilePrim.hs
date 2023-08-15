@@ -8,6 +8,7 @@ import Cryptol.Compiler.Error (panic,unsupported)
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Cryptol
 
+import Cryptol.Compiler.Rust.Names
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.Utils
 
@@ -90,6 +91,9 @@ compileCryptolPreludePrim :: Text -> PrimArgs -> Rust RustExpr
 compileCryptolPreludePrim name args =
   case name of
 
+    "False" -> pure (litExpr (boolLit False))
+    "True"  -> pure (litExpr (boolLit True))
+
     -- Literal
     "number" ->
        pure $ mkRustCall (tyTraitMethod "number")
@@ -155,8 +159,8 @@ compileSeqLit args =
   case primTypeOfResult args of
 
     TArray {} -> pure (callMacro (simplePath "vec") (primArgs args))
-
-    -- TWord sz
+    TWord {} -> pure (callMacro (simplePath' [cryptolCrate,"word"])
+                                                              (primArgs args))
     -- TStream sz _elTy
 
     _ -> unsupportedPrim "MakeSeq" args

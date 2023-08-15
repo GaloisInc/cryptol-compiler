@@ -4,9 +4,6 @@ use cryptol::trait_methods::*;
 
 // This is just for testing stuff out.
 fn main() {
-  let x: [ cryptol::Word!(8); 1 ] = [ 1_u64.into() ];
-  let y = &x;
-  print!("{:#b}\n",y.display());
-  print!("{:#b}\n",x.display());
+  let x = cryptol::word!(true,true,true,false);
   print!("{:#b}\n",x.display());
 }

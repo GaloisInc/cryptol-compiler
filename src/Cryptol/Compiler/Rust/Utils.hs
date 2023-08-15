@@ -226,6 +226,9 @@ mkU64Lit = mkIntLit Rust.U64
 mkUSizeLit :: Integer -> RustLit
 mkUSizeLit = mkIntLit Rust.Us
 
+boolLit :: Bool -> RustLit
+boolLit b = Rust.Bool b Rust.Unsuffixed ()
+
 litExpr :: RustLit -> RustExpr
 litExpr l = Rust.Lit [] l ()
 
@@ -258,9 +261,6 @@ typeQualifiedType ty n = Rust.PathTy (Just (Rust.QSelf ty 0)) n ()
 
 pathType :: RustPath -> RustType
 pathType path = Rust.PathTy Nothing path ()
-
-constType :: Integer -> RustType
-constType n = Rust.ConstTy (litExpr (mkUSizeLit n)) ()
 
 unitType :: RustType
 unitType = tupleType []

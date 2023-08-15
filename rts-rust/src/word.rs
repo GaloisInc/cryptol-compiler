@@ -747,7 +747,36 @@ macro_rules! drop {
   } }
 }
 
+#[macro_export]
+macro_rules! internal_one {
+  ($t:tt) => { 1 };
+}
 
+#[macro_export]
+macro_rules! word {
+  ($($b: expr), *) => {
+    { const W: usize = $( $crate::internal_one!($b) + )* 0;
+      let mut result       = <$crate::Word!(W)>::zero();
+      let words            = result.as_words_mut();
+      let mut woffset      = $crate::word::limbs_for_bits(W);
+      let mut boffset      = crypto_bigint::Limb::BITS - 1;
+      let mut buf: crypto_bigint::Word = 0;
+      $(
+      if ($b) { buf |= (1 << boffset) }
+      if boffset == 0 {
+        woffset -= 1;
+        words[woffset] = buf;
+        boffset = crypto_bigint::Limb::BITS - 1;
+        buf = 0;
+      } else {
+        boffset -= 1;
+      }
+      )*
+      if woffset > 0 { words[woffset-1] = buf; }
+      result
+    }
+  }
+}
 
 
 
