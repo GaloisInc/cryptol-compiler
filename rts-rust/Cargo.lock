@@ -42,6 +42,14 @@ version = "0.1.0"
 dependencies = [
  "apint",
  "crypto-bigint",
+ "dword",
+ "num",
+]
+
+[[package]]
+name = "dword"
+version = "0.1.0"
+dependencies = [
  "num",
 ]
 

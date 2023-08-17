@@ -5,7 +5,6 @@ pub mod display;
 pub mod word;
 
 pub mod word_traits;
-pub mod dword;
 pub mod array;
 pub mod vec;
 
@@ -18,6 +17,7 @@ pub mod prim_bitvec;
 pub use type_traits::*;
 pub use traits::*;
 pub use display::*;
+pub use dword::DWord;
 
 pub mod trait_methods {
   pub use crate::display::Display as _;
