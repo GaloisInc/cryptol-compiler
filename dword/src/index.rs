@@ -2,7 +2,14 @@ use crate::{DWord,DWordRef};
 
 impl<'a> DWordRef<'a> {
 
-  pub fn index_lsb(self, i: usize) -> bool {
+  /// Get a bit, starting at the most signifcant end of the word.
+  pub fn index_be(self, i: usize) -> bool {
+    assert!(i <= self.bits());
+    self.index_le(self.bits() - i - 1)
+  }
+
+  /// Get a bit, starting at the least signifcant end of the word.
+  pub fn index_le(self, i: usize) -> bool {
     assert!(i <= self.bits());
     let data = self.as_slice();
     let ix   = i + self.padding();
@@ -10,14 +17,17 @@ impl<'a> DWordRef<'a> {
     w & (1 << (ix % DWord::LIMB_BITS)) != 0
   }
 
-  pub fn index_msb(self, i: usize) -> bool {
-    assert!(i <= self.bits());
-    self.index_lsb(self.bits() - i - 1)
-  }
-
-  pub fn iter_msb(self) -> TraverseBits<'a> {
+  /// Iterate over the bits, from big end to little end.
+  pub fn iter_be(self) -> TraverseBits<'a, true> {
     TraverseBits { vec: self, ix: 0 }
   }
+
+  /// Iterate over the bits, from little end to bit end.
+  pub fn iter_le(self) -> TraverseBits<'a, false> {
+    TraverseBits { vec: self, ix: 0 }
+  }
+
+
 
   /// Extract a sub-bitvector of the given length, starting at the given
   /// bit position. 0 is the most significant bit.
@@ -57,16 +67,26 @@ impl<'a> DWordRef<'a> {
     result
   }
 
+  /// Extract a sub-bitvector of the given length, starting at the given
+  /// bit position. 0 is the most significant bit.
+  pub fn slice_le(self, sub_bits: usize, i: usize) -> DWord {
+    assert!((i + sub_bits) <= self.bits());
+    self.slice_be(sub_bits, self.bits() - sub_bits - i)
+  }
+
+
+
+
 }
 
 /// Traverse DWord as bits, starting from most significant.
-pub struct TraverseBits<'a> {
+pub struct TraverseBits<'a, const BE: bool> {
   vec: DWordRef<'a>,
   ix:  usize
 }
 
 
-impl<'a> Iterator for TraverseBits<'a> {
+impl<'a, const BE: bool> Iterator for TraverseBits<'a, BE> {
   type Item = bool;
   fn next(&mut self) -> Option<Self::Item> {
     if self.ix >= self.vec.bits() {
@@ -74,7 +94,7 @@ impl<'a> Iterator for TraverseBits<'a> {
     } else {
       let i = self.ix;
       self.ix += 1;
-      Some(self.vec.index_msb(i))
+      Some(if BE { self.vec.index_be(i) } else { self.vec.index_le(i) } )
     }
   }
 }
@@ -95,9 +115,9 @@ mod test {
     let x64  = x64v.as_ref();
     let x65  = x65v.as_ref();
 
-    assert_eq!(x64.index_lsb(0), true);
-    assert_eq!(x64.index_lsb(1), false);
-    assert_eq!(x65.index_lsb(0), true);
-    assert_eq!(x65.index_lsb(1), false);
+    assert_eq!(x64.index_le(0), true);
+    assert_eq!(x64.index_le(1), false);
+    assert_eq!(x65.index_le(0), true);
+    assert_eq!(x65.index_le(1), false);
   }
 }

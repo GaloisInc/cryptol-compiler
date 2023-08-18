@@ -28,7 +28,7 @@ impl DWord {
 
 }
 
-/// Get the least significant bits
+/// Get the 8 least significant bits.
 impl<'a> From<DWordRef<'a>> for u8 {
   fn from(x: DWordRef<'a>) -> Self {
     let pad   = x.padding();

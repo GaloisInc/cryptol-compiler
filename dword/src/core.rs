@@ -2,12 +2,6 @@ use std::marker::PhantomData;
 
 pub type LimbT = u64;
 
-impl DWord {
-
-  /// The number of bits in a libm.
-  pub const LIMB_BITS: usize = LimbT::BITS as usize;
-}
-
 
 
 /// The data for a dynamic word.
@@ -24,13 +18,21 @@ struct DWordPtr {
   data: DWordData
 }
 
-/// A word.
+/// A fixed-size word of a dynamic size.
+/// * Words are represented as a little-endian sequence of `LimbT`,
+///   meaning that the less significant bits are stored at lower indexes.
+/// * Sequencs that fit in a single `LimbT` are passed by value, while
+///   larger ones are boxed.
+/// * Words of sizes that are not multiples of `LimbT` contain 0 padding
+///   in the least sigificant part of the *first limb*, meaning that they
+///   are stored in the most significant part of the smallest word that
+///   is of a size that is a multiple of `LimbT`.
 pub struct DWord {
   data: DWordPtr
 }
 
-/// A read-only reference to a word.
-/// This is similar to &DWord, but is passed by value, thus avoiding
+/// A read-only reference to a [DWord].
+/// This is similar to `&DWord`, but is passed by value, thus avoiding
 /// an additional indirection.
 #[derive(Copy,Clone)]
 pub struct DWordRef<'a> {
@@ -129,7 +131,7 @@ impl<'a> DWordRef<'a> {
   /// Read access to the underlying representation of the word.
   /// The resulting slice is always at least 1 limb.
   #[inline(always)]
-  pub fn as_slice(&'a self) -> &'a [LimbT] { self.data.as_slice() }
+  pub fn as_slice<'b:'a>(&'b self) -> &'b [LimbT] { self.data.as_slice() }
 
 }
 
@@ -179,8 +181,9 @@ impl<'a> DWordRef<'a> {
 
 impl DWord {
 
-  /// Create a DWord from the given limbs.
-  /// The vector should contain the correct number of limbs for the bits.
+  /// Create a [DWord] from the given limbs.
+  /// The vector should contain the [correct number](Self::limbs)
+  /// of limbs for the bits.
   pub fn from_vec(bits: usize, data: Vec<LimbT>) -> DWord {
     assert_eq!(data.len(), limbs_for_size(bits));
     DWord { data: DWordPtr::from_vec(bits,data) }
@@ -235,28 +238,39 @@ impl<'a> DWordRef<'a> {
 
   #[inline(always)]
   /// The number of limbs in the representation of the word.
-  pub fn limbs(&self)       -> usize { self.data.limbs() }
+  /// Note that for 0 length bit vectors this returns 0,
+  /// but [Self::as_slice] will still contain 1 element.
+  pub fn limbs(self)       -> usize { self.data.limbs() }
 
-  /// The number of 0s in the least significant of least signficant limb.
+  /// The number of 0s in the least significant part of limb 0.
   #[inline(always)]
   pub fn padding(self)     -> usize { self.data.padding() }
 
-  /// The number of bits that are used in the least significant limb.
+  /// The number of bits that are used in limb 0.
   #[inline(always)]
   pub fn not_padding(self) -> usize { self.data.not_padding() }
 }
 
 impl DWord {
 
+  /// The number of bits in a libm.
+  pub const LIMB_BITS: usize = LimbT::BITS as usize;
+
+  /// The size of the word in bits.
   #[inline(always)]
   pub fn bits(&self)        -> usize { self.data.bits() }
 
+  /// The number of limbs in the representation of the word.
+  /// Note that for 0 length bit vectors this returns 0,
+  /// but [Self::as_slice] will still contain 1 element.
   #[inline(always)]
   pub fn limbs(&self)       -> usize { self.data.limbs() }
 
+  /// The number of 0s in the least significant part of limb 0.
   #[inline(always)]
   pub fn padding(&self)     -> usize { self.data.padding() }
 
+  /// The number of bits that are used in limb 0.
   #[inline(always)]
   pub fn not_padding(&self) -> usize { self.data.not_padding() }
 

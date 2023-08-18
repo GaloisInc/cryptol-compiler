@@ -9,7 +9,7 @@ impl fmt::Binary for DWord {
     if selfie.bits() == 0 {
       s.push('0'); // special case so that we see something.
     } else {
-      for b in selfie.iter_msb() {
+      for b in selfie.iter_be() {
         s.push(if b { '1' } else { '0' })
       }
     }
