@@ -1,4 +1,4 @@
-use crate::DWord;
+use crate::{DWord,DWordRef};
 use crate::core::{Limb,LimbT};
 
 impl DWord {
@@ -21,19 +21,18 @@ impl DWord {
 
     result.as_slice_mut()[0] = value << result.padding();
     if bits > Limb::BITS {
-      result.as_slice_mut()[1] = (value >> result.last_used_bits()) as LimbT;
+      result.as_slice_mut()[1] = (value >> result.not_padding()) as LimbT;
     }
     result
   }
 
 }
 
-
 /// Get the least significant bits
-impl From<&DWord> for u8 {
-  fn from(x: &DWord) -> Self {
+impl<'a> From<DWordRef<'a>> for u8 {
+  fn from(x: DWordRef<'a>) -> Self {
     let pad   = x.padding();
-    let have  = x.last_used_bits();
+    let have  = x.not_padding();
     let ws    = x.as_slice();
     let mut w = ws[0] >> pad;
     if x.bits() >= 8 && have < 8 {
