@@ -1,5 +1,4 @@
 use crate::{DWord,DWordRef};
-use crate::core::Limb;
 
 impl<'a> DWordRef<'a> {
 
@@ -7,8 +6,8 @@ impl<'a> DWordRef<'a> {
     assert!(i <= self.bits());
     let data = self.as_slice();
     let ix   = i + self.padding();
-    let w    = data[ix / Limb::BITS];
-    w & (1 << (ix % Limb::BITS)) != 0
+    let w    = data[ix / DWord::LIMB_BITS];
+    w & (1 << (ix % DWord::LIMB_BITS)) != 0
   }
 
   pub fn index_msb(self, i: usize) -> bool {
@@ -34,8 +33,9 @@ impl<'a> DWordRef<'a> {
     let out       = result.as_slice_mut();
     let res_limbs = out.len();
 
-    let start     = ws.len() - i / Limb::BITS;  // 1 bigger than where we read
-    let off       = i % Limb::BITS;
+    let start     = ws.len() - i / DWord::LIMB_BITS;
+                                                 // 1 bigger than where we read
+    let off       = i % DWord::LIMB_BITS;
 
     if off == 0 {
       // Slice aligned
@@ -44,7 +44,7 @@ impl<'a> DWordRef<'a> {
     } else {
       // Slice unaligned
       let mut prev = ws[start - 1] << off;
-      let other = Limb::BITS - off;
+      let other = DWord::LIMB_BITS - off;
       for j in 1 .. res_limbs + 1 {
         let w = ws[start - j - 1];
         out[res_limbs - j] = prev | (w >> other);

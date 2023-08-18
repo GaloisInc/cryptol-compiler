@@ -1,5 +1,5 @@
 use crate::{DWord,DWordRef};
-use crate::core::{Limb,LimbT};
+use crate::core::{LimbT};
 
 impl DWord {
 
@@ -20,7 +20,7 @@ impl DWord {
     if bits == 0 { return result }
 
     result.as_slice_mut()[0] = value << result.padding();
-    if bits > Limb::BITS {
+    if bits > DWord::LIMB_BITS {
       result.as_slice_mut()[1] = (value >> result.not_padding()) as LimbT;
     }
     result
