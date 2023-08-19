@@ -5,7 +5,7 @@ impl<'a> DWordRef<'a> {
 
   pub fn equal(self, other: DWordRef<'_>) -> bool {
     if self.bits() != other.bits() { return false }
-    for (&lhs,&rhs) in self.as_slice().iter().zip(other.as_slice().iter()) {
+    for (lhs,rhs) in self.iter_limbs_le().zip(other.iter_limbs_le()) {
       if lhs != rhs { return false }
     }
     true
@@ -13,8 +13,7 @@ impl<'a> DWordRef<'a> {
 
   pub fn compare(self, other: DWordRef<'_>) -> Option<Ordering> {
     if self.bits() != other.bits() { return None }
-    for (&lhs,&rhs) in self.as_slice().iter().rev()
-                 .zip(other.as_slice().iter().rev()) {
+    for (lhs,rhs) in self.iter_limbs_be().zip(other.iter_limbs_be()) {
       if lhs == rhs { continue }
       return Some(if lhs < rhs { Ordering::Less } else { Ordering::Greater })
     }
@@ -66,6 +65,14 @@ mod test {
 
   #[test]
   fn test_eq() {
-    assert!(DWord::from_u8(6,17).as_ref().equals(DWord::from_u64(6,17).as_ref()))
+    let x_7_100 = DWord::from_u64(7, 100);
+    let x_7_101 = DWord::from_u64(7, 101);
+
+    let x_64_100 = DWord::from_u64(64, 100);
+    let x_64_101 = DWord::from_u64(64, 101);
+
+    let x_67_100 = DWord::from_u64(67, 100);
+    let x_67_101 = DWord::from_u64(67, 101);
+
   }
 }

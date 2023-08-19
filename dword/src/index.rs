@@ -28,6 +28,18 @@ impl<'a> DWordRef<'a> {
   }
 
 
+  /// Iterate over the limbs, starting with the least signficant one.
+  pub fn iter_limbs_le<'b:'a>(&'b self) -> std::slice::Iter<'b,u64> {
+    self.as_slice().iter()
+  }
+
+  /// Iterate over the limbs, starting with the most signficant one.
+  pub fn iter_limbs_be<'b:'a>(&'b self) ->
+    std::iter::Rev<std::slice::Iter<'b,u64>> {
+    self.as_slice().iter().rev()
+  }
+
+
 
   /// Extract a sub-bitvector of the given length, starting at the given
   /// bit position. 0 is the most significant bit.
@@ -73,10 +85,6 @@ impl<'a> DWordRef<'a> {
     assert!((i + sub_bits) <= self.bits());
     self.slice_be(sub_bits, self.bits() - sub_bits - i)
   }
-
-
-
-
 }
 
 /// Traverse DWord as bits, starting from most significant.
@@ -98,7 +106,6 @@ impl<'a, const BE: bool> Iterator for TraverseBits<'a, BE> {
     }
   }
 }
-
 
 
 
