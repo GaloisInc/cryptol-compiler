@@ -1,51 +1,77 @@
+use std::marker::PhantomData;
 use crate::{DWord,DWordRef};
+
+/// Specify from which side of a word are we indexing.
+pub enum IndexFrom {
+  /// Index from the last signficatn side of the word.
+  Lsb,
+
+  /// Index from the most signficatn side of the word.
+  Msb
+}
+
+
+/// Direction for indexing.
+pub trait IndexDir {
+  const DIR: IndexFrom;
+}
+
+/// Index from the last signficatn side of the word.
+pub struct FromLSB;
+
+/// Index from the most signficatn side of the word.
+pub struct FromMSB;
+
+impl IndexDir for FromLSB { const DIR: IndexFrom = IndexFrom::Lsb; }
+impl IndexDir for FromMSB { const DIR: IndexFrom = IndexFrom::Msb; }
+
+
+
 
 impl<'a> DWordRef<'a> {
 
-  /// Get a bit, starting at the most signifcant end of the word.
-  pub fn index_be(self, i: usize) -> bool {
-    assert!(i <= self.bits());
-    self.index_le(self.bits() - i - 1)
-  }
 
-  /// Get a bit, starting at the least signifcant end of the word.
-  pub fn index_le(self, i: usize) -> bool {
-    assert!(i <= self.bits());
+  /// Extract a bit at the given index.
+  pub fn index<INDEX: IndexDir>(self, index: usize) -> bool {
+    assert!(index <= self.bits());
+    let i = match INDEX::DIR {
+              IndexFrom::Msb => self.bits() - index - 1,
+              IndexFrom::Lsb => index
+            };
+
     let data = self.as_slice();
     let ix   = i + self.padding();
     let w    = data[ix / DWord::LIMB_BITS];
     w & (1 << (ix % DWord::LIMB_BITS)) != 0
   }
 
-  /// Iterate over the bits, from big end to little end.
-  pub fn iter_be(self) -> TraverseBits<'a, true> {
-    TraverseBits { vec: self, ix: 0 }
+  /// Iterate over the bits.
+  pub fn iter<INDEX: IndexDir>(self) -> TraverseBits<'a, INDEX> {
+    TraverseBits { dir: PhantomData, vec: self, ix: 0 }
   }
-
-  /// Iterate over the bits, from little end to bit end.
-  pub fn iter_le(self) -> TraverseBits<'a, false> {
-    TraverseBits { vec: self, ix: 0 }
-  }
-
 
   /// Iterate over the limbs, starting with the least signficant one.
-  pub fn iter_limbs_le<'b:'a>(&'b self) -> std::slice::Iter<'b,u64> {
+  pub fn iter_limbs_lsb<'b>(&'b self) -> std::slice::Iter<'b,u64> {
     self.as_slice().iter()
   }
 
   /// Iterate over the limbs, starting with the most signficant one.
-  pub fn iter_limbs_be<'b:'a>(&'b self) ->
-    std::iter::Rev<std::slice::Iter<'b,u64>> {
+  pub fn iter_limbs_msb<'b>
+    (&'b self) -> std::iter::Rev<std::slice::Iter<'b,u64>> {
     self.as_slice().iter().rev()
   }
 
-
-
   /// Extract a sub-bitvector of the given length, starting at the given
-  /// bit position. 0 is the most significant bit.
-  pub fn slice_be(self, sub_bits: usize, i: usize) -> DWord {
+  /// Extract a sub-bitvector of the given length,
+  /// starting at the given bit offset.
+  pub fn sub_word<INDEX: IndexDir>
+    (self, sub_bits: usize, index: usize) -> DWord {
+    assert!(index + sub_bits <= self.bits());
 
-    assert!((i + sub_bits) <= self.bits());
+    let i = match INDEX::DIR {
+              IndexFrom::Msb => index,
+              IndexFrom::Lsb => self.bits() - sub_bits - index
+            };
     let ws = self.as_slice();
     let mut result = DWord::zero(sub_bits);
 
@@ -79,22 +105,19 @@ impl<'a> DWordRef<'a> {
     result
   }
 
-  /// Extract a sub-bitvector of the given length, starting at the given
-  /// bit position. 0 is the most significant bit.
-  pub fn slice_le(self, sub_bits: usize, i: usize) -> DWord {
-    assert!((i + sub_bits) <= self.bits());
-    self.slice_be(sub_bits, self.bits() - sub_bits - i)
-  }
 }
 
+
+
 /// Traverse DWord as bits, starting from most significant.
-pub struct TraverseBits<'a, const BE: bool> {
+pub struct TraverseBits<'a, INDEX: IndexDir> {
+  dir : PhantomData<INDEX>,
   vec: DWordRef<'a>,
   ix:  usize
 }
 
 
-impl<'a, const BE: bool> Iterator for TraverseBits<'a, BE> {
+impl<'a, INDEX: IndexDir> Iterator for TraverseBits<'a, INDEX> {
   type Item = bool;
   fn next(&mut self) -> Option<Self::Item> {
     if self.ix >= self.vec.bits() {
@@ -102,7 +125,7 @@ impl<'a, const BE: bool> Iterator for TraverseBits<'a, BE> {
     } else {
       let i = self.ix;
       self.ix += 1;
-      Some(if BE { self.vec.index_be(i) } else { self.vec.index_le(i) } )
+      Some(self.vec.index::<INDEX>(i))
     }
   }
 }

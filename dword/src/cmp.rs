@@ -5,7 +5,7 @@ impl<'a> DWordRef<'a> {
 
   pub fn equal(self, other: DWordRef<'_>) -> bool {
     if self.bits() != other.bits() { return false }
-    for (lhs,rhs) in self.iter_limbs_le().zip(other.iter_limbs_le()) {
+    for (lhs,rhs) in self.iter_limbs_lsb().zip(other.iter_limbs_lsb()) {
       if lhs != rhs { return false }
     }
     true
@@ -13,7 +13,7 @@ impl<'a> DWordRef<'a> {
 
   pub fn compare(self, other: DWordRef<'_>) -> Option<Ordering> {
     if self.bits() != other.bits() { return None }
-    for (lhs,rhs) in self.iter_limbs_be().zip(other.iter_limbs_be()) {
+    for (lhs,rhs) in self.iter_limbs_msb().zip(other.iter_limbs_msb()) {
       if lhs == rhs { continue }
       return Some(if lhs < rhs { Ordering::Less } else { Ordering::Greater })
     }

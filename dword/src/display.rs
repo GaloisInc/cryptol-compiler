@@ -1,4 +1,5 @@
 use crate::DWord;
+use crate::FromMSB;
 use std::fmt;
 
 impl fmt::Binary for DWord {
@@ -9,7 +10,7 @@ impl fmt::Binary for DWord {
     if selfie.bits() == 0 {
       s.push('0'); // special case so that we see something.
     } else {
-      for b in selfie.iter_be() {
+      for b in selfie.iter::<FromMSB>() {
         s.push(if b { '1' } else { '0' })
       }
     }
@@ -27,13 +28,13 @@ impl fmt::Octal for DWord {
     let mut emit = |x| s.push(table[ x as usize ]);
 
     match extra {
-      1 => emit(u8::from(selfie.slice_be(1,0).as_ref())),
-      2 => emit(u8::from(selfie.slice_be(2,0).as_ref())),
+      1 => emit(u8::from(selfie.sub_word::<FromMSB>(1,0).as_ref())),
+      2 => emit(u8::from(selfie.sub_word::<FromMSB>(2,0).as_ref())),
       _ => ()
     }
 
     for i in 0 .. selfie.bits() / 3 {
-      emit(u8::from(selfie.slice_be(3, extra + 3 * i).as_ref()))
+      emit(u8::from(selfie.sub_word::<FromMSB>(3, extra + 3 * i).as_ref()))
     }
 
     f.pad_integral(true, "0o", &s)
@@ -50,14 +51,14 @@ impl DWord {
     let mut emit = |x| s.push(table[ x as usize ]);
 
     match extra {
-      1 => emit(u8::from(selfie.slice_be(1,0).as_ref())),
-      2 => emit(u8::from(selfie.slice_be(2,0).as_ref())),
-      3 => emit(u8::from(selfie.slice_be(3,0).as_ref())),
+      1 => emit(u8::from(selfie.sub_word::<FromMSB>(1,0).as_ref())),
+      2 => emit(u8::from(selfie.sub_word::<FromMSB>(2,0).as_ref())),
+      3 => emit(u8::from(selfie.sub_word::<FromMSB>(3,0).as_ref())),
       _ => ()
     }
 
     for i in 0 .. selfie.bits() / 4 {
-      emit(u8::from(selfie.slice_be(4, extra + 4 * i).as_ref()))
+      emit(u8::from(selfie.sub_word::<FromMSB>(4, extra + 4 * i).as_ref()))
     }
 
     f.pad_integral(true, "0x", &s)

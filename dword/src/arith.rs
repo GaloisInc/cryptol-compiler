@@ -6,7 +6,7 @@ impl std::ops::AddAssign<DWordRef<'_>> for DWord {
   fn add_assign(&mut self, rhs: DWordRef<'_>) {
     let mut acc = 0 as u128;
     for (out,&limb) in self.as_slice_mut().iter_mut()
-                           .zip(rhs.iter_limbs_le()) {
+                           .zip(rhs.iter_limbs_lsb()) {
       acc += *out as u128;
       acc += limb as u128;
       *out = acc as LimbT;
@@ -32,7 +32,7 @@ impl std::ops::Neg for DWordRef<'_> {
 
     let mut acc = 1 as u128;
     for (out,&limb) in result.as_slice_mut().iter_mut()
-                             .zip(self.iter_limbs_le()) {
+                             .zip(self.iter_limbs_lsb()) {
       acc += (!limb) as u128;
       *out = acc as LimbT;
       acc  = acc >> DWord::LIMB_BITS;
