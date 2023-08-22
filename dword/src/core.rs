@@ -45,7 +45,7 @@ pub struct DWordRef<'a> {
 // Limbs & is_small
 
 /// How many limbs we need to represent the given number of bits.
-fn limbs_for_size(bits: usize) -> usize {
+pub(crate) fn limbs_for_size(bits: usize) -> usize {
   (bits + DWord::LIMB_BITS - 1) / DWord::LIMB_BITS
 }
 

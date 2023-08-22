@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use crate::core::LimbT;
 use crate::{DWord,DWordRef};
 
 /// Specify from which side of a word are we indexing.
@@ -30,10 +31,11 @@ impl IndexDir for FromMSB { const DIR: IndexFrom = IndexFrom::Msb; }
 
 impl<'a> DWordRef<'a> {
 
-
   /// Extract a bit at the given index.
   pub fn index<INDEX: IndexDir>(self, index: usize) -> bool {
     assert!(index <= self.bits());
+
+    // Turn into LSB index
     let i = match INDEX::DIR {
               IndexFrom::Msb => self.bits() - index - 1,
               IndexFrom::Lsb => index
@@ -61,13 +63,53 @@ impl<'a> DWordRef<'a> {
     self.as_slice().iter().rev()
   }
 
-  /// Extract a sub-bitvector of the given length, starting at the given
+
+  /// Get a limb-sized sub-bitvector starting at the given bit offset.
+  /// The offset need not be aligned.
+  /// If the bitvector is smaller than a limb, then 0 extend on the
+  /// side away from the direction (i.e., MSB extends on LSB side, and
+  /// LSB extends on the MSB side)
+  pub fn get_limb<INDEX: IndexDir>(self, index: usize) -> LimbT {
+    assert!(index < self.bits());
+    let ws  = self.as_slice();
+    match INDEX::DIR {
+
+       IndexFrom::Lsb => {
+         let i      = index + self.padding();
+         let w_off  = i / DWord::LIMB_BITS;
+         let b_off  = i % DWord::LIMB_BITS;
+         let w      = ws[w_off];
+         if b_off == 0 { return w }     // alligned
+
+         let other  = DWord::LIMB_BITS - b_off;
+         let lower  = w >> b_off;
+         if w_off + 1 == ws.len() { return lower }
+
+         (ws[w_off + 1] << other) | lower
+       },
+
+       IndexFrom::Msb => {
+          let w_off     = ws.len() - index / DWord::LIMB_BITS - 1;
+          let b_off     = index % DWord::LIMB_BITS;
+          let w         = ws[w_off];
+          if b_off == 0 { return w }          // alligned
+
+          let other = DWord::LIMB_BITS - b_off;
+          let upper = w << b_off;
+          if w_off == 0 { return upper }
+
+          upper | (ws[w_off - 1] >> other)
+       }
+    }
+  }
+
   /// Extract a sub-bitvector of the given length,
   /// starting at the given bit offset.
   pub fn sub_word<INDEX: IndexDir>
     (self, sub_bits: usize, index: usize) -> DWord {
     assert!(index + sub_bits <= self.bits());
 
+    // Make into MSB index
     let i = match INDEX::DIR {
               IndexFrom::Msb => index,
               IndexFrom::Lsb => self.bits() - sub_bits - index
@@ -76,29 +118,23 @@ impl<'a> DWordRef<'a> {
     let mut result = DWord::zero(sub_bits);
 
     // Slice 0
-    if self.bits() == 0 { return result }
+    if sub_bits == 0 { return result }
 
     let out       = result.as_slice_mut();
     let res_limbs = out.len();
 
-    let start     = ws.len() - i / DWord::LIMB_BITS;
-                                                 // 1 bigger than where we read
-    let off       = i % DWord::LIMB_BITS;
+    let start = ws.len() - i / DWord::LIMB_BITS; // 1 bigger than read
+    let off   = i % DWord::LIMB_BITS;
 
     if off == 0 {
       // Slice aligned
       out.copy_from_slice(&ws[(start - res_limbs) .. start]);
 
     } else {
-      // Slice unaligned
-      let mut prev = ws[start - 1] << off;
-      let other = DWord::LIMB_BITS - off;
-      for j in 1 .. res_limbs + 1 {
-        let w = ws[start - j - 1];
-        out[res_limbs - j] = prev | (w >> other);
-        prev = w << off;
+      for j in 0 .. res_limbs {
+        out[res_limbs - 1 - j] =
+          self.get_limb::<FromMSB>(i - j * DWord::LIMB_BITS)
       }
-
     }
 
     result.fix_underflow();
@@ -136,7 +172,7 @@ impl<'a, INDEX: IndexDir> Iterator for TraverseBits<'a, INDEX> {
 
 #[cfg(test)]
 mod test {
-  use crate::DWord;
+  use crate::{DWord,FromLSB,FromMSB};
 
   #[test]
   fn test_index() {
@@ -145,9 +181,10 @@ mod test {
     let x64  = x64v.as_ref();
     let x65  = x65v.as_ref();
 
-    assert_eq!(x64.index_le(0), true);
-    assert_eq!(x64.index_le(1), false);
-    assert_eq!(x65.index_le(0), true);
-    assert_eq!(x65.index_le(1), false);
+    assert_eq!(x64.index::<FromMSB>(0), false);
+    assert_eq!(x64.index::<FromLSB>(0), true);
+    assert_eq!(x64.index::<FromLSB>(1), false);
+    assert_eq!(x65.index::<FromLSB>(0), true);
+    assert_eq!(x65.index::<FromLSB>(1), false);
   }
 }

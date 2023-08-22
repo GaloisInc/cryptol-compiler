@@ -19,9 +19,14 @@ impl DWord {
     let mut result = DWord::zero(bits);
     if bits == 0 { return result }
 
-    result.as_slice_mut()[0] = value << result.padding();
-    if bits > DWord::LIMB_BITS {
-      result.as_slice_mut()[1] = (value >> result.not_padding()) as LimbT;
+
+    if result.padding() > 0 {
+      result.as_slice_mut()[0] = value << result.padding();
+      if bits > DWord::LIMB_BITS {
+        result.as_slice_mut()[1] = (value >> result.not_padding()) as LimbT;
+      }
+    } else {
+      result.as_slice_mut()[0] = value;
     }
     result
   }
