@@ -56,6 +56,47 @@ impl std::ops::Sub <DWordRef<'_>> for DWordRef<'_> {
   }
 }
 
+impl std::ops::Mul <DWordRef<'_>> for DWordRef<'_> {
+  type Output = DWord;
+
+  fn mul(self, other: DWordRef<'_>) -> Self::Output {
+
+    if self.bits() == 0 { return DWord::zero(0) }
+
+    let mut clone: DWord;
+    let padding = self.padding();
+    let r =
+      if padding > 0 {
+        clone = self.clone_word();
+        clone.shift_bits_right(padding);
+        clone.as_ref()
+      } else {
+        self
+      };
+    let ws1 = r.as_slice();
+    let ws2 = other.as_slice();
+    let mut out = Vec::with_capacity(self.limbs());
+
+    let tot = ws1.len();
+    let mut acc = 0_u128;
+    for i in 0 .. tot {
+      let mut digit = acc;
+      acc = 0;
+      for j in 0 ..= i {
+        let term = (ws1[j] as u128) * (ws2[i-j] as u128);
+        digit += (term as LimbT) as u128;
+        acc   += term >> DWord::LIMB_BITS;
+      }
+      out.push(digit as LimbT);
+      acc += digit >> DWord::LIMB_BITS;
+    }
+
+    DWord::from_vec(self.bits(), out)
+  }
+}
+
+
+
 
 #[cfg(test)]
 mod test {

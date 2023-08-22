@@ -33,10 +33,9 @@ impl DWord {
   fn shift_bits_left(&mut self, amt: usize) {
     assert!(amt < DWord::LIMB_BITS);
 
-    let ws    = self.as_slice_mut();
     let other = DWord::LIMB_BITS - amt;
     let mut acc : LimbT = 0;
-    for w in ws {
+    for w in self.as_slice_mut() {
       let x = *w;
       *w = (x << amt) | acc;
       acc = x >> other;
@@ -44,18 +43,18 @@ impl DWord {
   }
 
   // Shift by less than a limb. Does not fix underflow.
-  fn shift_bits_right(&mut self, amt: usize) {
+  pub(crate) fn shift_bits_right(&mut self, amt: usize) {
     assert!(amt < DWord::LIMB_BITS);
-    let ws    = self.as_slice_mut();
-    let tot   = ws.len();
+
     let other = DWord::LIMB_BITS - amt;
     let mut acc : LimbT = 0;
-    for i in 0 .. tot {
-      let w = ws[tot - i - 1];
-      ws[i] = acc | (w >> amt);
-      acc = w << other;
+    for w in self.as_slice_mut().into_iter().rev() {
+      let x = *w;
+      *w = acc | (x >> amt);
+      acc = x << other;
     }
   }
+
 }
 
 
