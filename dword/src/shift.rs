@@ -1,38 +1,94 @@
-use crate::{DWord, DWordRef, IndexDir, IndexFrom, FromLSB, FromMSB};
-use crate::core::limbs_for_size;
+use crate::{DWord, DWordRef};
+use crate::core::LimbT;
 
-/*
-impl DWordRef<'_> {
-  pub fn shift_toward<INDEX: IndexDir>(self, amt: usize) -> DWord {
-    if amt == 0 { return self.clone_word() }
+impl DWord {
 
-    let mut result = DWord::zero(self.bits());
-    if amt >= self.bits() { return result }
+  // Shift by whole limbs.
+  fn shift_limbs_left(&mut self, amt: usize) {
+    let ws   = self.as_slice_mut();
+    assert!(amt < ws.len());
 
-    let todo_bits  = self.bits() - amt;
-    let todo_limbs = limbs_for_size(todo_bits);
-    let ws = result.as_slice_mut();
-
-    match INDEX::DIR {
-
-      IndexFrom::Msb => {
-        let last = self.limbs() - 1;
-        for i in 0 .. todo_limbs {
-          ws[last - i] = self.get_limb::<FromMSB>(amt + i * DWord::LIMB_BITS);
-        }
-      },
-
-      IndexFrom::Lsb => {
-        let last = todo_limbs - 1;
-        let bit_ix = last * DWord::LIMB_BITS - self.padding();
-        for i in 0 .. todo_limbs {
-          ws[last - i] =
-             self.get_limb::<FromLSB>(amt + bit_ix - i * DWord::LIMB_BITS);
-        }
-      }
+    let tot  = ws.len();
+    for i in amt .. tot {
+      ws[i] = ws[i - amt];
     }
+    for w in &mut ws[0 .. amt] { *w = 0 }
+  }
 
-    result
+  // Shift by whole limbs.  Does not fix underflox.
+  fn shift_limbs_right(&mut self, amt: usize) {
+    let ws   = self.as_slice_mut();
+    assert!(amt < ws.len());
+
+    let tot  = ws.len();
+    let todo = tot - amt;
+    for i in 0 .. todo {
+      ws[i] = ws[i + amt];
+    }
+    for w in &mut ws[todo .. tot] { *w = 0 }
+  }
+
+
+  // Shift by less than a limb.
+  fn shift_bits_left(&mut self, amt: usize) {
+    assert!(amt < DWord::LIMB_BITS);
+
+    let ws    = self.as_slice_mut();
+    let other = DWord::LIMB_BITS - amt;
+    let mut acc : LimbT = 0;
+    for w in ws {
+      let x = *w;
+      *w = (x << amt) | acc;
+      acc = x >> other;
+    }
+  }
+
+  // Shift by less than a limb. Does not fix underflow.
+  fn shift_bits_right(&mut self, amt: usize) {
+    assert!(amt < DWord::LIMB_BITS);
+    let ws    = self.as_slice_mut();
+    let tot   = ws.len();
+    let other = DWord::LIMB_BITS - amt;
+    let mut acc : LimbT = 0;
+    for i in 0 .. tot {
+      let w = ws[tot - i - 1];
+      ws[i] = acc | (w >> amt);
+      acc = w << other;
+    }
+  }
+}
+
+
+impl std::ops::ShlAssign<usize> for DWord {
+
+  fn shl_assign(&mut self, amt: usize) {
+    if amt >= self.bits() {
+      self.assign_zero();
+      return
+    }
+    if amt == 0 { return }
+
+    let limbs = amt / DWord::LIMB_BITS;
+    let extra = amt % DWord::LIMB_BITS;
+    self.shift_limbs_left(limbs);
+    if extra != 0 { self.shift_bits_left(extra) }
+  }
+}
+
+impl std::ops::ShrAssign<usize> for DWord {
+
+  fn shr_assign(&mut self, amt: usize) {
+    if amt >= self.bits() {
+      self.assign_zero();
+      return
+    }
+    if amt == 0 { return }
+
+    let limbs = amt / DWord::LIMB_BITS;
+    let extra = amt % DWord::LIMB_BITS;
+    self.shift_limbs_right(limbs);
+    if extra != 0 { self.shift_bits_right(extra) }
+    self.fix_underflow();
   }
 }
 
@@ -40,7 +96,9 @@ impl std::ops::Shl<usize> for DWordRef<'_> {
   type Output = DWord;
 
   fn shl(self, amt: usize) -> Self::Output {
-    self.shift_toward::<FromMSB>(amt)
+    let mut result = self.clone_word();
+    result <<= amt;
+    result
   }
 }
 
@@ -49,9 +107,9 @@ impl std::ops::Shr<usize> for DWordRef<'_> {
   type Output = DWord;
 
   fn shr(self, amt: usize) -> Self::Output {
-    self.shift_toward::<FromLSB>(amt)
+    let mut result = self.clone_word();
+    result >>= amt;
+    result
   }
 
 }
-
-*/

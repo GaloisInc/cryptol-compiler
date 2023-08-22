@@ -64,25 +64,31 @@ impl<'a> DWordRef<'a> {
   }
 
 
+  /// XXX: Maybe we don't need this
   /// Get a limb-sized sub-bitvector starting at the given bit offset.
-  /// The offset need not be aligned.
-  /// If the bitvector is smaller than a limb, then 0 extend on the
-  /// side away from the direction (i.e., MSB extends on LSB side, and
-  /// LSB extends on the MSB side)
-  pub fn get_limb<INDEX: IndexDir>(self, index: usize) -> LimbT {
-    assert!(index < self.bits());
+  /// * The offset need not be aligned.
+  /// * If the resulting bitvector is smaller than a limb,
+  ///   the result is 0 extend on the side away from the direction
+  ///   (i.e., [FromMSB] extends on LSB side, and [FromLSB] extends on
+  ///   the MSB side)
+  /// * The index refers to the first bit on the resepctive side
+  ///   (i.e., [FromMSB] points to the most significant bit in the result
+  ///   and cound from the most significant end of the word)
+  pub fn get_limb_unaligned<INDEX: IndexDir>(self, index: usize) -> LimbT {
+    if index >= self.bits() { return 0 }
+
     let ws  = self.as_slice();
     match INDEX::DIR {
 
        IndexFrom::Lsb => {
          let i      = index + self.padding();
          let w_off  = i / DWord::LIMB_BITS;
-         let b_off  = i % DWord::LIMB_BITS;
-         let w      = ws[w_off];
-         if b_off == 0 { return w }     // alligned
+         let extra  = i % DWord::LIMB_BITS;
+         let mut lower = ws[w_off];
+         if extra == 0 { return lower }     // alligned
 
-         let other  = DWord::LIMB_BITS - b_off;
-         let lower  = w >> b_off;
+         let other  = DWord::LIMB_BITS - extra;
+         lower = lower >> extra;
          if w_off + 1 == ws.len() { return lower }
 
          (ws[w_off + 1] << other) | lower
@@ -90,12 +96,12 @@ impl<'a> DWordRef<'a> {
 
        IndexFrom::Msb => {
           let w_off     = ws.len() - index / DWord::LIMB_BITS - 1;
-          let b_off     = index % DWord::LIMB_BITS;
-          let w         = ws[w_off];
-          if b_off == 0 { return w }          // alligned
+          let extra     = index % DWord::LIMB_BITS;
+          let mut upper = ws[w_off];
+          if extra      == 0 { return upper }          // alligned
 
-          let other = DWord::LIMB_BITS - b_off;
-          let upper = w << b_off;
+          let other = DWord::LIMB_BITS - extra;
+          upper = upper << extra;
           if w_off == 0 { return upper }
 
           upper | (ws[w_off - 1] >> other)
@@ -133,7 +139,7 @@ impl<'a> DWordRef<'a> {
     } else {
       for j in 0 .. res_limbs {
         out[res_limbs - 1 - j] =
-          self.get_limb::<FromMSB>(i - j * DWord::LIMB_BITS)
+          self.get_limb_unaligned::<FromMSB>(i - j * DWord::LIMB_BITS)
       }
     }
 
@@ -142,7 +148,6 @@ impl<'a> DWordRef<'a> {
   }
 
 }
-
 
 
 /// Traverse DWord as bits, starting from most significant.

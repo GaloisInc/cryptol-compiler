@@ -282,6 +282,11 @@ impl DWord {
     let buf = self.as_slice_mut();
     buf[0] &= !((1 << pad) - 1);
   }
+
+  /// Assign 0 to self
+  pub fn assign_zero(&mut self) {
+    for w in self.as_slice_mut() { *w = 0 }
+  }
 }
 
 
