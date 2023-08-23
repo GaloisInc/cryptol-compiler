@@ -1,14 +1,16 @@
 use crate::{DWord,DWordRef};
-use crate::core::LimbT;
+use crate::core::{LimbT, BigLimbT};
 
 
 impl std::ops::AddAssign<DWordRef<'_>> for DWord {
   fn add_assign(&mut self, rhs: DWordRef<'_>) {
-    let mut acc = 0 as u128;
+    assert_eq!(self.bits(), rhs.bits());
+
+    let mut acc: BigLimbT = 0;
     for (out,&limb) in self.as_slice_mut().iter_mut()
                            .zip(rhs.iter_limbs_lsb()) {
-      acc += *out as u128;
-      acc += limb as u128;
+      acc += *out as BigLimbT;
+      acc += limb as BigLimbT;
       *out = acc as LimbT;
       acc  = acc >> DWord::LIMB_BITS;
     }
@@ -30,10 +32,10 @@ impl std::ops::Neg for DWordRef<'_> {
   fn neg(self) -> Self::Output {
     let mut result = DWord::zero(self.bits());
 
-    let mut acc = 1 as u128;
+    let mut acc: BigLimbT = 1;
     for (out,&limb) in result.as_slice_mut().iter_mut()
                              .zip(self.iter_limbs_lsb()) {
-      acc += (!limb) as u128;
+      acc += (!limb) as BigLimbT;
       *out = acc as LimbT;
       acc  = acc >> DWord::LIMB_BITS;
     }
@@ -60,6 +62,7 @@ impl std::ops::Mul <DWordRef<'_>> for DWordRef<'_> {
   type Output = DWord;
 
   fn mul(self, other: DWordRef<'_>) -> Self::Output {
+    assert_eq!(self.bits(), other.bits());
 
     if self.bits() == 0 { return DWord::zero(0) }
 
@@ -78,13 +81,13 @@ impl std::ops::Mul <DWordRef<'_>> for DWordRef<'_> {
     let mut out = Vec::with_capacity(self.limbs());
 
     let tot = ws1.len();
-    let mut acc = 0_u128;
+    let mut acc: BigLimbT = 0;
     for i in 0 .. tot {
       let mut digit = acc;
       acc = 0;
       for j in 0 ..= i {
-        let term = (ws1[j] as u128) * (ws2[i-j] as u128);
-        digit += (term as LimbT) as u128;
+        let term = (ws1[j] as BigLimbT) * (ws2[i-j] as BigLimbT);
+        digit += (term as LimbT) as BigLimbT;
         acc   += term >> DWord::LIMB_BITS;
       }
       out.push(digit as LimbT);

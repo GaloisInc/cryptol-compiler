@@ -1,6 +1,20 @@
 use std::cmp::Ordering;
 use crate::{DWord,DWordRef};
 
+
+impl DWordRef<'_> {
+
+  /// Returns `true` if the number is 0.
+  pub fn is_zero(self) -> bool {
+    for &w in self.as_slice() {
+      if w != 0 { return false }
+    }
+    return true
+  }
+}
+
+
+
 impl<'a> DWordRef<'a> {
 
   pub fn equal(self, other: DWordRef<'_>) -> bool {

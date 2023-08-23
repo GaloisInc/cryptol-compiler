@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
-pub type LimbT  = u64;
-
+pub type LimbT    = u64;
+pub type BigLimbT = u128;
 
 
 /// The data for a dynamic word.
