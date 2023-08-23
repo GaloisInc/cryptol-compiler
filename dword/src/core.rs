@@ -142,7 +142,7 @@ impl<'a> DWordRef<'a> {
 impl DWordPtr {
 
   #[inline(always)]
-  fn from_vec(bits: usize, data: Vec<LimbT>) -> DWordPtr {
+  fn from_vec_raw(bits: usize, data: Vec<LimbT>) -> DWordPtr {
     if is_small_size(bits) {
       DWordPtr {
         bits: bits,
@@ -160,7 +160,7 @@ impl DWordPtr {
 
   #[inline(always)]
   pub fn copy(self) -> DWordPtr {
-    Self::from_vec(self.bits, Vec::from(self.as_slice()))
+    Self::from_vec_raw(self.bits, Vec::from(self.as_slice()))
   }
 
   #[inline(always)]
@@ -184,14 +184,14 @@ impl DWord {
   /// Create a [DWord] from the given limbs.
   /// The vector should contain the [correct number](Self::limbs)
   /// of limbs for the bits.
-  pub fn from_vec(bits: usize, data: Vec<LimbT>) -> DWord {
+  pub fn from_vec_raw(bits: usize, data: Vec<LimbT>) -> DWord {
     assert_eq!(data.len(), limbs_for_size(bits));
-    DWord { data: DWordPtr::from_vec(bits,data) }
+    DWord { data: DWordPtr::from_vec_raw(bits,data) }
   }
 
   /// Create a 0 initialized word of the given size.
   pub fn zero(bits: usize) -> DWord {
-    Self::from_vec(bits, vec![0; limbs_for_size(bits)])
+    Self::from_vec_raw(bits, vec![0; limbs_for_size(bits)])
   }
 
 }

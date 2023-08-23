@@ -1,5 +1,5 @@
 use crate::{DWord,DWordRef};
-use crate::core::{LimbT};
+use crate::core::{LimbT, BigLimbT};
 
 impl DWord {
 
@@ -32,6 +32,49 @@ impl DWord {
   }
 
 }
+
+impl DWordRef<'_> {
+
+  /// Convert to a vector of digits in base 2^32.
+  /// Least significant digit first.
+  /// Convenient for conversion to bignum.
+  pub fn as_vec_u32(self) -> Vec<u32> {
+    let mut result = Vec::<u32>::with_capacity(self.limbs() / 2);
+    if self.bits() == 0 { return result }
+
+
+    let ws  = self.as_slice();
+    let pad = self.padding();
+
+    // we assume that DWord::LIMB_BITS >= 32
+    let mut w    = (ws[0] >> pad) as BigLimbT;
+    let mut have = self.not_padding();
+
+    while have >= 32 {
+      result.push(w as u32);
+      w = w >> 32;
+      have -= 32;
+    };
+
+    for v in &ws[1..] {
+      w = ((*v as BigLimbT) << have) | w;
+      have += DWord::LIMB_BITS;
+      while have >= 32 {
+        result.push(w as u32);
+        w = w >> 32;
+        have -= 32;
+      };
+    }
+    if have > 0 {
+      result.push(w as u32);
+    }
+    result
+  }
+
+}
+
+
+
 
 /// Get the 8 least significant bits.
 impl<'a> From<DWordRef<'a>> for u8 {

@@ -1,7 +1,7 @@
 pub mod core;
 pub mod display;
 pub mod index;
-pub mod from;
+pub mod conversion;
 pub mod cmp;
 pub mod shift;
 pub mod arith;

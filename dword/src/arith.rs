@@ -94,7 +94,7 @@ impl std::ops::Mul <DWordRef<'_>> for DWordRef<'_> {
       acc += digit >> DWord::LIMB_BITS;
     }
 
-    DWord::from_vec(self.bits(), out)
+    DWord::from_vec_raw(self.bits(), out)
   }
 }
 
