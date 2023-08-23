@@ -126,10 +126,15 @@ impl DWord {
   #[inline(always)]
   pub fn as_slice(&self) -> &[LimbT] { self.data.as_slice() }
 
+  /// Get the least signficant limb of the implementation.
+  #[inline(always)]
+  pub fn limb0(&self) -> LimbT { self.as_ref().as_slice()[0] }
+
   /// Mutable access to the underlying representation of the word.
   /// The resulting slice is always at least 1 limb.
   #[inline(always)]
   pub fn as_slice_mut(&mut self) -> &mut [LimbT] { self.data.as_slice_mut() }
+
 }
 
 
@@ -140,6 +145,17 @@ impl<'a> DWordRef<'a> {
   #[inline(always)]
   pub fn as_slice<'b:'a>(&'b self) -> &'b [LimbT] { self.data.as_slice() }
 
+  /// Get the least signficant limb of the implementation.
+  #[inline(always)]
+  pub fn limb0(self) -> LimbT { self.as_slice()[0] }
+
+  /// Get the least signficant limb of the implementation,
+  /// with the padding removed.
+  #[inline(always)]
+  pub fn limb0_norm(self) -> LimbT { self.as_slice()[0] >> self.padding() }
+
+
+
 }
 
 
@@ -149,7 +165,13 @@ impl<'a> DWordRef<'a> {
 impl DWordPtr {
 
   #[inline(always)]
-  fn from_limbs(bits: usize, data: Vec<LimbT>) -> DWordPtr {
+  fn small_from_limb(bits: usize, data: LimbT) -> Self {
+    assert!(is_small_size(bits));
+    DWordPtr { bits: bits, data: DWordData { small: data } }
+  }
+
+  #[inline(always)]
+  fn from_limbs(bits: usize, data: Vec<LimbT>) -> Self {
     if is_small_size(bits) {
       DWordPtr {
         bits: bits,
@@ -166,7 +188,7 @@ impl DWordPtr {
   }
 
   #[inline(always)]
-  pub fn copy(self) -> DWordPtr {
+  pub fn copy(self) -> Self {
     Self::from_limbs(self.bits, Vec::from(self.as_slice()))
   }
 
@@ -189,15 +211,22 @@ impl<'a> DWordRef<'a> {
 impl DWord {
 
   /// Create a 0 initialized word of the given size.
-  pub fn zero(bits: usize) -> DWord {
+  pub fn zero(bits: usize) -> Self {
     Self::from_limbs(bits, vec![0; limbs_for_size(bits)])
+  }
+
+  /// Create a [DWord] from the given limb.
+  /// Assumes that `bits <= DWord::LIMB_BITS`.
+  /// Does not add any padding to the limb.
+  pub fn small_from_limb(bits: usize, data: LimbT) -> Self {
+    DWord { data: DWordPtr::small_from_limb(bits,data) }
   }
 
   /// Create a [DWord] from the given limbs.
   /// The vector should contain the [correct number](Self::limbs)
   /// of limbs for the bits.
-  /// Note that the data in the limbs should be already shifted.
-  pub fn from_limbs(bits: usize, data: Vec<LimbT>) -> DWord {
+  /// Does not shift the limbs.
+  pub fn from_limbs(bits: usize, data: Vec<LimbT>) -> Self {
     assert_eq!(data.len(), limbs_for_size(bits));
     DWord { data: DWordPtr::from_limbs(bits,data) }
   }
@@ -228,8 +257,10 @@ impl DWordPtr {
   fn padding(&self) -> usize { padding_for_size(self.bits()) }
 
   /// The number of bits that are used in the least significant limb.
+  /// This should not be used for 0-sized words.
   #[inline(always)]
   fn not_padding(&self) -> usize {
+    assert!(self.bits() > 0);
     DWord::LIMB_BITS - self.padding()
   }
 }
@@ -240,10 +271,14 @@ impl<'a> DWordRef<'a> {
   #[inline(always)]
   pub fn bits(self)        -> usize { self.data.bits() }
 
+  /// Is this represented with a single limb.
   #[inline(always)]
+  pub fn is_small(self)    -> bool { self.data.is_small() }
+
   /// The number of limbs in the representation of the word.
   /// Note that for 0 length bit vectors this returns 0,
   /// but [Self::as_slice] will still contain 1 element.
+  #[inline(always)]
   pub fn limbs(self)       -> usize { self.data.limbs() }
 
   /// The number of 0s in the least significant part of limb 0.
@@ -268,6 +303,11 @@ impl DWord {
   /// The size of the word in bits.
   #[inline(always)]
   pub fn bits(&self)        -> usize { self.data.bits() }
+
+  /// Is this represented with a single limb.
+  #[inline(always)]
+  pub fn is_small(&self)   -> bool { self.data.is_small() }
+
 
   /// The number of limbs in the representation of the word.
   /// Note that for 0 length bit vectors this returns 0,

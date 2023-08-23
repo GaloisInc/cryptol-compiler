@@ -34,7 +34,9 @@ impl DWord {
   pub fn from_uint(bits: usize, value: &num::BigUint) -> DWord {
     let limb_num = limbs_for_size(bits);
     let mut limbs = Vec::<LimbT>::with_capacity(limb_num);
-    limbs.extend(value.iter_u64_digits().chain(std::iter::repeat(0)).take(limb_num));
+    limbs.extend(value.iter_u64_digits()
+                      .chain(std::iter::repeat(0))
+                      .take(limb_num));
     let mut result = DWord::from_limbs(bits, limbs);
     let pad = result.padding();
     if pad > 0 {
