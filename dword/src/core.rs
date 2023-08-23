@@ -53,6 +53,13 @@ pub(crate) fn limbs_for_size(bits: usize) -> usize {
 /// representation.
 fn is_small_size(bits: usize) -> bool { bits <= DWord::LIMB_BITS }
 
+/// How much padding we need in the least significant word.
+/// The result is < DWord::LIMB_BITS.
+fn padding_for_size(bits: usize) -> usize {
+  DWord::LIMB_BITS * limbs_for_size(bits) - bits
+}
+
+
 impl DWordPtr {
 
   /// How many limbs we need to represent the given number of bits.
@@ -142,7 +149,7 @@ impl<'a> DWordRef<'a> {
 impl DWordPtr {
 
   #[inline(always)]
-  fn from_vec_raw(bits: usize, data: Vec<LimbT>) -> DWordPtr {
+  fn from_limbs(bits: usize, data: Vec<LimbT>) -> DWordPtr {
     if is_small_size(bits) {
       DWordPtr {
         bits: bits,
@@ -160,7 +167,7 @@ impl DWordPtr {
 
   #[inline(always)]
   pub fn copy(self) -> DWordPtr {
-    Self::from_vec_raw(self.bits, Vec::from(self.as_slice()))
+    Self::from_limbs(self.bits, Vec::from(self.as_slice()))
   }
 
   #[inline(always)]
@@ -181,19 +188,19 @@ impl<'a> DWordRef<'a> {
 
 impl DWord {
 
+  /// Create a 0 initialized word of the given size.
+  pub fn zero(bits: usize) -> DWord {
+    Self::from_limbs(bits, vec![0; limbs_for_size(bits)])
+  }
+
   /// Create a [DWord] from the given limbs.
   /// The vector should contain the [correct number](Self::limbs)
   /// of limbs for the bits.
-  pub fn from_vec_raw(bits: usize, data: Vec<LimbT>) -> DWord {
+  /// Note that the data in the limbs should be already shifted.
+  pub fn from_limbs(bits: usize, data: Vec<LimbT>) -> DWord {
     assert_eq!(data.len(), limbs_for_size(bits));
-    DWord { data: DWordPtr::from_vec_raw(bits,data) }
+    DWord { data: DWordPtr::from_limbs(bits,data) }
   }
-
-  /// Create a 0 initialized word of the given size.
-  pub fn zero(bits: usize) -> DWord {
-    Self::from_vec_raw(bits, vec![0; limbs_for_size(bits)])
-  }
-
 }
 
 
@@ -218,10 +225,7 @@ impl DWordPtr {
 
   /// The number of 0s in the least significant position.
   #[inline(always)]
-  fn padding(&self) -> usize {
-    if self.bits() == 0 { return DWord::LIMB_BITS }
-    self.limbs() * DWord::LIMB_BITS - self.bits()
-  }
+  fn padding(&self) -> usize { padding_for_size(self.bits()) }
 
   /// The number of bits that are used in the least significant limb.
   #[inline(always)]
@@ -255,6 +259,7 @@ impl DWord {
 
   /// The number of bits in a libm.
   pub const LIMB_BITS: usize = LimbT::BITS as usize;
+  pub const LIMB_BYTES: usize = DWord::LIMB_BITS / 8;
 
   /// The size of the word in bits.
   #[inline(always)]
@@ -278,7 +283,7 @@ impl DWord {
   #[inline(always)]
   pub fn fix_underflow(&mut self) {
     let pad = self.padding();
-    if pad == 0 { return; }
+    if pad == 0 { return }
     let buf = self.as_slice_mut();
     buf[0] &= !((1 << pad) - 1);
   }
@@ -297,7 +302,7 @@ mod tests {
 
   #[test]
   fn test_padding() {
-    assert_eq!(DWord::zero(0).padding(), DWord::LIMB_BITS);
+    assert_eq!(DWord::zero(0).padding(), 0);
     assert_eq!(DWord::zero(1).padding(), DWord::LIMB_BITS - 1);
     assert_eq!(DWord::zero(DWord::LIMB_BITS).padding(), 0);
   }

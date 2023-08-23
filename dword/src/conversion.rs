@@ -1,5 +1,5 @@
 use crate::{DWord,DWordRef};
-use crate::core::{LimbT, BigLimbT};
+use crate::core::{LimbT, BigLimbT,limbs_for_size};
 
 impl DWord {
 
@@ -31,7 +31,67 @@ impl DWord {
     result
   }
 
+  pub fn from_uint(bits: usize, value: &num::BigUint) -> DWord {
+    let mut limbs = Vec::<LimbT>::with_capacity(limbs_for_size(bits));
+    for (r,d) in limbs.iter_mut().zip(value.iter_u64_digits()) { *r = d }
+    let mut result = DWord::from_limbs(bits, limbs);
+    let pad = result.padding();
+    if pad > 0 {
+      result.shift_bits_left(pad);
+    }
+    result
+  }
+
+  pub fn from_int(bits: usize, n: &num::BigInt) -> DWord {
+    let limb_num = limbs_for_size(bits);
+    let mut limbs  = Vec::<LimbT>::with_capacity(limb_num);
+
+    // Use this to extend in the most significant limbs.
+    let ext: u8    = match n.sign() {
+                       num::bigint::Sign::Minus => 255,
+                       _ => 0
+                     };
+
+    let mut bytes  = n.to_signed_bytes_le().into_iter();
+    for _ in 0 .. limb_num {
+      let mut w: LimbT = 0;
+      for z in 0 .. DWord::LIMB_BYTES {
+        let b = match bytes.next() {
+                  None    => ext,
+                  Some(x) => x
+                };
+        w |= (b as LimbT) << (8 * z);
+      }
+      limbs.push(w);
+    }
+    let mut result = DWord::from_limbs(bits, limbs);
+    let pad = result.padding();
+    if pad > 0 { result.shift_bits_left(pad) }
+    result
+  }
+
 }
+
+
+
+
+// -----------------------------------------------------------------------------
+// Export
+
+// To u8
+/// Get the 8 least significant bits.
+impl From<DWordRef<'_>> for u8 {
+  fn from(x: DWordRef<'_>) -> Self {
+    let have  = x.not_padding();
+    let ws    = x.as_slice();
+    let mut w = ws[0] >> x.padding();
+    if x.bits() >= 8 && have < 8 {
+      w |= ws[1] << have;
+    }
+    w as u8
+  }
+}
+
 
 impl DWordRef<'_> {
 
@@ -40,8 +100,6 @@ impl DWordRef<'_> {
   /// Convenient for conversion to bignum.
   pub fn as_vec_u32(self) -> Vec<u32> {
     let mut result = Vec::<u32>::with_capacity(self.limbs() / 2);
-    if self.bits() == 0 { return result }
-
 
     let ws  = self.as_slice();
     let pad = self.padding();
@@ -74,20 +132,17 @@ impl DWordRef<'_> {
 }
 
 
-
-
-/// Get the 8 least significant bits.
-impl<'a> From<DWordRef<'a>> for u8 {
-  fn from(x: DWordRef<'a>) -> Self {
-    let pad   = x.padding();
-    let have  = x.not_padding();
-    let ws    = x.as_slice();
-    let mut w = ws[0] >> pad;
-    if x.bits() >= 8 && have < 8 {
-      w |= ws[1] << have;
-    }
-    w as u8
+// To num::BigUint
+impl From<DWordRef<'_>> for num::BigUint {
+  fn from(x: DWordRef<'_>) -> Self {
+    Self::new(x.as_vec_u32())
   }
 }
+
+// To num::BigInt
+impl From<DWordRef<'_>> for num::BigInt {
+  fn from(x: DWordRef<'_>) -> Self { <_>::from(num::BigUint::from(x)) }
+}
+
 
 

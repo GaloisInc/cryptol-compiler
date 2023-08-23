@@ -82,6 +82,12 @@ impl fmt::LowerHex for DWordRef<'_> {
   }
 }
 
+impl fmt::Display for DWordRef<'_> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    num::BigUint::from(*self).fmt(f)
+  }
+}
+
 
 
 impl fmt::Binary for DWord {
@@ -101,3 +107,6 @@ impl fmt::UpperHex for DWord {
 }
 
 
+impl fmt::Display for DWord {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { self.as_ref().fmt(f) }
+}

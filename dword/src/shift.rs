@@ -3,8 +3,8 @@ use crate::core::LimbT;
 
 impl DWord {
 
-  // Shift by whole limbs.
-  fn shift_limbs_left(&mut self, amt: usize) {
+  /// Shift by whole limbs. `amt` is in units of limbs.
+  pub fn shift_limbs_left(&mut self, amt: usize) {
     let ws   = self.as_slice_mut();
     assert!(amt < ws.len());
 
@@ -15,8 +15,9 @@ impl DWord {
     for w in &mut ws[0 .. amt] { *w = 0 }
   }
 
-  // Shift by whole limbs.  Does not fix underflox.
-  fn shift_limbs_right(&mut self, amt: usize) {
+  /// Shift by whole limbs.  `amt` is in units of limbs.
+  /// Does not fix underflow.
+  pub fn shift_limbs_right(&mut self, amt: usize) {
     let ws   = self.as_slice_mut();
     assert!(amt < ws.len());
 
@@ -29,8 +30,8 @@ impl DWord {
   }
 
 
-  // Shift by less than a limb.
-  fn shift_bits_left(&mut self, amt: usize) {
+  /// Shift by less than a limb.
+  pub fn shift_bits_left(&mut self, amt: usize) {
     assert!(amt < DWord::LIMB_BITS);
 
     let other = DWord::LIMB_BITS - amt;
@@ -42,8 +43,8 @@ impl DWord {
     }
   }
 
-  // Shift by less than a limb. Does not fix underflow.
-  pub(crate) fn shift_bits_right(&mut self, amt: usize) {
+  /// Shift by less than a limb. Does not fix underflow.
+  pub fn shift_bits_right(&mut self, amt: usize) {
     assert!(amt < DWord::LIMB_BITS);
 
     let other = DWord::LIMB_BITS - amt;

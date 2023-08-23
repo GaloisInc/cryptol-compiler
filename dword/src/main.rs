@@ -2,6 +2,12 @@ use dword::*;
 use rand::random;
 
 pub fn main() {
+  let x = DWord::from_u64(63, -1_i64 as u64);
+  let y = DWord::from_int(63, &num::BigInt::from(-1_i64));
+  println!("{}, {}",x,y);
+}
+
+fn test_mul () {
 
   for size in 0 .. 512 {
 
