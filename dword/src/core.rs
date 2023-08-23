@@ -251,8 +251,12 @@ impl<'a> DWordRef<'a> {
   pub fn padding(self)     -> usize { self.data.padding() }
 
   /// The number of bits that are used in limb 0.
+  /// This should not be used for 0-bit words.
   #[inline(always)]
-  pub fn not_padding(self) -> usize { self.data.not_padding() }
+  pub fn not_padding(self) -> usize {
+    assert!(self.bits() > 0);
+    self.data.not_padding()
+  }
 }
 
 impl DWord {

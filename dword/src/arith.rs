@@ -99,6 +99,15 @@ impl std::ops::Mul <DWordRef<'_>> for DWordRef<'_> {
 }
 
 
+impl std::ops::Div <DWordRef<'_>> for DWordRef<'_> {
+  type Output = DWord;
+  fn div(self, rhs: DWordRef<'_>) -> DWord {
+    assert!(self.bits() == rhs.bits());
+    let x: num::BigUint = self.into();
+    let y: num::BigUint = rhs.into();
+    DWord::from_uint(self.bits(), &(x/y))
+  }
+}
 
 
 #[cfg(test)]

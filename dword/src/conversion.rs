@@ -32,8 +32,9 @@ impl DWord {
   }
 
   pub fn from_uint(bits: usize, value: &num::BigUint) -> DWord {
-    let mut limbs = Vec::<LimbT>::with_capacity(limbs_for_size(bits));
-    for (r,d) in limbs.iter_mut().zip(value.iter_u64_digits()) { *r = d }
+    let limb_num = limbs_for_size(bits);
+    let mut limbs = Vec::<LimbT>::with_capacity(limb_num);
+    limbs.extend(value.iter_u64_digits().chain(std::iter::repeat(0)).take(limb_num));
     let mut result = DWord::from_limbs(bits, limbs);
     let pad = result.padding();
     if pad > 0 {
@@ -99,7 +100,8 @@ impl DWordRef<'_> {
   /// Least significant digit first.
   /// Convenient for conversion to bignum.
   pub fn as_vec_u32(self) -> Vec<u32> {
-    let mut result = Vec::<u32>::with_capacity(self.limbs() / 2);
+    let mut result = Vec::<u32>::with_capacity(self.limbs() * 2);
+    if self.bits() == 0 { return result }
 
     let ws  = self.as_slice();
     let pad = self.padding();

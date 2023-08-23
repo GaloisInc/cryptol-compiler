@@ -2,9 +2,12 @@ use dword::*;
 use rand::random;
 
 pub fn main() {
-  let x = DWord::from_u64(63, -1_i64 as u64);
-  let y = DWord::from_int(63, &num::BigInt::from(-1_i64));
-  println!("{}, {}",x,y);
+  let a = DWord::zero(0);
+
+  let x = DWord::from_u64(123, -1_i64 as u64);
+  let y = DWord::from_int(123, &num::BigInt::from(-1_i64));
+  let z = x.as_ref()/y.as_ref();
+  println!("{:#b}, {:#b}, {}",x,y, x.as_ref()/y.as_ref());
 }
 
 fn test_mul () {
