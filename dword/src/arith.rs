@@ -184,11 +184,10 @@ impl DWordRef<'_> {
 #[cfg(test)]
 pub mod test {
   use crate::{DWord};
-  use std::default::Default;
   use crate::proptest::*;
 
   #[test]
-  fn add_ok() {
+  fn add() {
     do_test(binary, |(x,y) : (DWord,DWord)| {
       let (xr,a) = x.sem();
       let (yr,b) = y.sem();
@@ -197,7 +196,7 @@ pub mod test {
   }
 
   #[test]
-  pub fn neg_ok() {
+  pub fn neg() {
     do_test(unary, |x: DWord| {
       let (xr,a) = x.sem();
       let lim = num::BigUint::from(2_u64).pow(x.bits() as u32);
@@ -207,7 +206,19 @@ pub mod test {
   }
 
   #[test]
-  pub fn mul_ok() {
+  fn sub() {
+    do_test(binary, |(x,y) : (DWord,DWord)| {
+      let (xr,a) = x.sem();
+      let (yr,b) = y.sem();
+      let mut lim = num::BigUint::from(2_u64);
+      lim = lim.pow(x.bits() as u32);
+      let expect = if a >= b { a - b } else { a + lim - b };
+      Some(xr - yr == DWord::from_uint(x.bits(), &expect))
+    })
+  }
+
+  #[test]
+  pub fn mul() {
     do_test(binary, |(x,y): (DWord,DWord)| {
       let (xr,a) = x.sem();
       let (yr,b) = y.sem();
@@ -216,7 +227,7 @@ pub mod test {
   }
 
   #[test]
-  pub fn div_ok() {
+  pub fn div() {
     do_test(binary, |(x,y): (DWord,DWord)| {
       let (xr,a) = x.sem();
       let (yr,b) = y.sem();
@@ -228,7 +239,7 @@ pub mod test {
   }
 
   #[test]
-  pub fn rem_ok() {
+  pub fn rem() {
     do_test(binary, |(x,y): (DWord,DWord)| {
       let (xr,a) = x.sem();
       let (yr,b) = y.sem();
@@ -240,7 +251,7 @@ pub mod test {
   }
 
   #[test]
-  pub fn pow_ok() {
+  pub fn pow() {
     do_test(word_and::<u32>, |(x,p): (DWord,u32)| {
       let (xr,a) = x.sem();
       let lim = num::BigUint::from(2_u64).pow(x.bits() as u32);

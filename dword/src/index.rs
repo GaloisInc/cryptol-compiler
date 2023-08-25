@@ -63,54 +63,7 @@ impl<'a> DWordRef<'a> {
     self.as_slice().iter().rev()
   }
 
-
-  /// XXX: Maybe we don't need this
-  /// Get a limb-sized sub-bitvector starting at the given bit offset.
-  /// * The offset need not be aligned.
-  /// * If the resulting bitvector is smaller than a limb,
-  ///   the result is 0 extend on the side away from the direction
-  ///   (i.e., [FromMSB] extends on LSB side, and [FromLSB] extends on
-  ///   the MSB side)
-  /// * The index refers to the first bit on the resepctive side
-  ///   (i.e., [FromMSB] points to the most significant bit in the result
-  ///   and cound from the most significant end of the word)
-  pub fn get_limb_unaligned<INDEX: IndexDir>(self, index: usize) -> LimbT {
-    if index >= self.bits() { return 0 }
-
-    let ws  = self.as_slice();
-    match INDEX::DIR {
-
-       IndexFrom::Lsb => {
-         let i      = index + self.padding();
-         let w_off  = i / DWord::LIMB_BITS;
-         let extra  = i % DWord::LIMB_BITS;
-         let mut lower = ws[w_off];
-         if extra == 0 { return lower }     // alligned
-
-         let other  = DWord::LIMB_BITS - extra;
-         lower = lower >> extra;
-         if w_off + 1 == ws.len() { return lower }
-
-         (ws[w_off + 1] << other) | lower
-       },
-
-       IndexFrom::Msb => {
-          let w_off     = ws.len() - index / DWord::LIMB_BITS - 1;
-          let extra     = index % DWord::LIMB_BITS;
-          let mut upper = ws[w_off];
-          if extra      == 0 { return upper }          // alligned
-
-          let other = DWord::LIMB_BITS - extra;
-          upper = upper << extra;
-          if w_off == 0 { return upper }
-
-          upper | (ws[w_off - 1] >> other)
-       }
-    }
-  }
-
-  /// Extract a sub-bitvector of the given length,
-  /// starting at the given bit offset.
+  /// Extract a sub-word starting at the given bit offset.
   pub fn sub_word<INDEX: IndexDir>
     (self, sub_bits: usize, index: usize) -> DWord {
     assert!(index + sub_bits <= self.bits());
@@ -120,6 +73,7 @@ impl<'a> DWordRef<'a> {
               IndexFrom::Msb => index,
               IndexFrom::Lsb => self.bits() - sub_bits - index
             };
+
     let ws = self.as_slice();
     let mut result = DWord::zero(sub_bits);
 
@@ -129,18 +83,30 @@ impl<'a> DWordRef<'a> {
     let out       = result.as_slice_mut();
     let res_limbs = out.len();
 
-    let start = ws.len() - i / DWord::LIMB_BITS; // 1 bigger than read
-    let off   = i % DWord::LIMB_BITS;
+    let mut cur = ws.len() - i / DWord::LIMB_BITS; // 1 bigger than read
+    let off     = i % DWord::LIMB_BITS;
 
     if off == 0 {
       // Slice aligned
-      out.copy_from_slice(&ws[(start - res_limbs) .. start]);
+      out.copy_from_slice(&ws[(cur - res_limbs) .. cur]);
 
     } else {
-      for j in 0 .. res_limbs {
-        out[res_limbs - 1 - j] =
-          self.get_limb_unaligned::<FromMSB>(i - j * DWord::LIMB_BITS)
+      // Slice unaligned
+
+      cur           -= 1;
+      let mut w      = ws[cur] << off;
+      let have_bits  = DWord::LIMB_BITS - off;
+      for j in 1 .. res_limbs {
+        cur -= 1;
+        let w1 = ws[cur];
+        out[res_limbs - j] = w | (w1 >> have_bits);
+        w = w1 << off;
       }
+
+      if cur > 0 {
+        w = w | (ws[cur - 1] >> have_bits)
+      }
+      out[0] = w;
     }
 
     result.fix_underflow();
@@ -177,19 +143,49 @@ impl<'a, INDEX: IndexDir> Iterator for TraverseBits<'a, INDEX> {
 
 #[cfg(test)]
 mod test {
-  use crate::{DWord,FromLSB,FromMSB};
+  use crate::{DWord,FromLSB,FromMSB,IndexDir,IndexFrom};
+  use crate::proptest::*;
 
   #[test]
-  fn test_index() {
-    let x64v = DWord::from_u64(64,1);
-    let x65v = DWord::from_u64(65,1);
-    let x64  = x64v.as_ref();
-    let x65  = x65v.as_ref();
-
-    assert_eq!(x64.index::<FromMSB>(0), false);
-    assert_eq!(x64.index::<FromLSB>(0), true);
-    assert_eq!(x64.index::<FromLSB>(1), false);
-    assert_eq!(x65.index::<FromLSB>(0), true);
-    assert_eq!(x65.index::<FromLSB>(1), false);
+  fn index_lsb() {
+    do_test(word_and::<usize>, |(x,i0) : (DWord,usize) | {
+      if x.bits() == 0 { return Some(true) }
+      let i = i0 % x.bits();
+      let (xr,a) = x.sem();
+      return Some(xr.index::<FromLSB>(i) == a.bit(i as u64))
+    })
   }
+
+  #[test]
+  fn index_msb() {
+    do_test(word_and::<usize>, |(x,i0) : (DWord,usize) | {
+      if x.bits() == 0 { return Some(true) }
+      let i = i0 % x.bits();
+      let j = (x.bits() - 1 - i) as u64;
+      let (xr,a) = x.sem();
+      return Some(xr.index::<FromMSB>(i) == a.bit(j))
+    })
+  }
+
+  fn sub_word<INDEX: IndexDir>() {
+    do_test(word_and2::<usize,usize>, |(x,i0,w0): (DWord,usize,usize)|{
+      let i      = i0 % (x.bits() + 1);
+      let have   = x.bits() - i;
+      let w      = w0 % (have + 1);
+      let (xr,a) = x.sem();
+
+      let lhs    = xr.sub_word::<INDEX>(w,i);
+      let amt    = match INDEX::DIR {
+                    IndexFrom::Msb => x.bits() - i - w,
+                    IndexFrom::Lsb => i
+                  };
+      Some(lhs == DWord::from_uint(w, &(a >> amt)))
+    })
+  }
+
+  #[test]
+  fn sub_word_lsb() { sub_word::<FromLSB>() }
+  #[test]
+  fn sub_word_msb() { sub_word::<FromMSB>() }
+
 }

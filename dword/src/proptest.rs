@@ -75,6 +75,11 @@ impl DWord {
   }
 }
 
+pub fn pow2(bits: usize) -> num::BigUint {
+  let x: num::BigUint = 2_u64.into();
+  x.pow(bits as u32)
+}
+
 pub fn binary(bits: usize) -> StrategyFor<(DWord,DWord)> {
   arbitrary_with((bits,bits))
 }
@@ -87,5 +92,13 @@ pub fn word_and<T>(bits: usize) -> StrategyFor<(DWord,T)>
   where T: Arbitrary<Parameters=()> {
   arbitrary_with((bits,()))
 }
+
+pub fn word_and2<S,T>(bits: usize) -> StrategyFor<(DWord,S,T)>
+  where
+  S: Arbitrary<Parameters=()> ,
+  T: Arbitrary<Parameters=()> {
+  arbitrary_with((bits,(),()))
+}
+
 
 
