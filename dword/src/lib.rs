@@ -6,6 +6,9 @@ pub mod cmp;
 pub mod shift;
 pub mod arith;
 
+#[cfg(test)]
+pub mod proptest;
+
 pub use crate::core::DWord;
 pub use crate::core::DWordRef;
 pub use crate::index::{IndexDir,IndexFrom,FromLSB,FromMSB};

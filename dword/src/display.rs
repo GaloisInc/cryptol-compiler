@@ -88,6 +88,12 @@ impl fmt::Display for DWordRef<'_> {
   }
 }
 
+impl fmt::Debug for DWordRef<'_> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    write!(f, "[{}|{:#x}]", self.bits(), self)
+  }
+}
+
 
 
 impl fmt::Binary for DWord {
@@ -106,7 +112,10 @@ impl fmt::UpperHex for DWord {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { self.as_ref().fmt(f) }
 }
 
-
 impl fmt::Display for DWord {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { self.as_ref().fmt(f) }
+}
+
+impl fmt::Debug for DWord {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { self.as_ref().fmt(f) }
 }

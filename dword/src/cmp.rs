@@ -75,7 +75,7 @@ impl Ord for DWord {
 
 #[cfg(test)]
 mod test {
-  use crate::{DWord,DWordRef};
+  use crate::{DWord};
 
   #[test]
   fn test_eq() {

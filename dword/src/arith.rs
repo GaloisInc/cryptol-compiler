@@ -13,7 +13,6 @@ impl std::ops::AddAssign<DWordRef<'_>> for DWord {
       return
     }
 
-    let ws = self.as_slice_mut();
     let mut acc: BigLimbT = 0;
     for (out,&limb) in self.as_slice_mut()
                            .iter_mut().zip(rhs.iter_limbs_lsb()) {
@@ -150,12 +149,12 @@ impl std::ops::Rem <DWordRef<'_>> for DWordRef<'_> {
 
     if self.is_small() {
       let x = self.limb0_norm();
-      let y = self.limb0_norm();
+      let y = rhs.limb0_norm();
       return DWord::from_u64(bits, x % y);
     }
 
     let x: num::BigUint = self.into();
-    let y: num::BigUint = self.into();
+    let y: num::BigUint = rhs.into();
     DWord::from_uint(bits, &(x % y))
   }
 }
@@ -173,7 +172,9 @@ impl DWordRef<'_> {
     }
 
     let x: num::BigUint = self.into();
-    DWord::from_uint(bits, &(x.pow(exp)))
+    let mut lim: num::BigUint = num::zero();
+    lim.set_bit(self.bits() as u64, true);
+    DWord::from_uint(bits, &(x.modpow(&(exp.into()),&lim)))
 
   }
 
@@ -181,22 +182,73 @@ impl DWordRef<'_> {
 
 
 #[cfg(test)]
-mod test {
-  use crate::DWord;
+pub mod test {
+  use crate::{DWord};
+  use std::default::Default;
+  use crate::proptest::*;
 
   #[test]
-  fn test_add() {
-    assert!( DWord::from_u64(7,1).as_ref() + DWord::from_u64(7,2).as_ref()
-              == DWord::from_u64(7,3)
-              );
-    assert!( DWord::from_u64(7,127).as_ref() + DWord::from_u64(7,2).as_ref()
-              == DWord::from_u64(7,1)
-              );
-
-    assert!(-DWord::from_u64(7,1).as_ref() == DWord::from_u64(7,127))
-
-
-
+  fn add_ok() {
+    do_test(binary, |(x,y) : (DWord,DWord)| {
+      let (xr,a) = x.sem();
+      let (yr,b) = y.sem();
+      Some(xr + yr == DWord::from_uint(x.bits(), &(&a + &b)))
+    })
   }
+
+  #[test]
+  pub fn neg_ok() {
+    do_test(unary, |x: DWord| {
+      let (xr,a) = x.sem();
+      let lim = num::BigUint::from(2_u64).pow(x.bits() as u32);
+      let expect = (&lim - &a) % &lim;
+      Some(-xr == DWord::from_uint(x.bits(), &expect))
+    })
+  }
+
+  #[test]
+  pub fn mul_ok() {
+    do_test(binary, |(x,y): (DWord,DWord)| {
+      let (xr,a) = x.sem();
+      let (yr,b) = y.sem();
+      Some(xr * yr == DWord::from_uint(x.bits(), &(&a * &b)))
+    })
+  }
+
+  #[test]
+  pub fn div_ok() {
+    do_test(binary, |(x,y): (DWord,DWord)| {
+      let (xr,a) = x.sem();
+      let (yr,b) = y.sem();
+      if yr.is_zero() {
+        return if yr.bits() == 0 { Some(true) } else { None };
+      }
+      Some(xr / yr == DWord::from_uint(x.bits(), &(&a / &b)))
+    })
+  }
+
+  #[test]
+  pub fn rem_ok() {
+    do_test(binary, |(x,y): (DWord,DWord)| {
+      let (xr,a) = x.sem();
+      let (yr,b) = y.sem();
+      if yr.is_zero() {
+        return if yr.bits() == 0 { Some(true) } else { None };
+      }
+      Some(xr % yr == DWord::from_uint(x.bits(), &(&a % &b)))
+    })
+  }
+
+  #[test]
+  pub fn pow_ok() {
+    do_test(word_and::<u32>, |(x,p): (DWord,u32)| {
+      let (xr,a) = x.sem();
+      let lim = num::BigUint::from(2_u64).pow(x.bits() as u32);
+      let expect = a.modpow(&p.into(),&lim);
+      Some(xr.pow(p) == DWord::from_uint(x.bits(), &expect))
+    })
+  }
+
+
 
 }
