@@ -35,6 +35,7 @@ impl Strategy for DWordStrategy {
   }
 }
 
+
 impl Arbitrary for DWord {
   type Parameters = usize;
   type Strategy   = DWordStrategy;
@@ -50,7 +51,7 @@ pub fn do_test<T: Arbitrary>
     ( s: fn (usize) -> StrategyFor<T>
     , p: fn(T)      -> Option<bool>
     ) {
-  for bits in 1 .. 517 {
+  for bits in 0 .. 517 {
     let mut cfg: Config = <_>::default();
     cfg.failure_persistence = None;
     let mut runner = TestRunner::new(cfg);
@@ -68,6 +69,40 @@ pub fn do_test<T: Arbitrary>
   }
 }
 
+
+pub fn do_test2<T: Arbitrary>
+    ( s: fn (usize,usize) -> StrategyFor<T>
+    , p: fn(T)            -> Option<bool>
+    ) {
+
+  let max = 30;
+
+  for bits1_ in 0 .. max {
+    let bits1 = bits1_ * 2;
+
+    for bits2_ in 0 .. max - bits1_ {
+      let bits2 = bits2_ * 3;
+
+      let mut cfg: Config = <_>::default();
+      cfg.failure_persistence = None;
+      let mut runner = TestRunner::new(cfg);
+      let strategy = s(bits1,bits2);
+      runner.run(&strategy, |arg| {
+        match p(arg) {
+          Some(result) =>
+            if result { Ok(()) }
+            else {
+              Err(TestCaseError::Fail("unexpected result".into()))
+            },
+          None => Err(TestCaseError::Reject("invalid input".into()))
+        }
+      }).unwrap()
+    }
+  }
+}
+
+
+
 impl DWord {
   pub fn sem<'a>(&'a self) -> (DWordRef<'a>, num::BigUint) {
     let x = self.as_ref();
@@ -81,8 +116,13 @@ pub fn pow2(bits: usize) -> num::BigUint {
 }
 
 pub fn binary(bits: usize) -> StrategyFor<(DWord,DWord)> {
-  arbitrary_with((bits,bits))
+  two_words(bits,bits)
 }
+
+pub fn two_words(bits1: usize, bits2: usize) -> StrategyFor<(DWord,DWord)> {
+  arbitrary_with((bits1,bits2))
+}
+
 
 pub fn unary(bits: usize) -> StrategyFor<DWord> {
   arbitrary_with(bits)
@@ -99,6 +139,7 @@ pub fn word_and2<S,T>(bits: usize) -> StrategyFor<(DWord,S,T)>
   T: Arbitrary<Parameters=()> {
   arbitrary_with((bits,(),()))
 }
+
 
 
 

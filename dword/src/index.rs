@@ -1,5 +1,4 @@
 use std::marker::PhantomData;
-use crate::core::LimbT;
 use crate::{DWord,DWordRef};
 
 /// Specify from which side of a word are we indexing.
