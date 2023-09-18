@@ -1,7 +1,10 @@
 module Cryptol.Compiler.Cry2IR.Compile where
 
-import Data.Set(Set)
+import Debug.Trace
+
 import Data.Set qualified as Set
+import Data.Map (Map)
+import Data.Map qualified as Map
 import Data.List(elemIndex)
 import Data.Text qualified as Text
 import Control.Monad(zipWithM,forM,unless)
@@ -29,8 +32,8 @@ compileModule m = mapM_ compileDeclGroup (Cry.mDecls m)
 compileDeclGroup :: Cry.DeclGroup -> M.CryC ()
 compileDeclGroup dg =
   case dg of
-    Cry.NonRecursive d -> compileTopDecl d -- (toPrim d)
-    Cry.Recursive ds   -> mapM_ (compileTopDecl . toPrim) ds
+    Cry.NonRecursive d -> compileTopDecl d
+    Cry.Recursive ds   -> mapM_ (compileTopDecl . toPrim) ds -- XXX
   where
   toPrim d = d { Cry.dDefinition = Cry.DPrim }
 
@@ -224,7 +227,7 @@ compileExpr expr0 tgtT =
 
   where
   unexpected msg = unexpected' [msg]
-  unexpected' msg = panic "compileExpr" msg
+  unexpected'    = panic "compileExpr"
 
 
 compileLam ::
@@ -421,7 +424,10 @@ compileLocalDeclGroups dgs k =
 compileLocalDeclGroup :: Cry.DeclGroup -> S.SpecM Expr -> S.SpecM Expr
 compileLocalDeclGroup dg k =
   case dg of
-    Cry.Recursive {} -> S.unsupported "recursive local declaration" -- XXX
+    Cry.Recursive ds ->
+      case isRecValueGroup ds of
+        Just yes -> compileRecursiveStreams yes k
+        Nothing  -> S.unsupported "recursive local declaration"
     Cry.NonRecursive d ->
       do let schema = Cry.dSignature d
          case (Cry.sVars schema, Cry.sProps schema) of
@@ -653,47 +659,50 @@ coerceTo e tgtT' =
 
 type Seq = IRSeq Cry.TParam NameId Expr
 
-compileExprToExternSeq :: Set Name -> Cry.Expr -> Type -> S.SpecM Seq
-compileExprToExternSeq grp e tgtT =
-  do ec <- compileExpr e tgtT
-     let bad = freeLocals (freeNames ec) `Set.difference` grp
+compileExprToExternSeq :: Map Cry.Name Name -> Cry.Expr -> S.SpecM Seq
+compileExprToExternSeq grp e =
+  do (len,elTy) <-
+        do cryTy <- S.doCryC (M.getTypeOf e)
+           case Cry.tIsSeq cryTy of
+             Just (n,t) ->
+                do nt <- compileStreamSizeType n
+                   et <- compileValType t
+                   pure (nt,et)
+             Nothing -> panic "compileExprToExternSeq" [ "Not a sequence" ]
+     ec <- compileExpr e (TStream len elTy)
+     let thisNames = Set.fromList (Map.elems grp)
+     let bad = freeLocals (freeNames ec) `Set.intersection` thisNames
      unless (Set.null bad) (S.unsupported "recursive stream")
-     resT <- S.zonk tgtT
-     len  <- case resT of
-               TArray len _  -> pure (IRSize len)
-               TStream len _ -> pure len
-               _              -> S.unsupported "resucrusive stream type"
      pure (SeqExternal len ec)
 
-compileExprToSeq :: Set Name -> Cry.Expr -> Type -> S.SpecM Seq
-compileExprToSeq grp expr0 tgtT =
+compileExprToSeq :: Map Cry.Name Name -> Cry.Expr -> S.SpecM Seq
+compileExprToSeq grp expr0 =
   case expr0 of
 
-    Cry.ELocated _rng e -> compileExprToSeq grp e tgtT
+    Cry.ELocated _rng e -> compileExprToSeq grp e
 
     Cry.EVar x
-      | nm `Set.member` grp -> pure (SeqVar nm)
-      | otherwise           -> compileExprToExternSeq grp expr0 tgtT
-      where nm = IRName (NameId x) tgtT
+      | Just nm <- Map.lookup x grp -> pure (SeqVar nm)
+      | otherwise                   -> compileExprToExternSeq grp expr0
 
     Cry.EIf eCond eThen eElse ->
       do ceCond <- compileExpr eCond TBool
-         ceThen <- compileExprToSeq grp eThen tgtT
-         ceElse <- compileExprToSeq grp eElse tgtT
+         ceThen <- compileExprToSeq grp eThen
+         ceElse <- compileExprToSeq grp eElse
          pure
            case (ceThen, ceElse) of
              (SeqExternal ln1 e1, SeqExternal _ e2) ->
                 SeqExternal ln1 (IRExpr (IRIf ceCond e1 e2))
              _ -> SeqIf ceCond ceThen ceElse
 
-    Cry.EPropGuards {}        -> S.unsupported "EPropGuards/stream"
+    Cry.EPropGuards {} -> S.unsupported "EPropGuards/stream"
 
     Cry.EComp len ty res ms ->
-      do sz   <- compileStreamSizeType len
+      do isz   <- compileStreamSizeType len
          elTy <- compileValType ty
-         compileComprehensionToSeq grp sz elTy tgtT res ms
+         compileComprehensionToSeq grp isz elTy res ms
 
-    Cry.EWhere {}             -> S.unsupported "EWhere"
+    Cry.EWhere {} -> S.unsupported "EWhere"
 
     Cry.EApp {} ->
       do let (args',expr1)            = Cry.splitWhile Cry.splitApp expr0
@@ -709,29 +718,21 @@ compileExprToSeq grp expr0 tgtT =
                         _ -> False
                 case mbPrim of
                   Just p
+
                     | p == Cry.prelPrim "drop"
                     , [e] <- args
-                    , [front,back,elT] <- tyArgs ->
-                      do celT    <- compileValType elT
-                         cfrontT <- compileSizeType front
-                         cbackT  <- compileStreamSizeType back
-                         let len = error "add" cfrontT cbackT
-                             newTgt = TStream len celT
-                         se <- compileExprToExternSeq grp e newTgt
+                    , [front,_back,_elT] <- tyArgs ->
+                      do cfrontT <- compileSizeType front
+                         se <- compileExprToSeq grp e
                          if isExt se
                             then doExt
                             else pure (SeqDrop cfrontT se)
 
                     | p == Cry.prelPrim "#"
                     , [e1,e2] <- args
-                    , [front,back,elT] <- tyArgs ->
-                      do celT   <- compileValType elT
-                         cfront <- compileSizeType front
-                         cback  <- compileStreamSizeType back
-                         let ty1 = TStream (IRSize cfront) celT
-                             ty2 = TStream cback celT
-                         left  <- compileExprToSeq grp e1 ty1
-                         right <- compileExprToSeq grp e2 ty2
+                    , [_front,_back,_elT] <- tyArgs ->
+                      do left  <- compileExprToSeq grp e1
+                         right <- compileExprToSeq grp e2
                          case (left,right) of
                            (SeqExternal {}, SeqExternal {}) -> doExt
                            (SeqAppend xs, SeqAppend ys) ->
@@ -760,7 +761,7 @@ compileExprToSeq grp expr0 tgtT =
 
 
   where
-  doExt          = compileExprToExternSeq grp expr0 tgtT
+  doExt          = compileExprToExternSeq grp expr0
   unexpected msg = unexpected' [msg]
   unexpected'    = panic "compileExpr"
 
@@ -769,11 +770,15 @@ compileExprToSeq grp expr0 tgtT =
 
 
 compileComprehensionToSeq ::
-  Set Name ->
-  StreamSize -> Type -> Type -> Cry.Expr -> [[Cry.Match]] -> S.SpecM Seq
-compileComprehensionToSeq grp seqLen elTy tgtTy expr mss =
+  Map Cry.Name Name ->
+  StreamSize -> Type -> Cry.Expr -> [[Cry.Match]] -> S.SpecM Seq
+compileComprehensionToSeq grp seqLen elTy expr mss =
   case mss of
+
+    -- sequential (XXX: Let)
     [ ms@(_ : _ : _) ] -> compileArmSingle ms
+
+    -- parallel
     _ ->
       do armsTuples <- mapM compileArmTuple mss
          cms <- mapM toMatch armsTuples
@@ -786,7 +791,7 @@ compileComprehensionToSeq grp seqLen elTy tgtTy expr mss =
       [] -> compileExpr expr elTy
       (ys, v) : more ->
         case ys of
-          [_] -> addProj more
+          [(x,ty,_)] -> S.withLocals [(x,ty)] (addProj more)
           _   ->
             do e' <- S.withLocals [ (x,ty) | (x,ty,_) <- ys ] (addProj more)
                pure (foldr sel e' (zip ys [ 0 .. ]))
@@ -813,6 +818,7 @@ compileComprehensionToSeq grp seqLen elTy tgtTy expr mss =
              [x] -> x
              es  -> mkTuple es
 
+  -- sequence of matches
   compileArm done ms k =
     case ms of
       [] ->
@@ -827,13 +833,69 @@ compileComprehensionToSeq grp seqLen elTy tgtTy expr mss =
 
   compileMatch m =
     case m of
-      Cry.From x len ty gen ->
-        do lenTy   <- compileStreamSizeType len
-           locElTy <- compileValType ty
-           let stype = TStream lenTy locElTy
-           it      <- compileExprToSeq grp gen stype
+      Cry.From x _len ty gen ->
+        do locElTy <- compileValType ty
+           it      <- compileExprToSeq grp gen
            let name = IRName (NameId x) locElTy
            pure (name,ty,locElTy,it)
       Cry.Let {} -> S.unsupported "XXX: Let in EComp"
+
+--------------------------------------------------------------------------------
+
+data CryRecEqn = CryRecEqn
+  { ceqName :: Cry.Name
+  , ceqTy   :: Cry.Type
+  , ceqLen  :: Cry.Type
+  , ceqElTy :: Cry.Type
+  , ceqDef  :: Cry.Expr
+  }
+
+{- | Check if a recursive group is suitable for recursive stream compilation.
+Currently we require that all definitions are monomorphic streams,
+which should be the common case for locals (there can be still polymorphism
+from the enclosing declaration). -}
+isRecValueGroup :: [Cry.Decl] -> Maybe [CryRecEqn]
+isRecValueGroup = traverse isRecValDecl
+  where
+  isRecValDecl d =
+    do def <- case Cry.dDefinition d of
+                Cry.DExpr e -> pure e
+                _           -> Nothing
+       ty <- Cry.isMono (Cry.dSignature d)
+       (len,elTy) <- Cry.tIsSeq ty
+       pure CryRecEqn { ceqName = Cry.dName d
+                      , ceqTy   = ty
+                      , ceqLen  = len
+                      , ceqElTy = elTy
+                      , ceqDef  = def
+                      }
+
+compileRecursiveStreams :: [CryRecEqn] -> S.SpecM Expr -> S.SpecM Expr
+compileRecursiveStreams defs _k =
+  do names <- traverse getName defs
+     let nameMap = Map.fromList [ (x,d) | (x,_,d) <- names ]
+     S.withLocals [ (x,t) | (_,t,x) <- names ]
+       do irdefs <- traverse (getDef nameMap) defs
+          S.unsupported (dbg irdefs)
+  where
+  dbg = Text.pack . show . vcat . map ppDef
+
+  ppDef (x,d) =
+    pp x <+> "=" <+> pp d
+
+  getName eqn =
+    do len  <- compileStreamSizeType (ceqLen eqn)
+       elTy <- compileValType (ceqElTy eqn)
+       let nm = ceqName eqn
+       pure (nm, ceqTy eqn, IRName (NameId nm) (TStream len elTy))
+
+  getDef nameMap eqn =
+    do sequ <- compileExprToSeq nameMap (ceqDef eqn)
+       nm   <- case Map.lookup (ceqName eqn) nameMap of
+                 Just x -> pure x
+                 Nothing -> panic "compileRecursiveStreams"
+                                [ "Missing name", show (pp (ceqName eqn)) ]
+       pure (nm, sequ)
+
 
 

@@ -4,6 +4,7 @@ module Cryptol.Compiler.IR.Free where
 import Data.Set(Set)
 import Data.Set qualified as Set
 
+import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR
 
 data Free tname name =
@@ -28,6 +29,17 @@ instance (Ord name, Ord tname) => Monoid (Free tname name) where
       , freeSize    = Set.empty
       , freeLocals  = Set.empty
       }
+
+instance (PP tname, PP name) => PP (Free tname name) where
+  pp fs =
+    vcat
+      [ ppSet "freeTop" (freeTop fs)
+      , ppSet "freeSize" (freeSize fs)
+      , ppSet "freeLocals" (freeLocals fs)
+      ]
+    where
+    ppSet :: PP a => Doc -> Set a -> Doc
+    ppSet lab xs = lab <.> ":" <+> hsep (map pp (Set.toList xs))
 
 singleFreeTop :: (Ord tname, Ord name) => IRFunName name -> Free tname name
 singleFreeTop x = mempty { freeTop = Set.singleton x }

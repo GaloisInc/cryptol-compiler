@@ -1,7 +1,6 @@
 {- |
 
 The `i`-th element of a sequence may be defined used the following equations:
-
 @
     (a # b) \@ i
       | i < |a|     = a \@ i
@@ -9,8 +8,13 @@ The `i`-th element of a sequence may be defined used the following equations:
 
     drop`{n} a \@ i  = a \@ (i + n)
 
-    [ e | a <- xs | b <- ys ] \@ i =
-      let a = xs \@ i
+    take`{n} a \@ i  = a \@ i
+
+    // assumes `p`, `q`, `a` not in other alternative
+    [ e | let p = pe, a <- xs, let q = pq | b <- ys ] \@ i =
+      let p = pe
+          a = xs \@ i
+          q = pq
           b = ys \@ i
       in e
 
@@ -54,15 +58,17 @@ data IRSeq tname name e =
 
   | SeqPar e [ (IRName tname name, IRSeq tname name e) ]
     -- ^ Parallel comprehension, single generator in each arm
+    -- @[ e | a <- xs | b <- ys ]@
 
   | SeqSeq e [ (IRName tname name, IRSeq tname name e) ]
     -- ^ Sequential comprehension (at least 2 entries in the list)
+    -- @[ e | a <- xs, b <- ys ]@
 
 
 instance (PP tname, PP name, PP e) => PP (IRSeq tname name e) where
   pp se =
     case se of
-     SeqExternal _ e -> pp e
+     SeqExternal _ e -> "EXT" <.> parens (withPrec 0 (pp e))
      SeqVar x -> pp x
      SeqAppend xs -> fsep (intersperse "#" (map pp xs))
      SeqIf e s1 s2 ->
@@ -73,7 +79,7 @@ instance (PP tname, PP name, PP e) => PP (IRSeq tname name e) where
             , nest 2 "else" <+> pp s2
             ]
 
-     SeqDrop n s -> "drop" <.> withPrec 0 (commaSep [pp n, pp s])
+     SeqDrop n s -> "drop" <.> parens (withPrec 0 (commaSep [pp n, pp s]))
      SeqPar e ps -> ppC "|" e ps
      SeqSeq e ps -> ppC "," e ps
 
