@@ -1,7 +1,5 @@
 module Cryptol.Compiler.Cry2IR.Compile where
 
-import Debug.Trace
-
 import Data.Set qualified as Set
 import Data.Map (Map)
 import Data.Map qualified as Map
@@ -657,6 +655,64 @@ coerceTo e tgtT' =
 
 --------------------------------------------------------------------------------
 
+-------------------------------------------------------------------------------
+
+data CryRecEqn = CryRecEqn
+  { ceqName :: Cry.Name
+  , ceqTy   :: Cry.Type
+  , ceqLen  :: Cry.Type
+  , ceqElTy :: Cry.Type
+  , ceqDef  :: Cry.Expr
+  }
+
+{- | Check if a recursive group is suitable for recursive stream compilation.
+Currently we require that all definitions are monomorphic streams,
+which should be the common case for locals (there can be still polymorphism
+from the enclosing declaration). -}
+isRecValueGroup :: [Cry.Decl] -> Maybe [CryRecEqn]
+isRecValueGroup = traverse isRecValDecl
+  where
+  isRecValDecl d =
+    do def <- case Cry.dDefinition d of
+                Cry.DExpr e -> pure e
+                _           -> Nothing
+       ty <- Cry.isMono (Cry.dSignature d)
+       (len,elTy) <- Cry.tIsSeq ty
+       pure CryRecEqn { ceqName = Cry.dName d
+                      , ceqTy   = ty
+                      , ceqLen  = len
+                      , ceqElTy = elTy
+                      , ceqDef  = def
+                      }
+
+compileRecursiveStreams :: [CryRecEqn] -> S.SpecM Expr -> S.SpecM Expr
+compileRecursiveStreams defs _k =
+  do names <- traverse getName defs
+     let nameMap = Map.fromList [ (x,d) | (x,_,d) <- names ]
+     S.withLocals [ (x,t) | (_,t,x) <- names ]
+       do irdefs <- traverse (getDef nameMap) defs
+          S.unsupported (dbg irdefs)
+  where
+  dbg = Text.pack . show . vcat . map ppDef
+
+  ppDef (x,d) =
+    pp x <+> "=" <+> pp d
+
+  getName eqn =
+    do len  <- compileStreamSizeType (ceqLen eqn)
+       elTy <- compileValType (ceqElTy eqn)
+       let nm = ceqName eqn
+       pure (nm, ceqTy eqn, IRName (NameId nm) (TStream len elTy))
+
+  getDef nameMap eqn =
+    do sequ <- compileExprToSeq nameMap (ceqDef eqn)
+       nm   <- case Map.lookup (ceqName eqn) nameMap of
+                 Just x -> pure x
+                 Nothing -> panic "compileRecursiveStreams"
+                                [ "Missing name", show (pp (ceqName eqn)) ]
+       pure (nm, sequ)
+
+
 type Seq = IRSeq Cry.TParam NameId Expr
 
 compileExprToExternSeq :: Map Cry.Name Name -> Cry.Expr -> S.SpecM Seq
@@ -776,7 +832,8 @@ compileComprehensionToSeq grp seqLen elTy expr mss =
   case mss of
 
     -- sequential (XXX: Let)
-    [ ms@(_ : _ : _) ] -> compileArmSingle ms
+    --n [ ms@(_ : _ : _) ] -> compileArmSingle ms
+    [ ms ] -> compileArmSingle ms
 
     -- parallel
     _ ->
@@ -801,17 +858,24 @@ compileComprehensionToSeq grp seqLen elTy expr mss =
           IRExpr .
           IRLet x (callPrim (TupleSel i n) [ IRExpr (IRVar v) ] ity)
 
-  toMatch (xs, se) =
+  toMatch (xs, (e,ms)) =
     case xs of
-      [(x,_,_)] -> pure (x, se)
+      [(x,_,_)] ->
+        pure
+          case ms of
+            [m] -> m
+            _   -> (x,seqSeq e ms)
       _ ->
         do nameId <- S.doCryC M.newNameId
            let ty = TTuple [ t | (_,_,t) <- xs ]
            let name = IRName { irNameName = nameId, irNameType = ty }
-           pure (name, se)
+           pure (name, seqSeq e ms)
 
-  compileArmSingle ms = snd <$> compileArm [] ms \_ -> compileExpr expr elTy
+  compileArmSingle ms = mk <$> compileArm [] ms \_ -> compileExpr expr elTy
+    where mk (_,(e,cms)) = seqSeq e cms
 
+  -- XXX: We only need to construct the tuple if the value expression uses
+  -- more than one of the variables, which ias pretty uncommon
   compileArmTuple ms =
     compileArm [] ms \xs ->
       pure case [ IRExpr (IRVar x) | (x,_,_) <- xs ] of
@@ -819,6 +883,7 @@ compileComprehensionToSeq grp seqLen elTy expr mss =
              es  -> mkTuple es
 
   -- sequence of matches
+  -- (type_info, (kvalue, matches))
   compileArm done ms k =
     case ms of
       [] ->
@@ -826,7 +891,7 @@ compileComprehensionToSeq grp seqLen elTy expr mss =
                dtys  = [ (x,ty,cty)  | (x,ty,cty,_)  <- bs]
                ddefs = [ (x,def) | (x,_,_,def) <- bs ]
            e <- k dtys
-           pure (dtys, SeqSeq e ddefs)
+           pure (dtys, (e, ddefs))
       m : more ->
         do (x,ty,cty,def) <- compileMatch m
            S.withLocals [(x,ty)] (compileArm ((x,ty,cty,def) : done) more k)
@@ -839,63 +904,5 @@ compileComprehensionToSeq grp seqLen elTy expr mss =
            let name = IRName (NameId x) locElTy
            pure (name,ty,locElTy,it)
       Cry.Let {} -> S.unsupported "XXX: Let in EComp"
-
---------------------------------------------------------------------------------
-
-data CryRecEqn = CryRecEqn
-  { ceqName :: Cry.Name
-  , ceqTy   :: Cry.Type
-  , ceqLen  :: Cry.Type
-  , ceqElTy :: Cry.Type
-  , ceqDef  :: Cry.Expr
-  }
-
-{- | Check if a recursive group is suitable for recursive stream compilation.
-Currently we require that all definitions are monomorphic streams,
-which should be the common case for locals (there can be still polymorphism
-from the enclosing declaration). -}
-isRecValueGroup :: [Cry.Decl] -> Maybe [CryRecEqn]
-isRecValueGroup = traverse isRecValDecl
-  where
-  isRecValDecl d =
-    do def <- case Cry.dDefinition d of
-                Cry.DExpr e -> pure e
-                _           -> Nothing
-       ty <- Cry.isMono (Cry.dSignature d)
-       (len,elTy) <- Cry.tIsSeq ty
-       pure CryRecEqn { ceqName = Cry.dName d
-                      , ceqTy   = ty
-                      , ceqLen  = len
-                      , ceqElTy = elTy
-                      , ceqDef  = def
-                      }
-
-compileRecursiveStreams :: [CryRecEqn] -> S.SpecM Expr -> S.SpecM Expr
-compileRecursiveStreams defs _k =
-  do names <- traverse getName defs
-     let nameMap = Map.fromList [ (x,d) | (x,_,d) <- names ]
-     S.withLocals [ (x,t) | (_,t,x) <- names ]
-       do irdefs <- traverse (getDef nameMap) defs
-          S.unsupported (dbg irdefs)
-  where
-  dbg = Text.pack . show . vcat . map ppDef
-
-  ppDef (x,d) =
-    pp x <+> "=" <+> pp d
-
-  getName eqn =
-    do len  <- compileStreamSizeType (ceqLen eqn)
-       elTy <- compileValType (ceqElTy eqn)
-       let nm = ceqName eqn
-       pure (nm, ceqTy eqn, IRName (NameId nm) (TStream len elTy))
-
-  getDef nameMap eqn =
-    do sequ <- compileExprToSeq nameMap (ceqDef eqn)
-       nm   <- case Map.lookup (ceqName eqn) nameMap of
-                 Just x -> pure x
-                 Nothing -> panic "compileRecursiveStreams"
-                                [ "Missing name", show (pp (ceqName eqn)) ]
-       pure (nm, sequ)
-
 
 

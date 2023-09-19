@@ -64,6 +64,11 @@ data IRSeq tname name e =
     -- ^ Sequential comprehension (at least 2 entries in the list)
     -- @[ e | a <- xs, b <- ys ]@
 
+seqSeq :: e -> [ (IRName tname name, IRSeq tname name e) ] -> IRSeq tname name e
+seqSeq e ms =
+  case ms of
+    [_] -> SeqPar e ms
+    _   -> SeqSeq e ms
 
 instance (PP tname, PP name, PP e) => PP (IRSeq tname name e) where
   pp se =
