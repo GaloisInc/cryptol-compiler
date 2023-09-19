@@ -35,6 +35,7 @@ module Cryptol.Compiler.Cry2IR.RecursiveStreams where
 
 import Data.List(intersperse)
 import Cryptol.Compiler.PP
+import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR.Cryptol
 
 
@@ -57,7 +58,7 @@ data IRSeq tname name e =
     -- ^ Drop elements from a sequence
 
   | SeqPar e [ (IRName tname name, IRSeq tname name e) ]
-    -- ^ Parallel comprehension, single generator in each arm
+    -- ^ Parallel comprehension, single generator in each arm.
     -- @[ e | a <- xs | b <- ys ]@
 
   | SeqSeq e [ (IRName tname name, IRSeq tname name e) ]
@@ -67,6 +68,8 @@ data IRSeq tname name e =
 seqSeq :: e -> [ (IRName tname name, IRSeq tname name e) ] -> IRSeq tname name e
 seqSeq e ms =
   case ms of
+    []  -> panic "seqSeq" ["[]"]  -- This could become the e,pty list,
+                                  -- but it really shouldn't happen
     [_] -> SeqPar e ms
     _   -> SeqSeq e ms
 
@@ -95,3 +98,4 @@ instance (PP tname, PP name, PP e) => PP (IRSeq tname name e) where
       in withPrec 0
            (vcat (("[" <+> pp e) : zipWith (<+>) prefs (map ppM ps) ++ ["]"]))
 
+--------------------------------------------------------------------------------

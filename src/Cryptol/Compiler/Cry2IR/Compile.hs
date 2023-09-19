@@ -22,6 +22,7 @@ import Cryptol.Compiler.Cry2IR.Monad qualified as S
 import Cryptol.Compiler.Cry2IR.Specialize
 import Cryptol.Compiler.Cry2IR.InstanceMap
 import Cryptol.Compiler.Cry2IR.RecursiveStreams
+import Cryptol.Compiler.Cry2IR.CompileSeq
 
 
 compileModule :: Cry.Module -> M.CryC ()
@@ -686,18 +687,13 @@ isRecValueGroup = traverse isRecValDecl
                       }
 
 compileRecursiveStreams :: [CryRecEqn] -> S.SpecM Expr -> S.SpecM Expr
-compileRecursiveStreams defs _k =
+compileRecursiveStreams defs k =
   do names <- traverse getName defs
      let nameMap = Map.fromList [ (x,d) | (x,_,d) <- names ]
      S.withLocals [ (x,t) | (_,t,x) <- names ]
        do irdefs <- traverse (getDef nameMap) defs
-          S.unsupported (dbg irdefs)
+          compileRecSeqs irdefs k
   where
-  dbg = Text.pack . show . vcat . map ppDef
-
-  ppDef (x,d) =
-    pp x <+> "=" <+> pp d
-
   getName eqn =
     do len  <- compileStreamSizeType (ceqLen eqn)
        elTy <- compileValType (ceqElTy eqn)
@@ -713,7 +709,6 @@ compileRecursiveStreams defs _k =
        pure (nm, sequ)
 
 
-type Seq = IRSeq Cry.TParam NameId Expr
 
 compileExprToExternSeq :: Map Cry.Name Name -> Cry.Expr -> S.SpecM Seq
 compileExprToExternSeq grp e =
@@ -753,10 +748,9 @@ compileExprToSeq grp expr0 =
 
     Cry.EPropGuards {} -> S.unsupported "EPropGuards/stream"
 
-    Cry.EComp len ty res ms ->
-      do isz   <- compileStreamSizeType len
-         elTy <- compileValType ty
-         compileComprehensionToSeq grp isz elTy res ms
+    Cry.EComp _len ty res ms ->
+      do elTy <- compileValType ty
+         compileComprehensionToSeq grp elTy res ms
 
     Cry.EWhere {} -> S.unsupported "EWhere"
 
@@ -826,9 +820,8 @@ compileExprToSeq grp expr0 =
 
 
 compileComprehensionToSeq ::
-  Map Cry.Name Name ->
-  StreamSize -> Type -> Cry.Expr -> [[Cry.Match]] -> S.SpecM Seq
-compileComprehensionToSeq grp seqLen elTy expr mss =
+  Map Cry.Name Name -> Type -> Cry.Expr -> [[Cry.Match]] -> S.SpecM Seq
+compileComprehensionToSeq grp elTy expr mss =
   case mss of
 
     -- sequential (XXX: Let)

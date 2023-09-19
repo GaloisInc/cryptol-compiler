@@ -170,7 +170,8 @@ data IRStreamExpr tname name expr =
       -}
 
     , irseEntries :: [IRName tname name]
-      {- ^ Streams whose values are used outside the recursive group.
+      {- ^ Streams whose values are used outside the recursive group
+ -         (i.e., these are the "exported streams").
          Each of these needs its own copy of the *entire* steram state, as they
          may be consumed in different ways.
 
