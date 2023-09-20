@@ -20,6 +20,10 @@ module Cryptol.Compiler.IR
   , IRCall(..)
   , IRCallable(..)
   , IRTopFunCall(..)
+  , callPrimG
+  , callSizePrim
+  , callPrim
+  , mkTuple
 
     -- ** Streams
   , IRStreamExpr(..)
@@ -254,6 +258,51 @@ instance HasType (IRExpr tname name) where
   typeOf (IRExpr e) = typeOf e
 
 
+--------------------------------------------------------------------------------
+-- Common Utilities
+
+-- | Call a primitive (no instances, or type arguments).
+callPrimG ::
+  IRPrim                        {- ^ Primitive name -} ->
+  [(IRSize tname,SizeVarSize)]  {-^ Size arguments -} ->
+  [IRExpr tname name]           {-^ Expression arguments -} ->
+  IRType tname                  {-^ Result type -} ->
+  IRExpr tname name
+callPrimG prim szs es tgtT =
+  IRExpr $ IRCallFun
+    IRCall
+      { ircFun =
+          IRTopFun
+            IRTopFunCall
+               { irtfName =
+                   IRFunName
+                    { irfnName     = IRPrimName prim
+                    , irfnInstance = FunInstance []
+                    }
+               , irtfTypeArgs = []
+               , irtfSizeArgs = szs
+               }
+      , ircFunType = monoFunType (map typeOf es) tgtT
+      , ircArgTypes = map typeOf es
+      , ircResType = tgtT
+      , ircArgs = es
+      }
+
+
+
+
+callSizePrim ::
+  IRPrim ->
+  [(IRSize tname, SizeVarSize)] ->
+  IRType tname ->
+  IRExpr tname name
+callSizePrim prim es = callPrimG prim es []
+
+callPrim :: IRPrim -> [IRExpr tname name] -> IRType tname -> IRExpr tname name
+callPrim prim = callPrimG prim []
+
+mkTuple :: [IRExpr tname name] -> IRExpr tname name
+mkTuple es = callPrim Tuple es (TTuple (map typeOf es))
 
 
 --------------------------------------------------------------------------------

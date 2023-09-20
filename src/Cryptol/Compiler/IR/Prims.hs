@@ -33,6 +33,9 @@ data IRPrim =
   | EqSize
     -- ^ Check if two sizes are the same.  They are in the size args of the call
 
+  | LtSize
+    -- ^ Compare two size types.  They are in the size args of the call
+
   | LeqSize
     -- ^ Compare two size types.  They are in the size args of the call
 

@@ -107,31 +107,6 @@ prepExprDecl expr = (tparams, quals, args, body)
 
 
 
-callPrim :: IRPrim -> [Expr] -> Type -> Expr
-callPrim prim es tgtT =
-  IRExpr $ IRCallFun
-    IRCall
-      { ircFun =
-          IRTopFun
-            IRTopFunCall
-               { irtfName =
-                   IRFunName
-                    { irfnName     = IRPrimName prim
-                    , irfnInstance = FunInstance []
-                    }
-               , irtfTypeArgs = []
-               , irtfSizeArgs = []
-               }
-      , ircFunType = monoFunType (map typeOf es) tgtT
-      , ircArgTypes = map typeOf es
-      , ircResType = tgtT
-      , ircArgs = es
-      }
-
-mkTuple :: [Expr] -> Expr
-mkTuple es = callPrim Tuple es (TTuple (map typeOf es))
-
-
 compileExpr :: Cry.Expr -> Type -> S.SpecM Expr
 compileExpr expr0 tgtT =
 
@@ -719,6 +694,8 @@ compileExprToExternSeq ::
 compileExprToExternSeq grp len elTy e =
   do ec <- compileExpr e (TStream len elTy)
      let thisNames = Set.fromList (Map.elems grp)
+     -- XXX: We also can't depend on local that depend on things
+     -- in the recursive group
      let bad = freeLocals (freeNames ec) `Set.intersection` thisNames
      unless (Set.null bad) (S.unsupported "recursive stream")
      pure IRSeq { irSeqLen = len, irSeqShape = SeqExternal ec }

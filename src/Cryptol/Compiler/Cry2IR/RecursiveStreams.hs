@@ -1,36 +1,3 @@
-{- |
-
-The `i`-th element of a sequence may be defined used the following equations:
-@
-    (a # b) \@ i
-      | i < |a|     = a \@ i
-      | otherwise   = b \@ (i - |a|)
-
-    drop`{n} a \@ i  = a \@ (i + n)
-
-    take`{n} a \@ i  = a \@ i
-
-    // assumes `p`, `q`, `a` not in other alternative
-    [ e | let p = pe, a <- xs, let q = pq | b <- ys ] \@ i =
-      let p = pe
-          a = xs \@ i
-          q = pq
-          b = ys \@ i
-      in e
-
-    [ e | a <- xs, b <- ys, c <- zs ] \@ i =
-      let (xy_i,z_i) = divMod i    |zs|
-          (x_i, y_i) = divMod xy_i |ys|
-          a = xs \@ x_i
-          b = ys \@ y_i
-          c = zs \@ z_i
-      in e
-
-    (if e then s1 else s2) @ i = if e then s1 @ i else s2 @ i
-
-    (e where ds) @ i           = (e @ i) where ds
-@
--}
 module Cryptol.Compiler.Cry2IR.RecursiveStreams where
 
 import Cryptol.TypeCheck.AST qualified as Cry

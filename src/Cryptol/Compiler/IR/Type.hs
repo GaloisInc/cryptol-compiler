@@ -140,7 +140,12 @@ traitMap :: Ord tname => [IRTrait tname] -> Map tname [IRTraitName]
 traitMap ts =
   Map.fromListWith (++) [ (irTraitType t, [irTraitName t]) | t <- ts ]
 
-
+-- | Get the size part of a finie size.  Panics if infinite.
+streamSizeToSize :: IRStreamSize tname -> IRSize tname
+streamSizeToSize s =
+  case s of
+    IRSize x -> x
+    IRInfSize -> panic "streamSizeToSize" ["inf"]
 
 --------------------------------------------------------------------------------
 -- Pretty Printing
