@@ -33,22 +33,29 @@ The `i`-th element of a sequence may be defined used the following equations:
 -}
 module Cryptol.Compiler.Cry2IR.RecursiveStreams where
 
-import Data.List(intersperse)
+import Cryptol.TypeCheck.AST qualified as Cry
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.Error(panic)
+import Cryptol.Compiler.IR.EvalType
 import Cryptol.Compiler.IR.Cryptol
 
 
+-- | A sequence, annotate with its length.
+data IRSeq tname name e = IRSeq
+  { irSeqLen    :: IRStreamSize tname
+  , irSeqShape  :: IRSeqShape tname name e
+  }
+
 -- | The language for defining recursive sequence equations
-data IRSeq tname name e =
-    SeqExternal (IRStreamSize tname) e
+data IRSeqShape tname name e =
+    SeqExternal e
     -- ^ An external sequence
     -- (maybe not depend on variables from this recursive group)
 
   | SeqVar (IRName tname name)
     -- ^ A sequence from this recursive group
 
-  | SeqAppend [ IRSeq tname name e ]
+  | SeqAppend (IRSeq tname name e) (IRSeq tname name e)
     -- ^ Append sequences
 
   | SeqIf e (IRSeq tname name e) (IRSeq tname name e)
@@ -65,20 +72,47 @@ data IRSeq tname name e =
     -- ^ Sequential comprehension (at least 2 entries in the list)
     -- @[ e | a <- xs, b <- ys ]@
 
-seqSeq :: e -> [ (IRName tname name, IRSeq tname name e) ] -> IRSeq tname name e
-seqSeq e ms =
-  case ms of
-    []  -> panic "seqSeq" ["[]"]  -- This could become the e,pty list,
-                                  -- but it really shouldn't happen
-    [_] -> SeqPar e ms
-    _   -> SeqSeq e ms
+seqSeq ::
+  IRStreamSize tname ->
+  e ->
+  [ (IRName tname name, IRSeq tname name e) ] ->
+  IRSeq tname name e
+seqSeq len e ms =
+  IRSeq
+    { irSeqLen = len
+    , irSeqShape =
+        case ms of
+          []  -> panic "seqSeq" ["[]"]  -- This could become the empty list,
+                                        -- but it really shouldn't happen
+          [_] -> SeqPar e ms
+          _   -> SeqSeq e ms
+    }
+
+seqSeq' ::
+  Eq tname =>
+  [IRStreamSize tname] {- ^ lengths of matches -} ->
+  e ->
+  [ (IRName tname name, IRSeq tname name e) ] ->
+  IRSeq tname name e
+seqSeq' lens = seqSeq (newLen lens)
+  where
+  newLen todo =
+    case todo of
+      [] -> K 0
+      [l] -> l
+      l : more -> evalSizeType Cry.TCMul [l,newLen more]
+
+
 
 instance (PP tname, PP name, PP e) => PP (IRSeq tname name e) where
+  pp = pp . irSeqShape
+
+instance (PP tname, PP name, PP e) => PP (IRSeqShape tname name e) where
   pp se =
     case se of
-     SeqExternal _ e -> "EXT" <.> parens (withPrec 0 (pp e))
+     SeqExternal e -> "EXT" <.> parens (withPrec 0 (pp e))
      SeqVar x -> pp x
-     SeqAppend xs -> fsep (intersperse "#" (map pp xs))
+     SeqAppend xs ys -> vcat [ pp xs, "#", pp ys ]
      SeqIf e s1 s2 ->
        parensAfter 0 $
        withPrec 0 $
