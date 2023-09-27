@@ -4,7 +4,8 @@ use crate::traits::*;
 pub trait Type : Clone {
 
   /// The type to use when passing Self values as arugments.
-  type Arg<'a> where Self : 'a;
+  type Arg<'a> : Copy
+    where Self : 'a;
 
   /// Extra information to pass for types that need dynamic information
   /// to create a value.
@@ -68,3 +69,5 @@ pub trait Sequence : Type {
 /// All word representaitons should support these operations.
 pub trait Word : Sequence<Item=bool> {
 }
+
+
