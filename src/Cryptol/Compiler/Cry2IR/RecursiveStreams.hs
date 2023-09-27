@@ -39,6 +39,21 @@ data IRSeqShape tname name e =
     -- ^ Sequential comprehension (at least 2 entries in the list)
     -- @[ e | a <- xs, b <- ys ]@
 
+{- drop normal form:
+
+
+drop only on recursive variables
+
+drop n (ext e) = ext (drop n e)
+drop n (xs # ys) = if n < len xs then drop n xs # ys
+                                 else drop (n - len xs) ys
+drop n (if c xs ys) = if c then drop n xs else drop n ys
+drop n [ e | x <- xs | y <- ys ] = [ e | x <- drop n xs | y <_ drop n ys ]
+drop n [ e | x <- xs, y <- ys ] = ?
+
+-}
+
+
 seqSeq ::
   IRStreamSize tname ->
   e ->
@@ -69,6 +84,23 @@ seqSeq' lens = seqSeq (newLen lens)
       [l] -> l
       l : more -> evalSizeType Cry.TCMul [l,newLen more]
 
+
+irSeqElTy :: HasType e => IRSeq (TName e) name e -> IRType (TName e)
+irSeqElTy se =
+  case irSeqShape se of
+    SeqExternal e   -> fromStream (typeOf e)
+    SeqVar x        -> fromStream (typeOf x)
+    SeqAppend xs _  -> irSeqElTy xs
+    SeqIf _ xs _    -> irSeqElTy xs
+    SeqDrop _ xs    -> irSeqElTy xs
+    SeqPar e _      -> typeOf e
+    SeqSeq e _      -> typeOf e
+
+  where
+  fromStream ty =
+    case ty of
+      TStream _ t -> t
+      _ -> panic "irSeqElTy" ["Not a stream"]
 
 
 instance (PP tname, PP name, PP e) => PP (IRSeq tname name e) where

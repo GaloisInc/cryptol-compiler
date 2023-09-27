@@ -3,6 +3,7 @@ module Cryptol.Compiler.IR.Type
   , SizeVarSize(..)
   , Cry.TFun(..)
   , Cry.Nat'(..)
+  , maxSizeVal
   ) where
 
 import Data.Map(Map)
@@ -119,6 +120,9 @@ type instance TName (a,b)     = TName b
 
 --------------------------------------------------------------------------------
 -- Common utilities
+
+pattern K :: Integer -> IRStreamSize tname
+pattern K n = IRSize (IRFixedSize n)
 
 -- | Is this a known size type or infinity.
 isKnownStreamSize :: IRStreamSize tname  -> Maybe Cry.Nat'

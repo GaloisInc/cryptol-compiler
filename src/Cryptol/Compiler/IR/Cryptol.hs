@@ -46,6 +46,9 @@ type FunDef = IRFunDef Cry.TParam NameId
 -- | Expressions, specialized to Cryptol names
 type Expr = IRExpr Cry.TParam NameId
 
+-- | Stream expressions, specialized to Cryptol types
+type StreamExpr = IRStreamExpr Cry.TParam NameId Expr
+
 -- | Function calls, specialized to Cryptol names
 type Call = IRCall Cry.TParam NameId Expr
 

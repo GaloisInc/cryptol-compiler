@@ -1,13 +1,16 @@
+{-# Language LambdaCase #-}
 module Cryptol.Compiler.Cry2IR.Compile where
 
 import Data.Set qualified as Set
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.List(elemIndex)
+import Data.Text(Text)
 import Data.Text qualified as Text
-import Control.Monad(zipWithM,forM,unless)
+import Control.Monad(zipWithM,forM,unless,guard)
 
 import Cryptol.TypeCheck.AST qualified as Cry
+import Cryptol.IR.FreeVars qualified as Cry
 import Cryptol.Utils.RecordMap qualified as Cry
 import Cryptol.Utils.Ident qualified as Cry
 
@@ -632,6 +635,158 @@ coerceTo e tgtT' =
 --------------------------------------------------------------------------------
 
 -------------------------------------------------------------------------------
+-- Simeple recursive equations, of the form:
+-- xs = init # [ f a b c | a <- g1 | b <- g2 | c <- g3 ]
+-- the generators may depend on the last `length init` elements of `xs`
+-- or streams not depending on x
+
+compileRecStream ::
+  Name        {-^ Recursive stream name -} ->
+  Cry.Expr    {-^ Definition -} ->
+  S.SpecM Expr
+compileRecStream x def =
+  do mb <- isAppend def
+     case mb of
+       Just (front,_back,ty,xs,ys)
+         | isExtern xs ->
+           do len  <- compileSizeType front
+              maxHist <- case isKnownSize len of
+                           Just n -> pure n
+                           Nothing ->
+                              S.unsupported "history needs to be constant"
+              elTy <- compileValType ty
+              hist <- compileExpr xs (TArray len elTy)
+              (body,exts) <- compTail elTy maxHist ys
+              pure $
+                IRExpr $
+                IRStream
+                IRStreamExpr
+                  { irsType     = irNameType x
+                  , irsExterns  = exts
+                  , irsInit     = hist
+                  , irsNext     = body
+                  }
+
+       _ -> S.unsupported $ Text.pack
+                          $ unlines [ "Recursive stream needs: xs # ys"
+                                    , show $ cryPP def
+                                    ]
+
+  where
+  compTail elTy maxHist expr =
+    case expr of
+      Cry.ELocated _rng e1 -> compTail elTy maxHist e1
+      Cry.EComp _len _ty res arms ->
+        do rgens <- forM arms \case
+                      [ms] -> compGen maxHist ms
+                      _    -> S.unsupported "arm with multiple matches"
+           let exts = [ ex     | (_,_,_,Just ex) <- rgens ]
+               vars = [ (a,t) | (a,t,_,_) <- rgens ]
+               mkLet (a,_,ex,_) e = IRExpr (IRLet a ex e)
+           body <- S.withLocals vars (compileExpr res elTy)
+           pure (foldr mkLet body rgens, exts)
+
+      _ -> do e <- doRecGen elTy maxHist expr
+              pure (e,[])
+
+
+  compGen maxHist g =
+    case g of
+      Cry.Let {} -> S.unsupported "`let` in generator of recursive stream"
+      Cry.From y len elTy expr ->
+        do rty <- compileValType elTy
+           (rexpr,histOrExt) <-
+              if isExtern expr
+                then
+                  do extLen      <- compileStreamSizeType len
+                     (extN,extE) <- doExternGen extLen rty expr
+                     let val = callPrim Head [ IRExpr (IRVar extN) ] rty
+                     pure (val, Just (extN,extE))
+                else
+                  do val <- doRecGen rty maxHist expr
+                     pure (val, Nothing)
+
+           let name = IRName { irNameName = NameId y
+                             , irNameType = rty
+                             }
+           pure (name, elTy, rexpr, histOrExt)
+
+  doExternGen len elTy e =
+    do nameId <- S.doCryC M.newNameId
+       let ty = TStream len elTy
+           name = IRName { irNameName = nameId, irNameType = ty }
+       ce <- compileExpr e ty
+       pure (name, ce)
+
+
+  doRecGen elTy n e =
+    case e of
+      Cry.ELocated _rng e1 -> doRecGen elTy n e1
+      Cry.EVar x'
+        | cryName == x' ->
+          if 0 < n && n < maxSizeVal
+             then let amt = (IRFixedSize (n-1), MemSize)
+                  in pure (callSizePrim Hist [ amt ] elTy)
+             else S.unsupported "non-positive or too large history"
+
+      _ ->
+        do mb <- isDrop e
+           case mb of
+             Nothing -> S.unsupported "only `drop` in rec. gen."
+             Just (amt,e1) ->
+               do iamt <- compileSizeType amt
+                  case isKnownSize iamt of
+                    Just i -> doRecGen elTy (n - i) e1
+                    Nothing ->
+                      S.unsupported "drop size argument needs to be static"
+
+
+  cryName = case irNameName x of
+              NameId y -> y
+              _ -> panic "compileRecStream" ["Name is anon"]
+
+  isExtern :: Cry.Expr -> Bool
+  isExtern ce = not (cryName `Set.member` Cry.valDeps (Cry.freeVars ce))
+
+  isAppend e =
+    do mb <- isPrim "#" e
+       let check ([front,back,elTy],[e1,e2]) = (front,back,elTy,e1,e2)
+           check _ = panic "isAppend" ["Inavlid arguments"]
+       pure (check <$> mb)
+
+  isDrop e =
+    do mb <- isPrim "drop" e
+       let check ([front,_back,_elTy], [a]) = (front,a)
+           check _ = panic "isDrop" ["Inavlid arguments"]
+       pure (check <$> mb)
+
+  isPrim :: Text -> Cry.Expr -> S.SpecM (Maybe ([Cry.Type], [Cry.Expr]))
+  isPrim name expr0 =
+    case expr0 of
+      Cry.ELocated _rng e1 -> isPrim name e1
+      Cry.EApp {} ->
+        do let (args',expr1)            = Cry.splitWhile Cry.splitApp expr0
+               args                     = reverse args'
+               (expr2,tyArgs,_profApps) = Cry.splitExprInst expr1
+               expr                     = Cry.dropLocs expr2
+           case expr of
+             Cry.EVar fu ->
+               do mbPrim <- S.doCryC (M.isPrimDecl fu)
+                  pure
+                    do p <- mbPrim
+                       guard (p == Cry.prelPrim name)
+                       pure (tyArgs,args)
+             _ -> pure Nothing
+      _ -> pure Nothing
+
+
+
+
+
+
+
+
+-------------------------------------------------------------------------------
 
 data CryRecEqn = CryRecEqn
   { ceqName :: Cry.Name
@@ -663,29 +818,20 @@ isRecValueGroup = traverse isRecValDecl
 
 compileRecursiveStreams :: [CryRecEqn] -> S.SpecM Expr -> S.SpecM Expr
 compileRecursiveStreams defs k =
-  do names <- traverse getName defs
-     let nameMap = Map.fromList [ (x,d) | (x,_,d) <- names ]
-     S.withLocals [ (x,t) | (_,t,x) <- names ]
-       do irdefs <- traverse (getDef nameMap) defs
-          compileRecSeqs irdefs k
+  case defs of
+    [eqn] ->
+      do (_,ty,x) <- getName eqn
+         d <- compileRecStream x (ceqDef eqn)
+         body <- S.withLocals [(x,ty)] k
+         pure (IRExpr (IRLet x d body))
+    _ -> S.unsupported "currently only single recursive equation"
+
   where
   getName eqn =
     do len  <- compileStreamSizeType (ceqLen eqn)
        elTy <- compileValType (ceqElTy eqn)
        let nm = ceqName eqn
        pure (nm, ceqTy eqn, IRName (NameId nm) (TStream len elTy))
-
-  -- XXX
-  getDef nameMap eqn =
-    do nm   <- case Map.lookup (ceqName eqn) nameMap of
-                 Just x -> pure x
-                 Nothing -> panic "compileRecursiveStreams"
-                                [ "Missing name", show (pp (ceqName eqn)) ]
-       (len,elTy) <- case irNameType nm of
-                        TStream len elTy -> pure (len,elTy)
-                        _ -> panic "compileRecursiveStreams" ["Not a stream"]
-       sequ <- compileExprToSeq nameMap len elTy (ceqDef eqn)
-       pure (nm, sequ)
 
 
 

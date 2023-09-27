@@ -97,24 +97,9 @@ instance
 instance
   (FreeNames expr, TName expr ~ tname, VName expr ~ name, Ord name) =>
   FreeNames (IRStreamExpr tname name expr) where
-  freeNames expr =
-    Free
-      { freeTop    = freeTop defFree
-      , freeLocals = locals
-      , freeSize   = sizes
-      }
+  freeNames expr = foldr (removeLocal . fst) fs (irsExterns expr)
     where
-    defFree       = freeNames (irseDecls expr)
-    streamVars    = Set.fromList (map irsdName (irseDecls expr))
-
-    locals        = Set.difference (freeLocals defFree) streamVars
-    sizes         = Set.delete (irseCurIndex expr) (freeSize defFree)
-
-
-instance
-  (FreeNames expr, TName expr ~ tname, VName expr ~ name, Ord name) =>
-  FreeNames (IRStreamDef tname name expr) where
-  freeNames d = freeNames (irsdDef d)
+    fs = freeNames (map snd (irsExterns expr), (irsInit expr, irsNext expr))
 
 instance (Ord tname, Ord name) => FreeNames (IRExpr tname name) where
   freeNames (IRExpr e) = freeNames e

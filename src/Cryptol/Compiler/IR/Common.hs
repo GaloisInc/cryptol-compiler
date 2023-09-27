@@ -4,6 +4,9 @@ import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 
 import Cryptol.Compiler.PP
 
+-- | Largest value that will fit in a "size".
+maxSizeVal :: Integer
+maxSizeVal = 2^(64::Int) - 1
 
 -- | The size of a numeric type parameter.
 data SizeVarSize =

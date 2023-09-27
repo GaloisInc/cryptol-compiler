@@ -148,15 +148,14 @@ instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
 instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
   ApSubst (IRStreamExpr tname name expr) where
   apSubstMaybe su expr =
-    do (defs,entries) <- apSubstMaybe su (irseDecls expr, irseEntries expr)
-       pure expr { irseDecls = defs, irseEntries = entries }
-
-instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
-  ApSubst (IRStreamDef tname name expr) where
-  apSubstMaybe su def =
-    do (hist,expr) <- apSubstMaybe su (irsdHistory def, irsdDef def)
-       pure def { irsdHistory = hist, irsdDef = expr }
-
+    do (ty, (exts, (ini,nex))) <- apSubstMaybe su (irsType expr,
+                                                  (irsExterns expr,
+                                                  (irsInit expr, irsNext expr)))
+       pure IRStreamExpr
+              { irsType = ty
+              , irsExterns = exts
+              , irsInit = ini
+              , irsNext = nex }
 
 
 instance (Ord tname) => ApSubst (IRTopFunCall tname name) where

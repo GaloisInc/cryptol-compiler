@@ -27,7 +27,6 @@ module Cryptol.Compiler.IR
 
     -- ** Streams
   , IRStreamExpr(..)
-  , IRStreamDef(..)
 
     -- * Types
   , IRType(..)
@@ -40,6 +39,8 @@ module Cryptol.Compiler.IR
   , SizeVarSize(..)
   , isKnownStreamSize
   , isKnownSize
+  , pattern K
+  , maxSizeVal
 
     -- ** Function Types
   , IRFunType(..)
@@ -154,43 +155,13 @@ data IRCall tname name expr =
     } deriving (Functor,Foldable,Traversable)
 
 
--- | A group of stream equations.
 data IRStreamExpr tname name expr =
   IRStreamExpr
-    { irseCurIndex :: IRSizeName tname
-      {- ^ Name used to refer to the current index.
-           This becomes a parmater to the `next` function for the stream,
-           and may be used in the body (e.g., to decide if we are in the
-           base case or in the recursive case.
-       -}
-
-    , irseDecls :: [ IRStreamDef tname name expr ]
-      {- ^ Defines how to compute the next element of a stream.
-         An expression may use the values of any history variables,
-         or of previously defined expressions in the list
-         XXX: shall we allow the latter?.
-
-        This can be used to define the body of the `next` function.
-      -}
-
-    , irseEntries :: [IRName tname name]
-      {- ^ Streams whose values are used outside the recursive group
- -         (i.e., these are the "exported streams").
-         Each of these needs its own copy of the *entire* steram state, as they
-         may be consumed in different ways.
-
-         If this is a singleton, we treat the expression as a single stream.
-         If there are more than one entries, then we generate a tuple.
-      -}
+    { irsType    :: IRType tname      -- ^ TStream l a
+    , irsExterns :: [(IRName tname name, expr)]
+    , irsInit    :: expr              -- ^ TArray hist a
+    , irsNext    :: expr              -- ^ a
     } deriving (Functor,Foldable,Traversable)
-
-
--- | A stream equation, and information about its history.
-data IRStreamDef tname name expr = IRStreamDef
-  { irsdName    :: IRName tname name
-  , irsdHistory :: IRStreamSize tname
-  , irsdDef     :: expr
-  } deriving (Functor,Foldable,Traversable)
 
 --------------------------------------------------------------------------------
 -- Computing Types
@@ -204,7 +175,6 @@ type instance TName (IRCall tname name expr) = tname
 type instance TName (IRTopFunCall tname name) = tname
 type instance TName (IRCallable tname name expr) = tname
 type instance TName (IRStreamExpr tname name expr) = tname
-type instance TName (IRStreamDef tname name expr) = tname
 
 type family VName a
 type instance VName [a]       = VName a
@@ -220,7 +190,6 @@ type instance VName (IRCall tname name expr) = name
 type instance VName (IRTopFunCall tname name) = name
 type instance VName (IRCallable tname name expr) = name
 type instance VName (IRStreamExpr tname name expr) = name
-type instance VName (IRStreamDef tname name expr) = name
 
 
 
@@ -246,10 +215,7 @@ instance (HasType expr, TName expr ~ tname) =>
 
 instance (HasType expr, TName expr ~ tname) =>
   HasType (IRStreamExpr tname name expr) where
-  typeOf expr =
-    case map typeOf (irseEntries expr) of
-      [t] -> t
-      ts  -> TTuple ts
+  typeOf = irsType
 
 instance HasType (IRCall tname name expr) where
   typeOf = ircResType
@@ -387,16 +353,17 @@ instance (PP tname, PP name, PP expr) => PP (IRExprF tname name expr) where
 instance (PP tname, PP name, PP expr) =>
   PP (IRStreamExpr tname name expr) where
   pp expr =
-    "stream" <+> "{"
-      $$ nest 2 (vcat (map pp (irseDecls expr)))
-      $$ "}"
-
-instance (PP tname, PP name, PP expr) =>
-  PP (IRStreamDef tname name expr) where
-  pp d =
-    fsep [ pp (irsdName d), "{", pp (irsdHistory d), "}", "=", pp (irsdDef d) ]
-
-
+    vcat [ "stream" <+> "{"
+         , nest 2 (pp (irsInit expr))
+         , "#"
+         , nest 2 (pp (irsNext expr))
+         , ppExterns
+         ]
+    where
+    ppExtern (x,e) = pp x <+> "=" <+> pp e
+    ppExterns = case irsExterns expr of
+                  [] -> mempty
+                  ds -> "where" $$ nest 2 (vcat (map ppExtern ds))
 
 instance (PP tname, PP name) => PP (IRExpr tname name) where
   pp (IRExpr e) = pp e

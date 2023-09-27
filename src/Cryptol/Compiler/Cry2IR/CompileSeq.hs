@@ -34,138 +34,72 @@ The `i`-th element of a sequence may be defined used the following equations:
 module Cryptol.Compiler.Cry2IR.CompileSeq where
 
 import qualified Data.Text as Text
+import MonadLib
+
 import Cryptol.TypeCheck.AST qualified as Cry
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 
 import Cryptol.Compiler.PP
+import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR.EvalType
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Cry2IR.RecursiveStreams
-import Cryptol.Compiler.Cry2IR.Monad
+import Cryptol.Compiler.Monad qualified as M
+import Cryptol.Compiler.Cry2IR.Monad qualified as S
 
 type Seq = IRSeq Cry.TParam NameId Expr
 
 
-compileRecSeqs :: [(Name, Seq)] -> SpecM Expr -> SpecM Expr
-compileRecSeqs ds _k = unsupported (dbg ds)
+compileRecSeqs :: [(Name, Seq)] -> S.SpecM Expr -> S.SpecM Expr
+compileRecSeqs ds _k = S.unsupported (dbg ds)
   where
   dbg = Text.pack . show . vcat . map ppDef
   ppDef (x,d) = pp x <+> "=" <+> pp d
 
+newtype StreamM a = StreamM (StateT RW S.SpecM a)
+  deriving (Functor,Applicative,Monad)
 
-{-
+newtype RW = RW
+  { rwExterns :: [(Name, Expr)]   -- ^ Names for external streams
+  }
 
+doSpec :: S.SpecM a -> StreamM a
+doSpec m = StreamM (lift m)
 
+doCryC :: M.CryC a -> StreamM a
+doCryC m = doSpec (S.doCryC m)
 
-xs = [0,1] # xs
-
-init() {
-  extern1 = [0.1].into_iter();
-  hist_x = [udnef,undef];
-  i = 0;
-}
-
-next() {
-  let a = if i < 2
-            then extern1.next()
-            else hist_x[i%2]
-  hist_x[i % 2] = a
-  i += 1
-  a
-}
-
---------------------------------------------------------------------------------
-
-fibs = [0,1] # [ x + y  | x <- fibs | y <- drop`{1} fibs ]
-
-init():
-  extren1 = [0,1].into_iter()
-  hist_fibs = [ undef, undef ]
-  i = 0
-
-next():
-  fibs = if i < 2
-           extern1.next()
-         else
-           let x = hist_fibs[(i-2) % 2]
-           let y = hist_fibs[(i-2+1) % 2]
-  hist[i % 2] = fibs
-  fibs
-
-{ i = 0, hist_fibs=[u,u], extern = [0,1] }
-next()
-  fibs = 0; extern = [1]; hist[0] = 0     -> 0
-{ i = 1, hist_fibs=[0,u], exten = [1] }
-next()
-  fibs = 1; extern = []; hist[1] = 1      -> 1
-{i = 2, hist_fibs=[0,1], externs = [] }
-next()
-  x = hist[0] = 0
-  y = hist[1] = 1
-  fibs = 0 + 1 = 1
-  hist[0] = 1
-{ i = 3, hist_fibs=[1,1], extern = [] } -> 1
-next()
-  x = hist[1] = 1
-  y = hist[2 % 2] = hist[0] = 1
-  fib = 1 + 1 = 2
-  hist[3 % 2] = hist[1] = 2   -> 2
-{ i = 4, hist = [1,2] }
-next()
-  x = hist[2 % 2] = hist[0] = 1
-  y = hist[3 % 2] = hist[1] = 2
-  fibs = 3
-  hist[2] = 2\
-
-
---------------------------------------------------------------------------------
-
-Hmm:
-xss = [[0]] # [ [x+1 | x <- xs ] | xs <- xss ]
-
+newExtern :: Expr -> StreamM Expr
+newExtern e =
+  do x <- doCryC M.newNameId
+     let ty = typeOf e
+         elTy = case ty of
+                  TStream _ t -> t
+                  _ -> panic "newExtern" ["Not a stream"]
+     let name = IRName { irNameName = x, irNameType = ty }
+     StreamM $ sets_ \rw -> rw { rwExterns = (name, e) : rwExterns rw }
+     pure (callPrim Head [ IRExpr (IRVar name) ] elTy)
 
 
 
 --------------------------------------------------------------------------------
 
+-- XXX: we assume that if `ps` is extrenal, the `drop n ps` is also
+-- external:
+-- xs = [0] # [ (a,b) | a <- drop 1 ps, b <- xs ]
+--
+-- xs = [0,1] # drop 1 (if p then xs else qs)
 
-
-
-zig = [0] # zag
-zag = [1] # zig
-xs  = [ (a,b,c,d) | a <- ps | b <- zig | c <- zag | d <- ps ]
-
-init() {
-  extern1 = ps.into_iter();
-  extern4 = ps.into_iter();   -- 2 separate uses of `ps`
-  extern2 = [0].into_iter():
-  extern3 = [1].into_iter();
-  hist_zig = [undef]
-  hist_zag = [undef]
-  i = 0;
-}
-
-next() {
-  zig = if i < 1
-          then extern2.next()
-          else hist_zag[i % 1]
-  zag = if i< 1 then extern3.next() else hist_zig[i % 1]
-}
-
-
-
-
- -}
 
 nextFun ::
   Size {- ^ Current index -} ->
   Seq ->
-  SpecM Expr
+  StreamM Expr
 
 nextFun i s =
   case irSeqShape s of
 
-    SeqExternal e -> undefined
+    SeqExternal e -> newExtern e
     SeqVar x -> undefined
 
     SeqAppend xs ys ->
@@ -177,7 +111,11 @@ nextFun i s =
          back  <- nextFun j ys
          pure (IRExpr (IRIf cond front back))
 
-    SeqDrop n xs -> undefined
+    SeqDrop n xs ->
+      -- XXX: Overflow?
+      do let j = streamSizeToSize
+                              (evalSizeType Cry.TCAdd [ IRSize i, IRSize n ])
+         nextFun j xs
 
     SeqIf e xs ys ->
       do iThen <- nextFun i xs
@@ -188,5 +126,18 @@ nextFun i s =
 
     SeqSeq e gs -> undefined
 
+
+{-
+
+zig = [0] # zag
+zag = [1] # zig
+
+zig1 = [0,1] # zag1
+zag1 = drop`{1} zig1
+
+xs = [0,1] # ys
+
+
+-}
 
 

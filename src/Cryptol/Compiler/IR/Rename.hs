@@ -59,16 +59,12 @@ instance RenameF IRExprF where
 instance RenameF IRStreamExpr where
   frenameIP expr =
     IRStreamExpr
-       <$> traverse ?renameT (irseCurIndex expr)
-       <*> traverse frenameIP (irseDecls expr)
-       <*> traverse renameIP (irseEntries expr)
-
-instance RenameF IRStreamDef where
-  frenameIP expr =
-    IRStreamDef
-      <$> renameIP (irsdName expr)
-      <*> traverse ?renameT (irsdHistory expr)
-      <*> irsdDef expr
+      <$> traverse ?renameT (irsType expr)
+      <*> traverse renExt (irsExterns expr)
+      <*> irsInit expr
+      <*> irsNext expr
+    where
+    renExt (x,e) = (,) <$> renameIP x <*> e
 
 instance RenameF IRCall where
   frenameIP c =

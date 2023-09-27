@@ -6,10 +6,6 @@ import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR.Type
 
--- | Largest value that will fit in a "size".
-maxSizeVal :: Integer
-maxSizeVal = 2^(64::Int) - 1
-
 evalSizeType ::
   Eq tname => Cry.TFun -> [IRStreamSize tname] -> IRStreamSize tname
 evalSizeType tf args0 =
@@ -69,8 +65,6 @@ evalSizeType tf args0 =
 
       _ -> IRSize (IRComputedSize tf args)
 
-pattern K :: Integer -> IRStreamSize tname
-pattern K n = IRSize (IRFixedSize n)
 
 
 -- | Approximate the size of the result when we apply a function

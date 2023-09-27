@@ -27,6 +27,7 @@ common extensions
       DeriveFoldable,
       DeriveTraversable,
       DerivingVia,
+      GeneralizedNewtypeDeriving,
       FlexibleInstances,
       FlexibleContexts,
       TypeFamilies,

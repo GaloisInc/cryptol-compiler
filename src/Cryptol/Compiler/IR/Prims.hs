@@ -50,7 +50,11 @@ data IRPrim =
   | Iter      -- ^   (xs : Array n a)  -> Stream n a
               -- or  (xs : Word n)      -> Stream n Bit
 
-
+    -- Only in stream step expressions
+  | Head      -- ^ Next element of external stream.
+              -- (xs: Stream n a) -> a
+  | Hist      -- ^ Past element of a recursive stream. 0 is most recent.
+              -- (index: usize) -> a
     deriving (Show,Eq,Ord)
 
 
