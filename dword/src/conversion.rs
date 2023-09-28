@@ -3,18 +3,22 @@ use crate::core::{LimbT, BigLimbT,limbs_for_size};
 
 impl DWord {
 
+ /// Create a DWord of the given size, initialized by u8
   pub fn from_u8(bits: usize, value: u8) -> DWord {
     Self::from_u64(bits, value as u64)
   }
 
+  /// Create a DWord of the given size, initialized by u16
   pub fn from_u16(bits: usize, value: u16) -> DWord {
     Self::from_u64(bits, value as u64)
   }
 
+  /// Create a DWord of the given size, initialized by u32
   pub fn from_u32(bits: usize, value: u32) -> DWord {
     Self::from_u64(bits, value as u64)
   }
 
+  /// Create a DWord of the given size, initialized by u64
   pub fn from_u64(bits: usize, value: u64) -> DWord {
     let mut result = DWord::zero(bits);
     if bits == 0 { return result }
@@ -31,6 +35,7 @@ impl DWord {
     result
   }
 
+  /// Create a DWord of the given size, initialized with an unsigend integer
   pub fn from_uint(bits: usize, value: &num::BigUint) -> DWord {
     let limb_num = limbs_for_size(bits);
     let mut limbs = Vec::<LimbT>::with_capacity(limb_num);
@@ -45,6 +50,8 @@ impl DWord {
     result
   }
 
+  /// Create a DWord of the given size, initialized with an sigend integer.
+  /// The result uses 2s complement.
   pub fn from_int(bits: usize, n: &num::BigInt) -> DWord {
     let limb_num = limbs_for_size(bits);
     let mut limbs  = Vec::<LimbT>::with_capacity(limb_num);

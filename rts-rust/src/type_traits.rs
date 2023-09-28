@@ -19,7 +19,7 @@ pub trait Type : Clone {
 }
 
 
-/// All sequence representations shoudl support these operations.
+/// All finite sequence representations should support these operations.
 pub trait Sequence : Type {
   type Item : Type;
 
@@ -60,7 +60,7 @@ pub trait Sequence : Type {
 
 
   /// Get the element at a certain index.
-  /// Assert: `i < lengt()`.
+  /// Assert: `i < length()`.
   fn index(&self, i: usize) -> Self::Item;
 
 }

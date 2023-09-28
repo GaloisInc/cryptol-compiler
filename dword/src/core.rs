@@ -51,11 +51,11 @@ pub(crate) fn limbs_for_size(bits: usize) -> usize {
 
 /// Is this number of bits sufficiently small to fit in the small
 /// representation.
-fn is_small_size(bits: usize) -> bool { bits <= DWord::LIMB_BITS }
+pub(crate) fn is_small_size(bits: usize) -> bool { bits <= DWord::LIMB_BITS }
 
 /// How much padding we need in the least significant word.
 /// The result is < DWord::LIMB_BITS.
-fn padding_for_size(bits: usize) -> usize {
+pub(crate) fn padding_for_size(bits: usize) -> usize {
   DWord::LIMB_BITS * limbs_for_size(bits) - bits
 }
 

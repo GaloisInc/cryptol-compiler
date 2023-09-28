@@ -9,12 +9,14 @@ import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.Names
 
-data TypeMode = AsArg | AsOwned
+-- | Different representations for a Cryptol type.
+data TypeMode =
+    AsArg     -- ^ Borrowed represewntation, used to pass arguments
+  | AsOwned
+  -- ^ Owned representation, currently used for locals, function results,
+  -- and when the type is a field of another type
 
-
-
-
--- compute the rust type used to represent the given cryptol type
+-- | Compute the Rust type used to represent the given Cryptol type.
 compileType :: TypeMode -> IR.Type -> Rust RustType
 compileType mode ty =
   case ty of

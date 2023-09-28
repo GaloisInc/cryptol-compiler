@@ -4,6 +4,7 @@ use crate::core::{LimbT,limbs_for_size};
 use proptest::prelude::*;
 use proptest::strategy::*;
 use proptest::arbitrary::*;
+use proptest::collection::vec;
 use proptest::test_runner::*;
 
 impl ValueTree for DWord {
@@ -15,7 +16,7 @@ impl ValueTree for DWord {
   fn complicate(&mut self) -> bool { false }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone,Copy)]
 pub struct DWordStrategy { pub bits: usize }
 
 impl Strategy for DWordStrategy {
@@ -47,8 +48,8 @@ impl Arbitrary for DWord {
 
 
 
-pub fn do_test<T: Arbitrary>
-    ( s: fn (usize) -> StrategyFor<T>
+pub fn do_test<T: Arbitrary, F: Fn(usize) -> StrategyFor<T>>
+    ( s: F
     , p: fn(T)      -> Option<bool>
     ) {
   for bits in 0 .. 517 {
@@ -140,6 +141,9 @@ pub fn word_and2<S,T>(bits: usize) -> StrategyFor<(DWord,S,T)>
   arbitrary_with((bits,(),()))
 }
 
+pub fn word_vec(bits: usize) -> StrategyFor<Vec<DWord>> {
+  vec(arbitrary_with(bits), 0 .. 100)
+}
 
 
 
