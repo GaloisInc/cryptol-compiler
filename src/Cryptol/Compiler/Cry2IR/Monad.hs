@@ -55,7 +55,6 @@ import Cryptol.TypeCheck.Solver.SMT qualified as Cry
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.IR.Subst
-import Cryptol.Compiler.IR.EvalType
 
 
 newtype SpecM a = SpecM (SpecImpl a)
@@ -85,6 +84,7 @@ data RW = RW
     -- Adding properties invalidates it.
   }
 
+-- | Information about if a particular parameter is bool
 data BoolInfo =
     Known   Bool       -- ^ The parameter is/isn't bool on this path.
   | Unknown [Cry.Prop] [Trait]
