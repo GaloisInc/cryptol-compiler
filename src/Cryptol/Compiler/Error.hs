@@ -6,6 +6,7 @@ module Cryptol.Compiler.Error
 
 import Data.Text(Text)
 import Data.Text qualified as Text
+import Data.List(intersperse)
 import Control.Exception
 
 import qualified Cryptol.ModuleSystem as Cry
@@ -18,9 +19,12 @@ import Cryptol.Compiler.PP
 -- | Compiler errors.
 data CompilerError =
     LoadError Cry.ModuleError     -- ^ Error loading a Cryptol module
-  | Unsupported Text              -- ^ Something we do not support
+  | Unsupported Loc Text          -- ^ Something we do not support
   | CatchablePanic String [String]
   deriving Show
+
+-- | A way to identify a location in the program.
+type Loc = [Text]
 
 -- | Compiler warnings.
 data CompilerWarning =
@@ -32,7 +36,14 @@ instance PP CompilerError where
   pp err =
     case err of
       LoadError e -> pp (Cry.pp e)
-      Unsupported feature -> "Unsupported feature:" $$ nest 2 (pp feature)
+      Unsupported loc feature ->
+        case loc of
+          [] -> msg
+          _  -> hang locDoc 2 msg
+        where
+        locDoc = hsep (intersperse "/" (map pp loc))
+        msg = "Unsupported feature:" $$ nest 2 (pp feature)
+
       CatchablePanic m ms ->
          ("PANIC:" <+> pp (Text.pack m)) $$
             nest 2 (vcat (map (pp . Text.pack) ms))
@@ -43,5 +54,9 @@ instance PP CompilerWarning where
     case warn of
       LoadWarning w -> pp (Cry.pp w)
 
-unsupported :: Text -> a
-unsupported what = throw (Unsupported what)
+unsupported :: [Text] -> Text -> a
+unsupported loc what = throw (Unsupported loc what)
+
+unknownLoc :: Loc
+unknownLoc = []
+

@@ -3,7 +3,6 @@ module Cryptol.Compiler.Rust.CompileType where
 
 import qualified Language.Rust.Syntax as Rust
 
-import Cryptol.Compiler.Error (unsupported)
 import Cryptol.Compiler.IR.Cryptol qualified as IR
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad

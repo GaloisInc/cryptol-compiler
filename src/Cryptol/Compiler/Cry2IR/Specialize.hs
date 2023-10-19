@@ -26,9 +26,9 @@ import Cryptol.Compiler.IR.EvalType
 
 import Cryptol.Compiler.Cry2IR.Monad
 
-compilePrimDecl :: Cry.Schema -> M.CryC [(FunInstance, FunType)]
-compilePrimDecl s =
-  do ans <- compileFunDecl (Cry.sVars s) (Cry.sProps s) args res k
+compilePrimDecl :: Cry.Name -> Cry.Schema -> M.CryC [(FunInstance, FunType)]
+compilePrimDecl cn s =
+  do ans <- compileFunDecl cn (Cry.sVars s) (Cry.sProps s) args res k
      pure [ (a,b) | (a,b,_) <- ans ]
   where
   (args,res) = go [] (Cry.sType s)
@@ -42,20 +42,22 @@ compilePrimDecl s =
 
 compileFunDecl ::
   (ApSubst a, TName a ~ Cry.TParam)  =>
+  Cry.Name                              {- ^ Name of what we are compiling -} ->
   [Cry.TParam]                          {- ^ Type parameters -} ->
   [Cry.Prop]                            {- ^ Type qualifiers -} ->
   [Cry.Type]                            {- ^ Types of arguments -} ->
   Cry.Type                              {- ^ Type of result -} ->
   ([Type] -> Type -> SpecM a)           {- ^ Do actual work -} ->
   M.CryC [(FunInstance, FunType, a)]
-compileFunDecl as quals args result k =
+compileFunDecl cn as quals args result k =
   case ctrProps (infoFromConstraints quals) of
 
     -- inconsistent
     Nothing -> pure []
 
     Just (traits,props,boolProps) ->
-      runSpecM
+      runSpecM $
+        enter cn
         do addTParams as
            mapM_ addTrait traits
            addNumProps props

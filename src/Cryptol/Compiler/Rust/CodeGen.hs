@@ -11,7 +11,6 @@ import Control.Monad(forM, mapAndUnzipM)
 import Language.Rust.Syntax qualified as Rust
 
 import Cryptol.Compiler.PP
-import Cryptol.Compiler.Error(unsupported)
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
@@ -90,8 +89,8 @@ genCall call =
 
          case name of
            Left prim ->
-              do let ctx = if primIsConstructor prim then OwnContext
-                                                     else BorrowContext
+              do isCon <- primIsConstructor prim
+                 let ctx = if isCon then OwnContext else BorrowContext
                  (stmts,args) <- genCallArgs ctx call
                  rexpr <- compilePrim prim
                             PrimArgs

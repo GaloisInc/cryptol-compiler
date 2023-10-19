@@ -5,7 +5,7 @@ import Data.Text qualified as Text
 import qualified Language.Rust.Syntax as Rust
 import Cryptol.Utils.Ident qualified as Cry
 
-import Cryptol.Compiler.Error (panic,unsupported)
+import Cryptol.Compiler.Error (panic)
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Cryptol
 
@@ -39,26 +39,26 @@ instance PP PrimArgs where
     ppField :: RustPP a => [a] -> Doc
     ppField = commaSep . map rustPP
 
-unsupportedPrim :: Doc -> PrimArgs -> a
+unsupportedPrim :: Doc -> PrimArgs -> Rust a
 unsupportedPrim nm args =
   unsupported (Text.pack (show (vcat [ "primitive" <+> nm, pp args ])))
 
 
 -- | Is this a constructor primitive.
 -- If so, it takes ownership of its arguments.
-primIsConstructor :: IRPrim -> Bool
+primIsConstructor :: IRPrim -> Rust Bool
 primIsConstructor prim =
   case prim of
-    CryPrim {}  -> False
+    CryPrim {}  -> pure False
 
-    MakeSeq     -> True
-    ArrayLookup -> False
+    MakeSeq     -> pure True
+    ArrayLookup -> pure False
 
-    Tuple       -> True
-    TupleSel {} -> False
+    Tuple       -> pure True
+    TupleSel {} -> pure False
 
-    EqSize      -> False
-    LeqSize     -> False
+    EqSize      -> pure False
+    LeqSize     -> pure False
 
     Map         -> notYet
     FlatMap     -> notYet
@@ -151,7 +151,7 @@ compileCryptolPreludePrim name args =
 
 -- | Primitives defined in `Float.cry`
 compileCryptolFloatPrim :: Text -> PrimArgs -> Rust RustExpr
-compileCryptolFloatPrim = unsupported "floating point primitve" -- XXX
+compileCryptolFloatPrim _ _ = unsupported "floating point primitve" -- XXX
 
 
 

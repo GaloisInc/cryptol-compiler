@@ -46,15 +46,15 @@ compileTopDecl d =
   do insts <-
        case Cry.dDefinition d of
          Cry.DPrim       ->
-           do insts <- compilePrimDecl (Cry.dSignature d)
+           do insts <- compilePrimDecl cname (Cry.dSignature d)
               pure [ (i,ty,IRFunPrim) | (i,ty) <- insts ]
-         Cry.DForeign {} -> M.unsupported "Foregin declaration" -- XXX: Revisit
+         Cry.DForeign {} -> M.unsupported loc "Foregin declaration" -- XXX: Revisit
          Cry.DExpr e ->
            do let (as,ps,xs,body) = prepExprDecl e
               M.withCryLocals xs    -- we add locals here so we can compute
                                     -- the type of the body
                 do resTcry <- M.getTypeOf body
-                   compileFunDecl as ps (map snd xs) resTcry \args resT ->
+                   compileFunDecl cname as ps (map snd xs) resTcry \args resT ->
                       do let is = map (NameId . fst) xs
                          let nms = zipWith IRName is args
                          S.withIRLocals nms
@@ -72,9 +72,10 @@ compileTopDecl d =
                    [ (irfnInstance (irfName fd), fd) | fd <- decls ]
      case mbMap of
        Right a  -> M.addCompiled cname a
-       Left err -> M.unsupported (Text.pack (show (pp cname)) <> ": " <> err)
+       Left err -> M.unsupported loc err
 
   where
+  loc = [Text.pack (show (pp cname))]
   cname = Cry.dName d
 
   mkDecl funame (i,ty,def) =
@@ -216,7 +217,7 @@ compileLam xs' e' args tgtT = foldr addDef doFun defs
 
   addDef ((x,t),e) k =
     do ty  <- compileValType t
-       ec  <- compileExpr e ty
+       ec  <- S.enter x (compileExpr e ty)
        let nm = IRName (NameId x) ty
        ek <- S.withLocals [(nm,t)] k
        pure (IRExpr (IRLet nm ec ek))
@@ -403,8 +404,11 @@ compileLocalDeclGroup dg k =
   case dg of
     Cry.Recursive ds ->
       case isRecValueGroup ds of
-        Just yes -> compileRecursiveStreams yes k
-        Nothing  -> S.unsupported "recursive local declaration"
+        Right yes -> compileRecursiveStreams yes k
+        Left prob -> S.unsupported $ Text.unlines
+                                      [ "recursive local declaration"
+                                      , prob
+                                      ]
     Cry.NonRecursive d ->
       do let schema = Cry.dSignature d
          case (Cry.sVars schema, Cry.sProps schema) of
@@ -800,21 +804,30 @@ data CryRecEqn = CryRecEqn
 Currently we require that all definitions are monomorphic streams,
 which should be the common case for locals (there can be still polymorphism
 from the enclosing declaration). -}
-isRecValueGroup :: [Cry.Decl] -> Maybe [CryRecEqn]
+isRecValueGroup :: [Cry.Decl] -> Either Text [CryRecEqn]
 isRecValueGroup = traverse isRecValDecl
   where
   isRecValDecl d =
     do def <- case Cry.dDefinition d of
                 Cry.DExpr e -> pure e
-                _           -> Nothing
-       ty <- Cry.isMono (Cry.dSignature d)
-       (len,elTy) <- Cry.tIsSeq ty
+                _           -> Left "Recursive equation with definition"
+       ty <- fromMb "Recursive equation not monomorphic"
+             $ Cry.isMono (Cry.dSignature d)
+       (len,elTy) <- fromMb ( Text.pack $ show
+                            $ vcat [ "Recursive equation is not a sequence"
+                                   , cryPP d
+                                   ])
+                   $ Cry.tIsSeq ty
        pure CryRecEqn { ceqName = Cry.dName d
                       , ceqTy   = ty
                       , ceqLen  = len
                       , ceqElTy = elTy
                       , ceqDef  = def
                       }
+  fromMb msg mb =
+    case mb of
+      Nothing -> Left msg
+      Just a  -> Right a
 
 compileRecursiveStreams :: [CryRecEqn] -> S.SpecM Expr -> S.SpecM Expr
 compileRecursiveStreams defs k =

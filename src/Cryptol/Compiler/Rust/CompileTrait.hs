@@ -6,7 +6,6 @@ import Language.Rust.Syntax qualified as Rust
 
 import Cryptol.TypeCheck.AST qualified as Cry
 
-import Cryptol.Compiler.Error(unsupported)
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad

@@ -3,7 +3,7 @@ module Cryptol.Compiler.Rust.CompileSize where
 import Data.Word(Word8)
 import Data.Bits(shiftR)
 
-import Cryptol.Compiler.Error(panic,unsupported)
+import Cryptol.Compiler.Error(panic)
 
 import Cryptol.Compiler.IR.Cryptol
 

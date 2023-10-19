@@ -10,6 +10,7 @@ module Cryptol.Compiler.Cry2IR.Monad
     -- * Errors
   , unsupported
   , M.panic
+  , enter
 
     -- * Solver
   , checkPossible
@@ -42,16 +43,20 @@ module Cryptol.Compiler.Cry2IR.Monad
   ) where
 
 import Data.Text(Text)
+import Data.Text qualified as Text
 import Data.Map(Map)
 import Data.Map qualified as Map
 import Control.Applicative(Alternative(..),asum)
 import MonadLib
 
+import Cryptol.ModuleSystem.Name qualified as Cry
 import Cryptol.TypeCheck.TCon qualified as Cry
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.TypeCheck.Type qualified as Cry
 import Cryptol.TypeCheck.Solver.SMT qualified as Cry
 
+import Cryptol.Compiler.PP(cryPP)
+import Cryptol.Compiler.Error(Loc)
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.IR.Subst
@@ -73,6 +78,7 @@ type SpecImpl =
 data RW = RW
   { roTParams     :: [Cry.TParam]
   , roTraits      :: Map Cry.TParam [Trait]  -- indexed by variable
+  , roLoc         :: !Loc
   , rwProps       :: [Cry.Prop]
   , rwBoolProps   :: Map Cry.TParam BoolInfo
 
@@ -98,7 +104,8 @@ instance BaseM SpecM SpecM where
 runSpecM :: SpecM a -> M.CryC [a]
 runSpecM (SpecM m) = map fst <$> findAll (runStateT rw0 m)
   where
-  rw0 = RW { roTParams      = mempty
+  rw0 = RW { roLoc          = mempty
+           , roTParams      = mempty
            , roTraits       = mempty
            , rwProps        = mempty
            , rwBoolProps    = mempty
@@ -130,7 +137,9 @@ doCryCWith k (SpecM m) =
 
 -- | Abort: we found something that's unsupported.
 unsupported :: Text -> SpecM a
-unsupported x = doCryC (M.unsupported x)
+unsupported x =
+  do loc <- roLoc <$> SpecM get
+     doCryC (M.unsupported (reverse loc) ("[cry2ir] " <> x))
 
 --------------------------------------------------------------------------------
 -- Boolean constraint
@@ -392,3 +401,14 @@ withIRLocals locs k =
 
 getLocal :: NameId -> SpecM (Maybe Name)
 getLocal x = Map.lookup x . roLocalIRNames <$> SpecM get
+
+
+--------------------------------------------------------------------------------
+
+enter :: Cry.Name -> SpecM a -> SpecM a
+enter cnm m =
+  do let nm = Text.pack (show (cryPP cnm))
+     SpecM $ sets_ \rw -> rw { roLoc = nm : roLoc rw }
+     a <- m
+     SpecM $ sets_ \rw -> rw { roLoc = drop 1 (roLoc rw) }
+     pure a
