@@ -11,7 +11,6 @@ module Cryptol.Compiler.Cry2IR.InstanceMap
   , Guard(..)
   ) where
 
-import Data.Text(Text)
 import Control.Monad(foldM)
 
 import Cryptol.TypeCheck.TCon qualified as Cry
@@ -31,7 +30,7 @@ data InstanceMap a =
     deriving Functor
 
 instanceMapFromList ::
-  PP a => [(FunInstance,a)] -> Either Text (InstanceMap a)
+  PP a => [(FunInstance,a)] -> Either Doc (InstanceMap a)
 instanceMapFromList ins =
   case ins of
     [] -> Left "instance map: empty"
@@ -57,7 +56,7 @@ singletonInstanceMap (FunInstance pis) a =
 -- | Merge two isntance maps.
 -- More specific instances shadow less specific ones.
 mergeInstanceMap ::
-  PP a => InstanceMap a -> InstanceMap a -> Either Text (InstanceMap a)
+  PP a => InstanceMap a -> InstanceMap a -> Either Doc (InstanceMap a)
 mergeInstanceMap mp1 mp2 =
   case (mp1,mp2) of
     (InstanceMap opts1, InstanceMap opts2) ->

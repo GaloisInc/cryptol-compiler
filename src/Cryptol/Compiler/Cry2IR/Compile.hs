@@ -6,8 +6,7 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.List(elemIndex)
 import Data.Text(Text)
-import Data.Text qualified as Text
-import Control.Monad(zipWithM,forM,unless,guard)
+import Control.Monad(zipWithM,forM,unless,guard,when)
 
 import Cryptol.TypeCheck.AST qualified as Cry
 import Cryptol.IR.FreeVars qualified as Cry
@@ -16,6 +15,7 @@ import Cryptol.Utils.Ident qualified as Cry
 
 import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.PP
+import Cryptol.Compiler.IR.Common
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.IR.Subst
 import Cryptol.Compiler.IR.EvalType
@@ -75,7 +75,7 @@ compileTopDecl d =
        Left err -> M.unsupported loc err
 
   where
-  loc = [Text.pack (show (pp cname))]
+  loc   = [pp cname]
   cname = Cry.dName d
 
   mkDecl funame (i,ty,def) =
@@ -143,8 +143,23 @@ compileExpr expr0 tgtT =
          case sel of
            Cry.TupleSel n _   -> doTuple (Left n)
            Cry.RecordSel nm _ -> doTuple (Right nm)
-           Cry.ListSel _n _   -> S.unsupported "XXX: ListSel"
-
+           Cry.ListSel i mb ->
+             do let i' = toInteger i
+                when (i' > maxSizeVal)
+                     (unexpected "List selector index is too large.")
+                len <- case mb of
+                         Nothing -> unexpected "Missing length in ListSel"
+                         Just l  -> pure (IRFixedSize (toInteger l))
+                ety <- case tgtT of
+                         TBool -> pure (TWord len)
+                         TPoly x ->
+                           do yes <- S.caseBool x
+                              pure (if yes then TWord len
+                                           else TArray len tgtT)
+                         _ -> pure (TArray len tgtT)
+                ce <- compileExpr e ety
+                pure (callPrimG ArrayLookup [(IRFixedSize i',MemSize)] [ce]
+                                                                       tgtT)
          where
          doTuple n =
             do cty <- S.doCryC (M.getTypeOf e)
@@ -405,10 +420,9 @@ compileLocalDeclGroup dg k =
     Cry.Recursive ds ->
       case isRecValueGroup ds of
         Right yes -> compileRecursiveStreams yes k
-        Left prob -> S.unsupported $ Text.unlines
-                                      [ "recursive local declaration"
-                                      , prob
-                                      ]
+        Left prob -> S.unsupported $ vcat [ "recursive local declaration"
+                                          , prob
+                                          ]
     Cry.NonRecursive d ->
       do let schema = Cry.dSignature d
          case (Cry.sVars schema, Cry.sProps schema) of
@@ -522,7 +536,15 @@ compileCall f ts es tgtT =
      res <- case compare haveArgs needArgs of
               EQ -> pure (IRCallFun call)
               LT -> pure (IRClosure call { ircResType = TFun needTs resT })
-              GT -> S.unsupported "function over applied (higher order result)"
+              GT -> S.unsupported
+                      $ vcat [ "function over applied (higher order result)"
+                             , "function:" <+> pp funName
+                             , "type:" <+> pp funTy
+                             , "applied to" <+> pp haveArgs <+> "arguments"
+                             , "expected" <+> pp needArgs <+> "arguments"
+                             , "expected params" <+> hsep (map pp argTs) <+> "arguments"
+                             ]
+
 
      coerceTo (IRExpr res) tgtT
 
@@ -671,10 +693,9 @@ compileRecStream x def =
                   , irsNext     = body
                   }
 
-       _ -> S.unsupported $ Text.pack
-                          $ unlines [ "Recursive stream needs: xs # ys"
-                                    , show $ cryPP def
-                                    ]
+       _ -> S.unsupported $ vcat [ "Recursive stream needs: xs # ys"
+                                 , cryPP def
+                                 ]
 
   where
   compTail elTy maxHist expr =
@@ -804,7 +825,7 @@ data CryRecEqn = CryRecEqn
 Currently we require that all definitions are monomorphic streams,
 which should be the common case for locals (there can be still polymorphism
 from the enclosing declaration). -}
-isRecValueGroup :: [Cry.Decl] -> Either Text [CryRecEqn]
+isRecValueGroup :: [Cry.Decl] -> Either Doc [CryRecEqn]
 isRecValueGroup = traverse isRecValDecl
   where
   isRecValDecl d =
@@ -813,10 +834,9 @@ isRecValueGroup = traverse isRecValDecl
                 _           -> Left "Recursive equation with definition"
        ty <- fromMb "Recursive equation not monomorphic"
              $ Cry.isMono (Cry.dSignature d)
-       (len,elTy) <- fromMb ( Text.pack $ show
-                            $ vcat [ "Recursive equation is not a sequence"
-                                   , cryPP d
-                                   ])
+       (len,elTy) <- fromMb (vcat [ "Recursive equation is not a sequence"
+                                  , cryPP d
+                                  ])
                    $ Cry.tIsSeq ty
        pure CryRecEqn { ceqName = Cry.dName d
                       , ceqTy   = ty

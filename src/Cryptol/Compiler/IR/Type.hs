@@ -188,7 +188,7 @@ instance PP tname => PP (IRType tname) where
 
       TFun as b     -> parensAfter 0
                      $ withPrec 0
-                     $ parens (commaSep (map pp as)) <+> "->" <+> pp b
+                     $ parens (commaSep (map pp as)) <+> "=>" <+> pp b
 
 
 instance (PP tname) => PP (IRSizeName tname) where

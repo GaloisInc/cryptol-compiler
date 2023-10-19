@@ -1,6 +1,5 @@
 module Cryptol.Compiler.Rust.Monad where
 
-import Data.Text(Text)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set (Set)
@@ -13,9 +12,9 @@ import Language.Rust.Data.Ident qualified as Rust
 import Cryptol.Utils.Ident qualified as Cry
 import Cryptol.TypeCheck.AST qualified as Cry
 
+import Cryptol.Compiler.PP
 import Cryptol.Compiler.Error(panic,Loc)
 import Cryptol.Compiler.Error qualified as Error
-import Cryptol.Compiler.PP(pp,cryPP)
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Names
@@ -330,12 +329,12 @@ addLocalLenghtParam t ns = (i, ns { lValNames  = newVals
 
 
 -- | Enter a named scope (e.g., a delcaration)
-enter :: Text -> Rust a -> Rust a
+enter :: Doc -> Rust a -> Rust a
 enter nm (Rust m) = Rust (mapReader (\ro -> ro { roLoc = nm : roLoc ro }) m)
 
 -- | Raise an error, that something is not yet supported
-unsupported :: Text -> Rust a
+unsupported :: Doc -> Rust a
 unsupported msg =
   do l <- roLoc <$> Rust ask
-     Error.unsupported (reverse l) ("[ir2rust] " <> msg)
+     Error.unsupported (reverse l) ("[ir2rust]" <+> msg)
 

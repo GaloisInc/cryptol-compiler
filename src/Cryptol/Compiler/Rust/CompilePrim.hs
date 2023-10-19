@@ -1,7 +1,6 @@
 module Cryptol.Compiler.Rust.CompilePrim where
 
 import Data.Text(Text)
-import Data.Text qualified as Text
 import qualified Language.Rust.Syntax as Rust
 import Cryptol.Utils.Ident qualified as Cry
 
@@ -41,7 +40,7 @@ instance PP PrimArgs where
 
 unsupportedPrim :: Doc -> PrimArgs -> Rust a
 unsupportedPrim nm args =
-  unsupported (Text.pack (show (vcat [ "primitive" <+> nm, pp args ])))
+  unsupported (vcat [ "primitive" <+> nm, pp args ])
 
 
 -- | Is this a constructor primitive.
@@ -67,7 +66,7 @@ primIsConstructor prim =
     Iter        -> notYet
 
   where
-  notYet = unsupported (Text.pack (show ("primitive" <+> pp prim)))
+  notYet = unsupported ("primitive" <+> pp prim)
 
 -- | Emit code for a primitve.
 compilePrim :: IRPrim -> PrimArgs -> Rust RustExpr

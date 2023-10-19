@@ -33,7 +33,6 @@ The `i`-th element of a sequence may be defined used the following equations:
 -}
 module Cryptol.Compiler.Cry2IR.CompileSeq where
 
-import qualified Data.Text as Text
 import MonadLib
 
 import Cryptol.TypeCheck.AST qualified as Cry
@@ -53,7 +52,7 @@ type Seq = IRSeq Cry.TParam NameId Expr
 compileRecSeqs :: [(Name, Seq)] -> S.SpecM Expr -> S.SpecM Expr
 compileRecSeqs ds _k = S.unsupported (dbg ds)
   where
-  dbg = Text.pack . show . vcat . map ppDef
+  dbg = vcat . map ppDef
   ppDef (x,d) = pp x <+> "=" <+> pp d
 
 newtype StreamM a = StreamM (StateT RW S.SpecM a)

@@ -42,8 +42,6 @@ module Cryptol.Compiler.Cry2IR.Monad
 
   ) where
 
-import Data.Text(Text)
-import Data.Text qualified as Text
 import Data.Map(Map)
 import Data.Map qualified as Map
 import Control.Applicative(Alternative(..),asum)
@@ -55,7 +53,7 @@ import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.TypeCheck.Type qualified as Cry
 import Cryptol.TypeCheck.Solver.SMT qualified as Cry
 
-import Cryptol.Compiler.PP(cryPP)
+import Cryptol.Compiler.PP(Doc,cryPP,(<+>))
 import Cryptol.Compiler.Error(Loc)
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR.Cryptol
@@ -136,10 +134,10 @@ doCryCWith k (SpecM m) =
              pure b
 
 -- | Abort: we found something that's unsupported.
-unsupported :: Text -> SpecM a
+unsupported :: Doc -> SpecM a
 unsupported x =
   do loc <- roLoc <$> SpecM get
-     doCryC (M.unsupported (reverse loc) ("[cry2ir] " <> x))
+     doCryC (M.unsupported (reverse loc) ("[cry2ir]" <+> x))
 
 --------------------------------------------------------------------------------
 -- Boolean constraint
@@ -407,7 +405,7 @@ getLocal x = Map.lookup x . roLocalIRNames <$> SpecM get
 
 enter :: Cry.Name -> SpecM a -> SpecM a
 enter cnm m =
-  do let nm = Text.pack (show (cryPP cnm))
+  do let nm = cryPP cnm
      SpecM $ sets_ \rw -> rw { roLoc = nm : roLoc rw }
      a <- m
      SpecM $ sets_ \rw -> rw { roLoc = drop 1 (roLoc rw) }
