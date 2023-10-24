@@ -24,6 +24,7 @@ import Cryptol.Compiler.IR.Type
 import Cryptol.Compiler.Cry2IR.InstanceMap(instanceMapToList)
 import Cryptol.Compiler.Cry2IR.Compile
 import Cryptol.Compiler.Rust.CodeGen
+import Cryptol.Compiler.Rust.Crate qualified as Crate
 
 
 import Options
@@ -117,29 +118,8 @@ doSimpleCompile =
      -- doIO (print (Rust.pretty' srcFile))
 
 saveExample :: FilePath -> Rust.SourceFile () -> IO ()
-saveExample dir rust =
-  do createDirectoryIfMissing True dir
-     let rtsPath = joinPath (map (const "..") (splitDirectories dir))
-               </> "rts-rust"
-     writeFile (dir </> "Cargo.toml") $ unlines
-       [ "[package]"
-       , "name    = \"test-program\""
-       , "version = \"0.1.0\""
-       , "edition = \"2021\""
-       , "[dependencies]"
-       , "cryptol = { path = " ++ show rtsPath ++ "}"
-       , "num = \"0.4.0\""
-       ]
+saveExample dir rust = Crate.writeExampleCrate "test-program" rust dir
 
-     let src = dir </> "src"
-     createDirectoryIfMissing True src
-     writeFile (src </> "main.rs") $
-      unlines
-        [ show (Rust.pretty' rust)
-        , "pub fn main() {"
-        , "  print!(\"{}\\n\",cry_main().display())"
-        , "}"
-        ]
 
 
 
