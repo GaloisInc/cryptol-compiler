@@ -41,7 +41,7 @@ main =
 
          DefaultCommand ->
            do loadInputs opts
-              doSimpleCompile
+              doSimpleCompile opts
 
          ListPrimitives ->
            do loadInputs opts
@@ -99,8 +99,8 @@ listPrimitives =
 isPrel :: Cry.Name -> Bool
 isPrel x = Cry.nameTopModule x `elem` [preludeName, floatName]
 
-doSimpleCompile :: CryC ()
-doSimpleCompile =
+doSimpleCompile :: Options -> CryC ()
+doSimpleCompile opts =
   do ms <- getLoadedModules
      forM_ ms \m ->
         do doIO (putStrLn ("Converting to IR: " ++ show (cryPP (Cry.mName m))))
@@ -114,11 +114,13 @@ doSimpleCompile =
                       }
 
      srcFile <- doIO $ genModule gi declList
-     doIO (saveExample "example" srcFile)
-     -- doIO (print (Rust.pretty' srcFile))
 
-saveExample :: FilePath -> Rust.SourceFile () -> IO ()
-saveExample dir rust = Crate.writeExampleCrate "test-program" rust dir
+     let crateName = optCrateName opts
+         outputPath = optOutputPath opts </> crateName
+     doIO (saveExample crateName outputPath srcFile)
+
+saveExample :: String -> FilePath -> Rust.SourceFile () -> IO ()
+saveExample name dir rust = Crate.writeExampleCrate name rust dir
 
 
 
