@@ -25,7 +25,7 @@ defaultOptions :: Options
 defaultOptions = Options
   { optCommand  = DefaultCommand
   , optFiles    = []
-  , optCrateName = "cryptol-gen-crate"
+  , optCrateName = "cryptol-gen"
   , optOutputPath = "."
   }
 
@@ -43,11 +43,11 @@ options = optSpec
         $ NoArg \o -> Right o { optCommand = ShowHelp }
 
       , Option ['o'] ["output"]
-        ("Output directory for generated crate (default " ++ optCrateName defaultOptions ++ ")")
+        ("Output directory for generated crate (default \"" ++ optCrateName defaultOptions ++ "\")")
         $ ReqArg "PATH" \s o -> Right o { optOutputPath = s }
 
       , Option [] ["crate"]
-        ("Name of crate to be generated (default " ++ optCrateName defaultOptions ++ ")")
+        ("Name of crate to be generated (default \"" ++ optCrateName defaultOptions ++ "\")")
         $ ReqArg "NAME" \s o -> Right o { optCrateName = s }
       ]
 
