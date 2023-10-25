@@ -16,11 +16,21 @@ import Language.Rust.Pretty qualified as RustPP
 
 import Language.Rust.Syntax qualified as Rust
 
+mapFst :: (a -> a) -> (a, b) -> (a, b)
+mapFst f (a,b) = (f a, b)
+
+mkCrateDir :: ByteString -> [(FilePath, ByteString)] -> [(FilePath, ByteString)]
+mkCrateDir cargoToml srcDir = ("Cargo.toml", cargoToml):srcDir'
+  where
+    srcDir' = fmap (mapFst ("src" </>)) srcDir
+
 rtsCrateDir :: [(FilePath, ByteString)]
-rtsCrateDir = $(Embed.embedDir "rts-rust")
+rtsCrateDir =  mkCrateDir $(Embed.embedFile ("rts-rust" </> "Cargo.toml"))
+                          $(Embed.embedDir ("rts-rust" </> "src") )
 
 dwordCrateDir :: [(FilePath, ByteString)]
-dwordCrateDir = $(Embed.embedDir "dword")
+dwordCrateDir = mkCrateDir $(Embed.embedFile ("dword" </> "Cargo.toml"))
+                           $(Embed.embedDir ("dword" </> "src") )
 
 rtsPath :: FilePath
 rtsPath = "deps" </> "rts-rust"
