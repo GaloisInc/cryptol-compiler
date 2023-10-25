@@ -168,7 +168,7 @@ instance RustIdent Text where
 
 escChar :: Bool -> Char -> String
 escChar isFirst c
-  | isAlphaNum c                        = [c]
+  | isAlphaNum c || c == '_'            = [c]
   | Just i <- Map.lookup c symbolNames  = sep i
   | otherwise                           = []
   where
