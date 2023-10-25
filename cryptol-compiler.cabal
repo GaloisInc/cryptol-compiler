@@ -54,6 +54,8 @@ common executable
 library
     import: warnings, extensions
     exposed-modules:
+      Cryptol.IR.Eta
+
       Cryptol.Compiler.IR
       Cryptol.Compiler.IR.Prims
       Cryptol.Compiler.IR.Common

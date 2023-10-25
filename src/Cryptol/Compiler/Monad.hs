@@ -34,6 +34,7 @@ module Cryptol.Compiler.Monad
   , withCryLocals
 
     -- * Types
+  , getTypes
   , getTypeOf
   , getSchemaOf
   , getTopTypes
@@ -41,6 +42,7 @@ module Cryptol.Compiler.Monad
 
     -- * Names generation
   , newNameId
+  , doNameGen
 
     -- * IR generation
   , addCompiled
@@ -190,6 +192,18 @@ doModuleCmd cmd =
                                     (rwModuleInput s)
                                        { Cry.minpModuleEnv = newEnv }})
             pure a
+
+doNameGen :: (Cry.Supply -> (a,Cry.Supply)) -> CryC a
+doNameGen f = CryC $ sets \s ->
+  let inp = rwModuleInput s
+      (a,newEnv) = doIt inp
+  in (a, s { rwModuleInput = inp { Cry.minpModuleEnv = newEnv }})
+  where
+  doIt inp =
+    let env  = Cry.minpModuleEnv inp
+        seed = Cry.meSupply env
+        (a,newSeed) = f seed
+    in (a, env { Cry.meSupply = newSeed })
 
 -- | Load a module to the compiler's environment.
 -- This will also load all of the module's dependencies.

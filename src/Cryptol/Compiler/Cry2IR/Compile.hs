@@ -649,11 +649,22 @@ coerceTo e tgtT' =
        (TWord l1, TStream (IRSize l2) TBool)
          | l1 == l2           -> pure (callPrim Iter [e] tgtT)
 
+       -- somtimes the indexes are not exactly the same
+       -- (e.g., `a * b` vs  `b * a`)
+       (TWord _, TWord _) -> pure e
+
+       -- Note that we are not checking the elements, but we probalby should
+       (TArray _ _, TArray _ _) -> pure e
+
+       -- Note that we are not checking the elements, but we probalby should
+       (TStream _ _, TStream _ _) -> pure e
+
        _ | srcT == tgtT -> pure e
          | otherwise -> panic "adjustType"
                           [ "Cannot coerce types"
                           , "From: " ++ show (pp srcT)
                           , "To  : " ++ show (pp tgtT)
+                          , "Expr: " ++ show (pp e)
                           ]
 
 

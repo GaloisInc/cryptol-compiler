@@ -17,6 +17,8 @@ import Language.Rust.Pretty qualified as Rust
 import Cryptol.TypeCheck.AST qualified  as Cry
 import Cryptol.ModuleSystem.Name qualified as Cry
 
+import Cryptol.IR.Eta(etaModule)
+
 import Cryptol.Compiler.Error
 import Cryptol.Compiler.Monad
 import Cryptol.Compiler.PP
@@ -103,9 +105,15 @@ doSimpleCompile :: Options -> CryC ()
 doSimpleCompile opts =
   do ms <- getLoadedModules
      forM_ ms \m ->
-        do doIO (putStrLn ("Converting to IR: " ++ show (cryPP (Cry.mName m))))
-           -- doIO (print (cryPP m))
-           compileModule m
+        do let nm = show (cryPP (Cry.mName m))
+           doIO (putStrLn ("Processing module: " ++ nm))
+           doIO (putStrLn "Eta Expansion")
+           tys <- getTypes
+           m' <- doNameGen (\s -> etaModule tys s m)
+           -- doIO (print (cryPP m'))
+           doIO (putStrLn "Converting to IR")
+           -- doIO (print (cryPP m'))
+           compileModule m'
 
      decls <- getCompiled
      let declList = concatMap instanceMapToList (Map.elems decls)
