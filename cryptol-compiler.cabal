@@ -11,7 +11,12 @@ copyright:          Galois Inc, 2023
 category:           Language
 build-type:         Simple
 extra-doc-files:    CHANGELOG.md
--- extra-source-files:
+
+extra-source-files:
+  dword/Cargo.toml
+  dword/src/*.rs
+  rts-rust/Cargo.toml
+  rts-rust/src/*.rs
 
 common warnings
     ghc-options: -Wall -O2
@@ -93,7 +98,8 @@ library
       language-rust,
       file-embed,
       filepath,
-      directory
+      directory,
+      template-haskell
 
     hs-source-dirs:   src
     default-language: Haskell2010
