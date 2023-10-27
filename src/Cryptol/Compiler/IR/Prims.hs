@@ -58,6 +58,22 @@ data IRPrim =
     deriving (Show,Eq,Ord)
 
 
+data IRSizePrim =
+    IRSizeEq
+  | IRSizeLt
+  | IRSizeLeq
+  | IRSizeAdd
+  | IRSizeSub
+  | IRSizeMul
+  | IRSizeDiv
+  | IRSizeMod
+  | IRSizeExp
+  | IRSizeWidth
+  | IRSizeMin
+  | IRSizeMax
+  | IRSizeCeilDiv
+  | IRSizeCeilMod
+  | IRSizeLenFromThenTo
 
 --------------------------------------------------------------------------------
 -- Pretty printing

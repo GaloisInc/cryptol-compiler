@@ -105,22 +105,21 @@ instance Ord tname => ApSubst (IRStreamSize tname) where
   apSubstMaybe su size =
     case size of
       IRInfSize {}  -> Nothing
-      IRSize s      -> apSubstSizeMaybe su s
-
-apSubstSizeMaybe ::
-  Ord tname => IRSubst tname -> IRSize tname -> Maybe (IRStreamSize tname)
-apSubstSizeMaybe su size =
-  case size of
-    IRFixedSize {}        -> Nothing
-    IRPolySize x          -> suLookupSize (irsName x) su
-    IRComputedSize fun as -> evalSizeType fun <$> apSubstMaybe su as
+      IRSize s      -> IRSize <$> apSubstMaybe su s
 
 instance Ord tname => ApSubst (IRSize tname) where
   apSubstMaybe su size =
-    do isize <- apSubstSizeMaybe su size
-       case isize of
-         IRSize s     -> pure s
-         IRInfSize {} -> panic "apSubstMaybe@IRSize" ["Unexpecetd IRInfSize"]
+    case size of
+      IRFixedSize {}        -> Nothing
+
+      IRPolySize x ->
+         do yes <- suLookupSize (irsName x) su
+            case yes of
+              IRInfSize -> panic "apSubstMaybe@IRSize" ["IRInfSize"]
+              IRSize s  -> pure s
+
+      IRComputedSize fun as -> evalSizeType fun <$> apSubstMaybe su as
+
 
 instance Ord tname => ApSubst (IRName tname name) where
   apSubstMaybe su (IRName x t) = IRName x <$> apSubstMaybe su t

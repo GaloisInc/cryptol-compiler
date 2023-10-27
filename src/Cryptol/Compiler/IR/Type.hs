@@ -73,9 +73,9 @@ data IRSizeName tname = IRSizeName { irsName :: tname, irsSize :: SizeVarSize }
 -- | Size "types".  These are typically not erased, to they are really values.
 -- These are supposed to be finite.
 data IRSize tname =
-    IRFixedSize Integer                           -- ^ A specific size
-  | IRPolySize (IRSizeName tname)                 -- ^ Polymorphic size; finite
-  | IRComputedSize Cry.TFun [IRStreamSize tname]  -- ^ Computed size
+    IRFixedSize Integer                     -- ^ A specific size
+  | IRPolySize (IRSizeName tname)           -- ^ Polymorphic size; finite
+  | IRComputedSize Cry.TFun [IRSize tname]  -- ^ Computed size
     deriving (Eq,Ord,Functor,Foldable,Traversable)
 
 

@@ -133,7 +133,7 @@ data ITE tname a =
 data Guard tname = GBool tname
                  | GNotBool tname
                  | GNum (IRSizeName tname) Integer
-                 | GNumFun Cry.TFun [IRStreamSize tname] Ordering Integer
+                 | GNumFun Cry.TFun [IRSize tname] Ordering Integer
 
 data Match tname = NoMatch
                  | MatchIf [Guard tname]
