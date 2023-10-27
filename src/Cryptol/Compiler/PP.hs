@@ -116,6 +116,9 @@ type RustPP a = (Rust.Resolve a, Rust.Pretty a)
 rustPP :: RustPP a => a -> Doc
 rustPP = fromString . show . Rust.pretty'
 
+instance PP Doc where
+  pp = id
+
 instance PP Int where
   pp x = lift (PP.int x)
 
