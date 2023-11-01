@@ -14,6 +14,7 @@ module Cryptol.Compiler.Cry2IR.Monad
 
     -- * Solver
   , checkPossible
+  , getProps
 
     -- * Constraints
   , BoolInfo(..)
@@ -39,6 +40,7 @@ module Cryptol.Compiler.Cry2IR.Monad
   , zonk
   , getSubst
   , checkSingleValue
+  , getRepHint
 
   ) where
 
@@ -52,12 +54,14 @@ import Cryptol.TypeCheck.TCon qualified as Cry
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.TypeCheck.Type qualified as Cry
 import Cryptol.TypeCheck.Solver.SMT qualified as Cry
+import Cryptol.Utils.Ident qualified as Cry
 
 import Cryptol.Compiler.PP(Doc,cryPP,(<+>))
 import Cryptol.Compiler.Error(Loc)
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.IR.Subst
+import Cryptol.Compiler.Cry2IR.RepHints
 
 
 newtype SpecM a = SpecM (SpecImpl a)
@@ -77,6 +81,11 @@ data RW = RW
   { roTParams     :: [Cry.TParam]
   , roTraits      :: Map Cry.TParam [Trait]  -- indexed by variable
   , roLoc         :: !Loc
+
+  , roRepHints    :: !(Map Cry.PrimIdent [RepHint])
+    -- ^ Hints on what representations to generate for the given name.
+
+
   , rwProps       :: [Cry.Prop]
   , rwBoolProps   :: Map Cry.TParam BoolInfo
 
@@ -105,6 +114,7 @@ runSpecM (SpecM m) = map fst <$> findAll (runStateT rw0 m)
   rw0 = RW { roLoc          = mempty
            , roTParams      = mempty
            , roTraits       = mempty
+           , roRepHints     = primRepHints
            , rwProps        = mempty
            , rwBoolProps    = mempty
            , roLocalIRNames = mempty
@@ -217,7 +227,7 @@ addNumProps ps =
 
 data SizeConstraint =
     IsFin         -- ^ large finite
-  | IsFinSize     -- ^ small finite
+  | IsFinSize     -- ^ small non-zero finite
   | IsInf         -- ^ infinite
     deriving Eq
 
@@ -225,13 +235,16 @@ data SizeConstraint =
 sizeProp :: SizeConstraint -> Cry.Type -> [Cry.Prop]
 sizeProp s t =
   case s of
-    IsFinSize -> [Cry.pFin t, Cry.tNum maxSizeVal Cry.>== t ]
+    IsFinSize -> [Cry.tNum maxSizeVal Cry.>== t]
     IsFin     -> [Cry.pFin t, t Cry.>== Cry.tNum (maxSizeVal + 1) ]
     IsInf     -> [t Cry.=#= Cry.tInf]
 
 
 --------------------------------------------------------------------------------
 -- Interactions with the solver
+
+getProps :: SpecM [Cry.Prop]
+getProps = SpecM (rwProps <$> get)
 
 prepSolver :: (Cry.Solver -> [Cry.TParam] -> [Cry.Prop] -> IO a) -> SpecM a
 prepSolver k =
@@ -302,7 +315,8 @@ caseBool x = tryCase True <|> tryCase False
 -- | Returns the class for this type.
 -- May split the world.
 caseSize :: Cry.Type -> SpecM SizeConstraint
-caseSize ty = tryCase IsInf <|> tryCase IsFin <|> tryCase IsFinSize
+caseSize ty =
+  tryCase IsInf <|> tryCase IsFin <|> tryCase IsFinSize
   where
   tryCase p = addNumProps (sizeProp p ty) >> pure p
 
@@ -410,3 +424,19 @@ enter cnm m =
      a <- m
      SpecM $ sets_ \rw -> rw { roLoc = drop 1 (roLoc rw) }
      pure a
+
+
+--------------------------------------------------------------------------------
+
+-- | Get the representation hint for the given name, if any.
+getRepHint :: Cry.Name -> SpecM (Maybe RepHint)
+getRepHint nm =
+  do mb <- doCryC (M.isPrimDecl nm)
+     case mb of
+       Nothing -> pure Nothing
+       Just prim ->
+         do mbHint <- SpecM (Map.lookup prim . roRepHints <$> get)
+            case mbHint of
+              Nothing -> pure Nothing
+              Just hs -> SpecM (msum [ pure (Just h) | h <- hs ])
+

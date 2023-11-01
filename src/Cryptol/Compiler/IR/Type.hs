@@ -116,6 +116,7 @@ type instance TName (IRFunType tname)    = tname
 type instance TName [a]       = TName a
 type instance TName (Maybe a) = TName a
 type instance TName (a,b)     = TName b
+type instance TName ()        = ()
 
 
 --------------------------------------------------------------------------------

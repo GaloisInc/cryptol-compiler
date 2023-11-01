@@ -28,6 +28,9 @@ type StreamSize = IRStreamSize Cry.TParam
 -- | Size types, specialized to Cryptol names
 type Size = IRSize Cry.TParam
 
+-- | Size types, specialized to Cryptol names
+type SizeName = IRSizeName Cry.TParam
+
 -- | Names, specialized to Cryptol names
 type Name = IRName Cry.TParam NameId
 

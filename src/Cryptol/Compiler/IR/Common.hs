@@ -21,8 +21,8 @@ data SizeVarSize =
 data ParamInfo =
     NumFixed Cry.Nat'
   | NumVar   SizeVarSize
-  | TyBool
-  | TyNotBool
+
+  | TyBool | TyNotBool
   | TyAny
     deriving (Eq,Ord)
 

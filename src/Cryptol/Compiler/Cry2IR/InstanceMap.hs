@@ -3,7 +3,7 @@ module Cryptol.Compiler.Cry2IR.InstanceMap
   , FunInstance(..)
   , InstanceMap
   , singletonInstanceMap
-  , mergeInstanceMap
+  -- , mergeInstanceMap
   , instanceMapFromList
   , instanceMapToList
   , lookupInstance
@@ -22,7 +22,6 @@ import Cryptol.Compiler.IR
 import Cryptol.Compiler.IR.EvalType
 
 
--- XXX: This is probably not worth the effort and we could just use a map.
 -- | A map where the keys are function instances.
 data InstanceMap a =
     InstanceMap [ (ParamInfo, InstanceMap a) ]
@@ -35,9 +34,13 @@ instanceMapFromList ins =
   case ins of
     [] -> Left "instance map: empty"
     a : as ->
-      foldM (\i b -> mergeInstanceMap (uncurry singletonInstanceMap b) i)
+      let res = foldM (\i b -> mergeInstanceMap (uncurry singletonInstanceMap b) i)
             (uncurry singletonInstanceMap a)
             as
+      in case res of
+           Left doc ->
+              Left (doc $$ nest 2 (vcat [ pp a $$ nest 2 (pp b) | (a,b) <- ins ]))
+           Right a -> pure a
 
 instanceMapToList :: InstanceMap a -> [a]
 instanceMapToList mp =
@@ -71,12 +74,13 @@ mergeInstanceMap mp1 mp2 =
       (_,[]) -> pure opts1
       ( (p1,k1) : more1, (p2,k2) : more2 ) ->
         case compare p1 p2 of
-          EQ -> do r  <- mergeInstanceMap k1 k2
+          EQ -> do r  <- case mergeInstanceMap k1 k2 of
+                           Left doc  -> Left (pp p1 <+> doc)
+                           Right a -> Right a
                    rs <- mergeOpts more1 more2
                    pure ((p1, r) : rs)
           LT -> ((p1,k1) :) <$> mergeOpts more1 opts2
           GT -> ((p2,k2) :) <$> mergeOpts opts1 more2
-
 
 -- | Lookup some types in an instance map.
 -- NOTE: This assumes that the instnace is already in the map!

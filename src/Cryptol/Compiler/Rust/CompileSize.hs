@@ -20,10 +20,10 @@ compileSizeType szT =
 -- | Compile a size argument, using the specified type.
 -- For big nums, this produces a reference.
 compileSize :: Size -> SizeVarSize -> Rust RustExpr
-compileSize sz szT =
+compileSize sz tgtSz =
   case sz of
     IRFixedSize n ->
-      case szT of
+      case tgtSz of
         MemSize   -> pure (litExpr (mkU64Lit n))
         LargeSize -> pure (addrOf (mkRustCall fn [arg]))
           where
@@ -31,22 +31,57 @@ compileSize sz szT =
           byte = litExpr . mkU8Lit . toInteger
           arg  = addrOf (rustArray (map byte (toLEBytes n)))
 
-    IRPolySize x
-      | irsSize x == szT -> lookupSizeParam (irsName x)
-      | otherwise -> panic "compileSize" [ "Size type mismatch" ]
+    IRPolySize x ->
+      do p <- lookupSizeParam (irsName x)
+         case (irsSize x, tgtSz) of
+           (MemSize, LargeSize) -> undefined -- upcast
+           (LargeSize, MemSize) -> undefined -- downcast, dyn check
+           _                    -> pure p
 
-    IRComputedSize f as -> compileComputedSize szT f as
+    IRComputedSize f as -> compileComputedSize f as tgtSz
 
-compileComputedSize :: SizeVarSize -> Cry.TFun -> [Size] -> Rust RustExpr
-compileComputedSize sz fu args = unsupported "computed size" {- XXX
+compileComputedSize :: Cry.TFun -> [Size] -> SizeVarSize -> Rust RustExpr
+compileComputedSize fu args sz = undefined
+{-
   case fu of
     Cry.TCAdd ->
-      do xs <- mapM (\x -> compileSize (streamSizeToSize x) sz) args
-         undefined
+      withBin \x y ->
+        do a <- compileSize x sz
+           b <- compileSize y sz
+           pure (op2 "addSize" a b)
 
-    Cry.TCSub           -> undefined  (fin,fin)
-    Cry.TCMul           -> undefined  (inf * x) -> 0
-    Cry.TCDiv           -> undefined  fin fin
+    Cry.TCSub ->
+      withBin \x y ->
+        do let xsz = sizeTypeSize x
+           a <- compileSize x xsz
+           b <- compileSize y xsz
+           pure (op2 "subSize" a b)
+
+    Cry.TCMul ->
+      withBin \x y ->
+        do a <- compileSize x sz
+           b <- compileSize y sz
+           pure (op2 "mulSize" a b)
+
+    Cry.TCDiv ->
+      withBin \x y ->
+      do let xsz = sizeTypeSize x
+         a <- compileSize x xsz
+         b <- compileSize y xsz
+         pure (op2 "divSize" a b)
+
+    Cry.TCMod ->
+      withBin \x y ->
+      do let xsz = sizeTypeSize x
+         a <- compileSize x xsz
+         b <- compileSize y xsz
+         pure (op2 "divSize" a b)
+
+
+
+    _ -> undefined
+-}
+{-
     Cry.TCMod           -> undefined  
     Cry.TCExp           -> undefined (inf ^ x) -> 1
     Cry.TCWidth         -> undefined
@@ -55,9 +90,17 @@ compileComputedSize sz fu args = unsupported "computed size" {- XXX
     Cry.TCCeilDiv       -> undefined
     Cry.TCCeilMod       -> undefined
     Cry.TCLenFromThenTo -> undefined
-
 -}
 
+  where
+  bad = panic "compileComputedSize" ["Malformed expression"]
+
+  op2 = undefined
+
+  withBin f =
+    case args of
+      [x,y] -> f x y
+      _     -> bad
 
 
 -- | Convert a number to a list of bytes, least significant first.

@@ -237,7 +237,9 @@ genFunDecl decl =
 -- | Given a set of FunDecls, make a Rust SourceFile
 genSourceFile :: [FunDecl] -> Rust (Rust.SourceFile ())
 genSourceFile decls =
-  do  fnItems <- catMaybes <$> (genFunDecl `traverse` decls)
+  do  doIO (print $ vcat $ map pp decls)
+
+      fnItems <- catMaybes <$> (genFunDecl `traverse` decls)
       let imports = [ mkUseGlob [ cryptolCrate, "trait_methods"]
                     ]
       pure $ Rust.SourceFile Nothing [] (imports ++ fnItems)

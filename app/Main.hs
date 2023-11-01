@@ -16,6 +16,7 @@ import Language.Rust.Pretty qualified as Rust
 
 import Cryptol.TypeCheck.AST qualified  as Cry
 import Cryptol.ModuleSystem.Name qualified as Cry
+import Cryptol.Parser.Position qualified as Cry
 
 import Cryptol.IR.Eta(etaModule)
 
@@ -25,6 +26,8 @@ import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Type
 import Cryptol.Compiler.Cry2IR.InstanceMap(instanceMapToList)
 import Cryptol.Compiler.Cry2IR.Compile
+import Cryptol.Compiler.Cry2IR.Monad qualified as S
+import Cryptol.Compiler.Cry2IR.Specialize qualified as S
 import Cryptol.Compiler.Rust.CodeGen
 import Cryptol.Compiler.Rust.Crate qualified as Crate
 
@@ -131,5 +134,27 @@ saveExample :: String -> FilePath -> Rust.SourceFile () -> IO ()
 saveExample name dir rust = Crate.writeExampleCrate name rust dir
 
 
-
+doTest :: CryC ()
+doTest =
+  do let x = tp 1
+         y = tp 2
+     let t = Cry.tMul (v x) (v y)
+     rs <- S.runSpecM $
+            do S.addTParams [x,y]
+               S.compileSeqLenSizeType t
+     doIO (putStrLn ("Result number: " ++ show (length rs)))
+     doIO $ mapM_ (\x -> print (pp x) >> putStrLn "------") rs
+  where
+  v = Cry.TVar . Cry.tpVar
+  tp n =
+    Cry.TParam
+      { Cry.tpUnique = n
+      , Cry.tpKind = Cry.KNum
+      , Cry.tpFlav = Cry.TPUnifyVar
+      , Cry.tpInfo =
+          Cry.TVarInfo
+            { Cry.tvarSource = Cry.emptyRange
+            , Cry.tvarDesc   = Cry.LenOfSeq
+            }
+      }
 

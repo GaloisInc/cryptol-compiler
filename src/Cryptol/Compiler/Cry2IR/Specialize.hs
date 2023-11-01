@@ -1,13 +1,17 @@
 module Cryptol.Compiler.Cry2IR.Specialize
-  ( compileFunDecl
+  ( compileSchema
+  , compileFunDecl
   , compilePrimDecl
   , compileValType
   , compileSizeType
   , compileStreamSizeType
+  , compileSeqLenSizeType
+  , compileStreamLenSizeType
   ) where
 
 import Data.Map(Map)
 import Data.Map qualified as Map
+import Control.Monad(zipWithM,when)
 import Control.Applicative(Alternative(..))
 
 import Cryptol.TypeCheck.TCon qualified as Cry
@@ -25,20 +29,10 @@ import Cryptol.Compiler.IR.Subst
 import Cryptol.Compiler.IR.EvalType
 
 import Cryptol.Compiler.Cry2IR.Monad
+import Cryptol.Compiler.Cry2IR.RepHints
 
 compilePrimDecl :: Cry.Name -> Cry.Schema -> M.CryC [(FunInstance, FunType)]
-compilePrimDecl cn s =
-  do ans <- compileFunDecl cn (Cry.sVars s) (Cry.sProps s) args res k
-     pure [ (a,b) | (a,b,_) <- ans ]
-  where
-  (args,res) = go [] (Cry.sType s)
-  k _ _ = pure IRFunPrim
-
-  go as ty =
-    case ty of
-      Cry.TUser _ _ ty1                 -> go as ty1
-      Cry.TCon (Cry.TC Cry.TCFun) [a,b] -> go (a : as) b
-      _                                 -> (reverse as, ty)
+compilePrimDecl = compileSchema
 
 compileFunDecl ::
   (ApSubst a, TName a ~ Cry.TParam)  =>
@@ -63,8 +57,23 @@ compileFunDecl cn as quals args result k =
            addNumProps props
            mapM_ (uncurry addIsBoolProp) (Map.toList boolProps)
 
-           argTs <- mapM compileValType args
-           resT  <- compileValType result
+           (argTs,resT) <-
+              do mbHint <- getRepHint cn
+                 case mbHint of
+                   Nothing ->
+                     do argTs <- mapM compileValType args
+                        resT  <- compileValType result
+                        pure (argTs, resT)
+                   Just hint ->
+                      do let (ins,out) = splitRepHint hint
+                         let doOne h t =
+                               do ans <- compileValTypeWithHint h t
+                                  checkPossible
+                                  pure ans
+                         argTs <- zipWithM doOne ins args
+                         resT  <- doOne out result
+                         pure (argTs, resT)
+
            body  <- k argTs resT
            (su,info) <- doTParams suEmpty [] as
            ts <- getTraits
@@ -123,6 +132,163 @@ compileFunDecl cn as quals args result k =
 
 
 
+
+compileSchema ::
+  Cry.Name                              {- ^ Name of what we are compiling -} ->
+  Cry.Schema                            {- ^ Schema to compile -} ->
+  M.CryC [(FunInstance, FunType)]
+compileSchema cn sch =
+  case ctrProps (infoFromConstraints (Cry.sProps sch)) of
+
+    -- inconsistent
+    Nothing -> pure []
+
+    Just (traits,props,boolProps) ->
+      runSpecM $
+        enter cn
+        do addTParams (Cry.sVars sch)
+           mapM_ addTrait traits
+           addNumProps props
+           mapM_ (uncurry addIsBoolProp) (Map.toList boolProps)
+           specTy <-
+              do mbHint <- getRepHint cn
+                 case mbHint of
+                   Nothing   -> compileValType (Cry.sType sch)
+                   Just hint -> compileValTypeWithHint hint (Cry.sType sch)
+
+           let as = Cry.sVars sch
+           (su,info) <- doTParams suEmpty [] as
+           ts <- getTraits
+           let tparams = [ x
+                         | (x,ty) <- zip as info
+                         , case ty of
+                             TyNotBool -> True
+                             TyAny     -> True
+                             _         -> False
+                         ]
+
+           let sparams = [ IRSizeName x s
+                         | (x, NumVar s) <- zip as info ]
+
+           let (args,res) = case apSubst su specTy of
+                              TFun x y -> (x, y)
+                              y        -> ([], y)
+
+           pure ( FunInstance info
+                , IRFunType
+                    { ftTypeParams = tparams
+                    , ftTraits     = ts
+                    , ftSizeParams = sparams
+                    , ftParams     = args
+                    , ftResult     = res
+                    }
+                )
+  where
+  doTParams su info todo =
+    case todo of
+      [] -> pure (su, reverse info)
+      x : xs
+        | Cry.kindOf x == Cry.KNum ->
+          do mbYes <- checkSingleValue x
+             case mbYes of
+               Just v ->
+                 doTParams (suAddSize x sz su)
+                           (NumFixed v : info)
+                           xs
+                 where sz = case v of
+                              Cry.Inf -> IRInfSize
+                              Cry.Nat n -> IRSize (IRFixedSize n)
+
+               Nothing ->
+                 do s <- caseSize (Cry.TVar (Cry.TVBound x))
+                    case s of
+                      IsFin     -> doTParams su (NumVar LargeSize : info) xs
+                      IsFinSize -> doTParams su (NumVar MemSize : info) xs
+                      IsInf     -> doTParams su (NumFixed Cry.Inf : info) xs
+
+        | otherwise ->
+          do i <- getBoolConstraint x
+             case i of
+               Known True -> doTParams (suAddType x TBool su) (TyBool : info) xs
+               Known False -> doTParams su (TyNotBool : info) xs
+               Unknown {} -> doTParams su (TyAny : info) xs
+
+
+
+
+compileValTypeWithHint :: RepHint -> Cry.Type -> SpecM Type
+compileValTypeWithHint hint ty =
+
+  case hint of
+    NoHint -> compileValType ty
+
+    AsWord ->
+      case Cry.tIsSeq ty of
+        Just (lenTy,elTy) ->
+          do case Cry.tIsVar elTy of
+               Just (Cry.TVBound a) -> addIsBoolProp a (Known True)
+               _ -> pure ()
+             n <- compileSeqLenSizeType lenTy
+             pure (TWord n)
+
+        Nothing           -> bad
+
+    AsArray h ->
+      case Cry.tIsSeq ty of
+        Just (lenTy,elTy) ->
+          do n <- compileSeqLenSizeType lenTy
+             case Cry.tIsVar elTy of
+               Just (Cry.TVBound a) ->
+                  addIsBoolProp a (Known False)
+               _ -> when (Cry.tIsBit elTy) empty
+
+             a <- compileValTypeWithHint h elTy
+             pure (TArray n a)
+
+        Nothing           -> bad
+
+    AsStream h ->
+      case Cry.tIsSeq ty of
+        Just (l, elTy) ->
+          do len <- compileStreamLenSizeType l
+             t   <- compileValTypeWithHint h elTy
+             pure (TStream len t)
+        Nothing           -> bad
+
+    x :-> y ->
+      case Cry.tIsFun ty of
+        Just (l,r) ->
+          do arg <- compileValTypeWithHint x l
+             res <- compileValTypeWithHint y r
+             pure
+               case res of
+                 TFun as b -> TFun (arg:as) b
+                 _         -> TFun [arg] res
+
+        Nothing   -> bad
+
+    TupHint hs ->
+      case Cry.tIsTuple ty of
+        Just ts
+          | length ts == length hs ->
+            TTuple <$> zipWithM compileValTypeWithHint hs ts
+        _ -> bad
+
+
+    -- XXX: newtypes also
+    RecHint r ->
+      case Cry.tIsRec ty of
+        Just ts
+          | Right mp <- Cry.zipRecords (const (,)) r ts ->
+            TTuple <$>
+              mapM (uncurry compileValTypeWithHint) (Cry.recordElements mp)
+        _ -> bad
+
+  where
+  bad = panic "matchHint" [ "Hint and type do not match:"
+                          , show ("Hint:" <+> pp hint)
+                          , show ("Type:" <+> cryPP ty)
+                           ]
 
 
 compileValType :: Cry.Type -> SpecM Type
@@ -207,6 +373,19 @@ compileValType ty =
 
   where
   unexpected msg = panic "compileValType" [msg]
+
+-- | Compile a size type, used the length of a finite sequence.
+compileSeqLenSizeType :: Cry.Type -> SpecM Size
+compileSeqLenSizeType ty =
+  do addNumProps [Cry.tNum maxSizeVal Cry.>== ty]
+     compileSizeType ty
+
+compileStreamLenSizeType :: Cry.Type -> SpecM StreamSize
+compileStreamLenSizeType ty =
+  do inf <- caseIsInf ty
+     if inf
+        then pure IRInfSize
+        else IRSize <$> compileSeqLenSizeType ty
 
 
 -- | Compile a known finite Cryptol size type to an IR type.
