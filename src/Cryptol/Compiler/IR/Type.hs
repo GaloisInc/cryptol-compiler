@@ -152,6 +152,40 @@ streamSizeToSize s =
     IRSize x -> x
     IRInfSize -> panic "streamSizeToSize" ["inf"]
 
+
+matchStreamSize :: Eq tname => IRStreamSize tname -> IRStreamSize tname -> Bool
+matchStreamSize t1 t2 =
+  case t1 of
+    IRInfSize -> t2 == IRInfSize
+    IRSize x
+      | IRSize y <- t2 -> x == y
+      | otherwise -> False
+
+{- | Compare two sizes for equality, ignoring type functions.
+This is a bit of an odd operations, but we use it because Cryptol
+considers types like `x + y` and `y + x` equivalent, so sometimes,
+types don't match exactly. -}
+matchSize :: Eq tname => IRSize tname -> IRSize tname -> Bool
+matchSize t1 t2 =
+  case t1 of
+
+    IRFixedSize x
+      | IRFixedSize y <- t2 -> x == y
+      | otherwise -> False
+
+    IRPolySize x
+      | IRPolySize y <- t2 -> x == y
+      | otherwise -> False
+
+    {- We don't compare the equations because sometimes they differ in
+       semantically irrelevant ways (e.g., `x + y` vs `y + x`).   One
+       day we may want to fix Cryptol to be completely explicity about
+       stuff like that, but it is not at the moment. -}
+    IRComputedSize {}
+      | IRComputedSize {} <- t2 -> True
+      | otherwise -> False
+
+
 --------------------------------------------------------------------------------
 -- Pretty Printing
 

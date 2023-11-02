@@ -5,7 +5,7 @@ import Data.Set qualified as Set
 import Data.List(elemIndex)
 import Data.Either(partitionEithers)
 import Data.Text(Text)
-import Control.Monad(zipWithM,forM,guard,when,unless)
+import Control.Monad(zipWithM,forM,guard,when,unless,foldM)
 
 import Cryptol.TypeCheck.AST qualified as Cry
 import Cryptol.TypeCheck.Subst qualified as Cry
@@ -20,11 +20,11 @@ import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.IR.Subst
 import Cryptol.Compiler.IR.EvalType
 import Cryptol.Compiler.Monad qualified as M
-import Cryptol.Compiler.Cry2IR.Monad qualified as S
 import Cryptol.Compiler.Cry2IR.ConvertM qualified as C
 import Cryptol.Compiler.Cry2IR.Specialize qualified as Spec
 import Cryptol.Compiler.Cry2IR.Type qualified as T
 import Cryptol.Compiler.Cry2IR.InstanceMap
+import Cryptol.Compiler.Cry2IR.RepHints
 
 
 compileModule :: Cry.Module -> M.CryC ()
@@ -689,19 +689,6 @@ compileType ty =
 -}
 
 
--- | Numeric on the left
-matchParamInfo :: ParamInfo -> Cry.Type -> Maybe [Either Cry.Type Cry.Type]
-matchParamInfo pi t =
-  case pi of
-    NumFixed n ->
-      case Cry.tIsNat' t of
-        Just n' -> guard (n == n') >> pure []
-        _       -> Nothing
-    NumVar _  -> guard (not (Cry.tIsInf t)) >> pure [Left t]
-    TyBool    -> guard (Cry.tIsBit t) >> pure []
-    TyNotBool -> guard (not (Cry.tIsBit t)) >> pure [Right t]
-    TyAny     -> pure [Right t]
-
 -- | Check if some concrete type arguments match a particular
 -- function instance.  Returns (type arguments, size arguments)
 matchFun ::
@@ -709,7 +696,8 @@ matchFun ::
   [Cry.Type] ->
   Maybe ([Cry.Type], [Cry.Type])
 matchFun (f, funTy) tyArgs =
-  do let FunInstance pi = irfnInstance f
+  do 
+     let FunInstance pi = irfnInstance f
      binds <- concat <$> zipWithM matchParamInfo pi tyArgs
      let (nums,vals) = partitionEithers binds
      let numPs = ftSizeParams funTy
@@ -722,35 +710,11 @@ matchFun (f, funTy) tyArgs =
 
      pure (vals, nums)
 
-
 selectInstance :: Cry.Name -> [Cry.Type] -> Type -> M.CryC ()
 selectInstance f tyArgs tgtT =
   do instDB <- M.getFun f
+     let is = instanceMapToList instDB
      undefined
-
-
-{-
-matchType :: Type -> Type -> Maybe ()
-matchType patTy argTy =
-  case (patTy,argTy) of
-    (TPoly x, 
-
-    (TBool, TBool) -> undefined
-    (TInteger, TInteger) -> undefined
-  | TIntegerMod (IRSize tname)                    -- ^ Z
-  | TRational                                     -- ^ Rational number
-  | TFloat                                        -- ^ Floating point small
-  | TDouble                                       -- ^ Floating point large
-  | TWord (IRSize tname)                          -- ^ Bit vector
-
-  | TArray (IRSize tname) (IRType tname)          -- ^ Array
-  | TStream (IRStreamSize tname) (IRType tname)   -- ^ Iterator
-  | TTuple [IRType tname]                         -- ^ Tuple
-
-  | TFun [IRType tname] (IRType tname)            -- ^ Function types
-
--}
-
 
 
 

@@ -42,7 +42,8 @@ common extensions
       PatternSynonyms,
       TypeOperators,
       ViewPatterns,
-      RankNTypes
+      RankNTypes,
+      ScopedTypeVariables
 
 common executable
     import: warnings, extensions
@@ -74,6 +75,7 @@ library
       Cryptol.Compiler.Cry2IR.ConvertM
       Cryptol.Compiler.Cry2IR.Monad
       Cryptol.Compiler.Cry2IR.Specialize
+      Cryptol.Compiler.Cry2IR.ChooseSpec
       Cryptol.Compiler.Cry2IR.InstanceMap
       Cryptol.Compiler.Cry2IR.Compile
       Cryptol.Compiler.Cry2IR.RepHints

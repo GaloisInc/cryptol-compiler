@@ -9,6 +9,7 @@ module Cryptol.Compiler.IR.Subst
   , suAddType
   , suAddSize
   , suMerge
+  , suMergeMaybe
   , suBinds
   , suIsEmpty
   , apSubst
@@ -25,6 +26,7 @@ import Cryptol.Utils.Misc(anyJust,anyJust2)
 import Cryptol.Compiler.Monad(panic)
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR
+import Cryptol.Compiler.IR.Type(matchStreamSize)
 import Cryptol.Compiler.IR.EvalType
 
 type Subst = IRSubst TParam
@@ -71,6 +73,17 @@ suMerge su1 su2 =
     { suType = Map.union (suType su1) (suType su2)
     , suSize = Map.union (suSize su1) (suSize su2)
     }
+
+suMergeMaybe ::
+  forall tname.
+  Ord tname => IRSubst tname -> IRSubst tname -> Maybe (IRSubst tname)
+suMergeMaybe su1 su2
+  | overlapOk (==)            suType &&
+    overlapOk matchStreamSize suSize = Just (suMerge su1 su2)
+  | otherwise = Nothing
+  where
+  overlapOk :: (a -> a -> Bool) -> (IRSubst tname -> Map tname a) -> Bool
+  overlapOk eq f = and (Map.intersectionWith eq (f su1) (f su2))
 
 --------------------------------------------------------------------------------
 apSubst :: ApSubst a => IRSubst (TName a) -> a -> a

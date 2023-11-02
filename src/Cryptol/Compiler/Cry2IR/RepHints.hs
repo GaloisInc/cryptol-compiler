@@ -16,6 +16,12 @@ data RepHint = AsWord
              | TupHint [RepHint]
              | RecHint (Cry.RecordMap Cry.Ident RepHint)
 
+isNoHint :: RepHint -> Bool
+isNoHint h =
+  case h of
+    NoHint -> True
+    _      -> False
+
 -- | Split into hints for the arguments and a hint for the result
 splitRepHint :: RepHint -> ([RepHint], RepHint)
 splitRepHint hint =
