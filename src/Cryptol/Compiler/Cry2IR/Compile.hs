@@ -3,9 +3,8 @@ module Cryptol.Compiler.Cry2IR.Compile where
 
 import Data.Set qualified as Set
 import Data.List(elemIndex)
-import Data.Either(partitionEithers)
 import Data.Text(Text)
-import Control.Monad(zipWithM,forM,guard,when,unless,foldM)
+import Control.Monad(zipWithM,forM,guard,when)
 
 import Cryptol.TypeCheck.AST qualified as Cry
 import Cryptol.TypeCheck.Subst qualified as Cry
@@ -17,14 +16,13 @@ import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Common
 import Cryptol.Compiler.IR.Cryptol
-import Cryptol.Compiler.IR.Subst
 import Cryptol.Compiler.IR.EvalType
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.Cry2IR.ConvertM qualified as C
 import Cryptol.Compiler.Cry2IR.Specialize qualified as Spec
 import Cryptol.Compiler.Cry2IR.Type qualified as T
 import Cryptol.Compiler.Cry2IR.InstanceMap
-import Cryptol.Compiler.Cry2IR.RepHints
+import Cryptol.Compiler.Cry2IR.ChooseSpec
 
 
 compileModule :: Cry.Module -> M.CryC ()
@@ -547,9 +545,11 @@ compileCall ::
   [Cry.Expr]  {- ^ Value arguments provided -} ->
   Type        {- ^ Wanted result type -} ->
   C.ConvertM Expr
-compileCall f ts es tgtT = undefined
-  do instDB <- C.doCryC (M.getFun f)
-     undefined
+compileCall f ts es tgtT =
+  do call <- selectInstance f ts tgtT
+     es' <- zipWithM compileExpr es (ircArgTypes call)
+     pure (IRExpr (IRCallFun call { ircArgs = es' }))
+
 {-
      tys    <- mapM compileType ts
      (funName,funTy) <-
@@ -688,33 +688,6 @@ compileType ty =
 
 -}
 
-
--- | Check if some concrete type arguments match a particular
--- function instance.  Returns (type arguments, size arguments)
-matchFun ::
-  (FunName, FunType) ->
-  [Cry.Type] ->
-  Maybe ([Cry.Type], [Cry.Type])
-matchFun (f, funTy) tyArgs =
-  do 
-     let FunInstance pi = irfnInstance f
-     binds <- concat <$> zipWithM matchParamInfo pi tyArgs
-     let (nums,vals) = partitionEithers binds
-     let numPs = ftSizeParams funTy
-         valPs = ftTypeParams funTy
-
-     unless (length nums == length numPs) $
-        panic "matchFun" ["Numeric argument mismatch"]
-     unless (length vals == length valPs) $
-        panic "matchFun" ["Value type argument mismatch"]
-
-     pure (vals, nums)
-
-selectInstance :: Cry.Name -> [Cry.Type] -> Type -> M.CryC ()
-selectInstance f tyArgs tgtT =
-  do instDB <- M.getFun f
-     let is = instanceMapToList instDB
-     undefined
 
 
 

@@ -55,7 +55,6 @@ type StreamExpr = IRStreamExpr Cry.TParam NameId Expr
 -- | Function calls, specialized to Cryptol names
 type Call = IRCall Cry.TParam NameId Expr
 
-
 data NameId =
     AnonId !Int
   | NameId Cry.Name

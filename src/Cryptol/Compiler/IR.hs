@@ -145,9 +145,7 @@ data IRCall tname name expr =
     { ircFun      :: IRCallable tname name expr  -- ^ What we are calling
 
     , ircFunType  :: !(IRFunType tname)
-      -- ^ Type of the function we are calling
-      --   (uninstantiated, we assume it contains no free variables
-      --   , in particualr we d )
+      -- ^ Type of the function we are calling (uninstantiated)
 
     , ircArgTypes :: [IRType tname]   -- ^ Types of arguments (types of ircArgs)
     , ircResType  :: IRType tname     -- ^ Result of function, or closure type

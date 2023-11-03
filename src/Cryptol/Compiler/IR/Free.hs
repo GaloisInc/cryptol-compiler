@@ -125,3 +125,22 @@ instance (Ord tname) => FreeSizeNames (IRStreamSize tname) where
       IRSize s  -> freeSizeNames s
 
 
+freeValTypeVars :: Ord tname => IRType tname -> Set tname
+freeValTypeVars ty =
+  case ty of
+    TBool           -> mempty
+    TInteger        -> mempty
+    TIntegerMod {}  -> mempty
+    TRational       -> mempty
+    TFloat          -> mempty
+    TDouble         -> mempty
+    TWord {}        -> mempty
+    TArray _ elTy   -> freeValTypeVars elTy
+    TStream _ elTy  -> freeValTypeVars elTy
+    TTuple ts       -> Set.unions (map freeValTypeVars ts)
+    TFun args res   -> Set.unions (map freeValTypeVars (res : args))
+    TPoly x         -> Set.singleton x
+
+
+
+

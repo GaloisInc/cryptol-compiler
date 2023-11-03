@@ -2,7 +2,6 @@ module Cryptol.Compiler.Cry2IR.Type where
 
 import Cryptol.Utils.RecordMap qualified as Cry
 import Cryptol.TypeCheck.AST qualified as Cry
-import Cryptol.TypeCheck.Type qualified as Cry
 
 import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.Cry2IR.ConvertM
