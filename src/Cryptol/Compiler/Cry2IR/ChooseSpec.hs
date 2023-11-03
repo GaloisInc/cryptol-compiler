@@ -33,7 +33,7 @@ selectInstance ::
   Cry.Name      {- ^ Call this function -} ->
   [Cry.Type]    {- ^ With these type arguments -} ->
   Type          {- ^ And this is what we want to get -} ->
-  ConvertM (IRCall Cry.TParam NameId ())
+  ConvertM Call
 selectInstance f tyArgs tgtT =
   do instDB <- doCryC (M.getFun f)
      let is = instanceMapToList instDB
@@ -90,7 +90,7 @@ matchFun ::
   (FunName, FunType)           {- ^ Instance under consideration -} ->
   [Either StreamSize Cry.Type] {- ^ Type parameters, numeric ones compiled-} ->
   Type                         {- ^ Target type -} ->
-  ConvertM (Maybe (IRCall Cry.TParam NameId (), RepHint))
+  ConvertM (Maybe (Call, RepHint))
   -- ^ Nothing if the instnace does not apply.
   -- Just (call,hint) if we can use the instance, the hint gives transformation
   -- we have to apply to the result if we use this instance.
@@ -151,7 +151,7 @@ matchFun (f, funTy) tyArgs tgtT =
                   , ircFunType  = funTy
                   , ircArgTypes = apSubst finalSu (ftParams funTy)
                   , ircResType  = apSubst finalSu (ftResult funTy)
-                  , ircArgs     = map (const ()) (ftParams funTy)
+                  , ircArgs     = []
                   }
      pure (call, hint)
 
