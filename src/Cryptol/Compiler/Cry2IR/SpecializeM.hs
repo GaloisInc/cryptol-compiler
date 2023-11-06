@@ -1,4 +1,4 @@
-module Cryptol.Compiler.Cry2IR.Monad
+module Cryptol.Compiler.Cry2IR.SpecializeM
   ( SpecM
   , runSpecM
 
@@ -57,7 +57,6 @@ import Cryptol.TypeCheck.Solver.SMT qualified as Cry
 import Cryptol.Utils.Ident qualified as Cry
 
 import Cryptol.Compiler.PP(Doc,cryPP,(<+>))
-import Cryptol.Compiler.Error(Loc)
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.IR.Subst
@@ -80,7 +79,6 @@ type SpecImpl =
 data RW = RW
   { roTParams     :: [Cry.TParam]
   , roTraits      :: Map Cry.TParam [Trait]  -- indexed by variable
-  , roLoc         :: !Loc
 
   , roRepHints    :: !(Map Cry.PrimIdent [RepHint])
     -- ^ Hints on what representations to generate for the given name.
@@ -111,8 +109,7 @@ instance BaseM SpecM SpecM where
 runSpecM :: SpecM a -> M.CryC [a]
 runSpecM (SpecM m) = map fst <$> findAll (runStateT rw0 m)
   where
-  rw0 = RW { roLoc          = mempty
-           , roTParams      = mempty
+  rw0 = RW { roTParams      = mempty
            , roTraits       = mempty
            , roRepHints     = primRepHints
            , rwProps        = mempty
@@ -145,9 +142,7 @@ doCryCWith k (SpecM m) =
 
 -- | Abort: we found something that's unsupported.
 unsupported :: Doc -> SpecM a
-unsupported x =
-  do loc <- roLoc <$> SpecM get
-     doCryC (M.unsupported (reverse loc) ("[cry2ir]" <+> x))
+unsupported x = doCryC (M.unsupported ("[cry2ir]" <+> x))
 
 --------------------------------------------------------------------------------
 -- Boolean constraint
@@ -418,13 +413,7 @@ getLocal x = Map.lookup x . roLocalIRNames <$> SpecM get
 --------------------------------------------------------------------------------
 
 enter :: Cry.Name -> SpecM a -> SpecM a
-enter cnm m =
-  do let nm = cryPP cnm
-     SpecM $ sets_ \rw -> rw { roLoc = nm : roLoc rw }
-     a <- m
-     SpecM $ sets_ \rw -> rw { roLoc = drop 1 (roLoc rw) }
-     pure a
-
+enter cnm = doCryCWith (M.enterLoc [cryPP cnm])
 
 --------------------------------------------------------------------------------
 

@@ -99,7 +99,7 @@ compileStreamSizeType ty =
 
     Cry.TVar t ->
       case t of
-        Cry.TVBound v -> IRSize <$> lookupNumericTParam v
+        Cry.TVBound v -> lookupNumericTParam v
         Cry.TVFree {} -> unexpected "Free type variable"
 
     Cry.TCon tc ts ->

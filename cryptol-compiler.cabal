@@ -72,9 +72,9 @@ library
       Cryptol.Compiler.PP
 
       Cryptol.Compiler.Cry2IR.Type
-      Cryptol.Compiler.Cry2IR.ConvertM
-      Cryptol.Compiler.Cry2IR.Monad
+      Cryptol.Compiler.Cry2IR.SpecializeM
       Cryptol.Compiler.Cry2IR.Specialize
+      Cryptol.Compiler.Cry2IR.ConvertM
       Cryptol.Compiler.Cry2IR.ChooseSpec
       Cryptol.Compiler.Cry2IR.InstanceMap
       Cryptol.Compiler.Cry2IR.Compile

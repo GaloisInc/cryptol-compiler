@@ -10,7 +10,7 @@ import Cryptol.TypeCheck.Type qualified as Cry
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 
 import Cryptol.Compiler.Error(panic)
-import Cryptol.Compiler.PP(pp)
+import Cryptol.Compiler.PP
 import Cryptol.Compiler.Monad qualified as M
 
 import Cryptol.Compiler.IR.Subst
@@ -38,18 +38,26 @@ selectInstance f tyArgs tgtT =
   do instDB <- doCryC (M.getFun f)
      let is = instanceMapToList instDB
      targs <- mapM prepTArg tyArgs
-     select Nothing targs is
+     select is Nothing targs is
   where
-  select candidate targs is =
+  select is0 candidate targs is =
     case is of
       [] ->
         case candidate of
-          Nothing -> panic "selectInstance" ["No matching instance"]
+          Nothing ->
+            panic "selectInstance" $
+              [ "No matching instance"
+              , "Function: " ++ show (pp f)
+              , "Type arguments: " ++ show (commaSep (map (either pp cryPP) targs))
+              , "Target type: " ++ show (pp tgtT)
+              , "Instances:"
+              ] ++
+              [ show $ nest 2 $ vcat $ map (("*" <+>) . pp . snd) is0 ]
           Just (c,_)  -> pure c
       i : more ->
         do mbYes <- matchFun i targs tgtT
            case mbYes of
-             Nothing -> select candidate targs more
+             Nothing -> select is0 candidate targs more
              Just this@(c,hint) ->
                case hint of
                  NoHint -> pure c
@@ -58,7 +66,7 @@ selectInstance f tyArgs tgtT =
                           case candidate of
                             Nothing     -> this
                             Just other  -> pickBetter this other
-                    in select (Just newCandidate) targs more
+                    in select is0 (Just newCandidate) targs more
 
   prepTArg t =
     case Cry.kindOf t of
@@ -99,7 +107,6 @@ matchFun (f, funTy) tyArgs tgtT =
   runMatch
   do let FunInstance pinfo = irfnInstance f
      matchPs <- liftMaybe (zipWithM matchParamInfo pinfo tyArgs)
-
      let (nums, vals) = partitionEithers (concat matchPs)
      let numPs = ftSizeParams funTy
          valPs = ftTypeParams funTy
@@ -123,6 +130,7 @@ matchFun (f, funTy) tyArgs tgtT =
        lift (foldM (translateIf (`Set.member` nestedPs)) numSu (zip valPs vals))
 
      let resT = apSubst nestedSu (ftResult funTy)
+
      (hint,moreSu) <- liftMaybe (matchType resT tgtT)
 
      let resSu = suMerge moreSu nestedSu
@@ -154,8 +162,6 @@ matchFun (f, funTy) tyArgs tgtT =
                   , ircArgs     = []
                   }
      pure (call, hint)
-
-
 
 -- | Type parameters that appear as elements in other sequences.
 nestedTyParams :: Type -> Set Cry.TParam

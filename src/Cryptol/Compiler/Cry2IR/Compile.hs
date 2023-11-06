@@ -7,6 +7,7 @@ import Data.Text(Text)
 import Control.Monad(zipWithM,forM,guard,when)
 
 import Cryptol.TypeCheck.AST qualified as Cry
+import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.TypeCheck.Subst qualified as Cry
 import Cryptol.IR.FreeVars qualified as Cry
 import Cryptol.Utils.RecordMap qualified as Cry
@@ -38,31 +39,34 @@ compileDeclGroup dg =
 
 compileTopDecl :: Cry.Decl -> M.CryC ()
 compileTopDecl d =
-  debugWrap
+  M.enterLoc [cryPP cname] $
+  debugWrap $
 
   do insts <-
        case Cry.dDefinition d of
+
+         Cry.DForeign {} ->
+           M.unsupported "Foregin declaration" -- XXX: Revisit
+
          Cry.DPrim       ->
-           do insts <- Spec.compilePrimDecl cname (Cry.dSignature d)
+           do insts <- Spec.compileSchema cname (Cry.dSignature d)
               pure [ (i,ty,IRFunPrim) | (i,ty) <- insts ]
-         Cry.DForeign {} -> M.unsupported loc "Foregin declaration" -- XXX: Revisit
+
          Cry.DExpr e ->
-           do insts <- Spec.compilePrimDecl cname (Cry.dSignature d)
-              pure [ (i,ty,IRFunPrim) | (i,ty) <- insts ]
-{-
-           do let (as,ps,xs,body) = prepExprDecl e
-              M.withCryLocals xs    -- we add locals here so we can compute
-                                    -- the type of the body
-                do resTcry <- M.getTypeOf body
-                   insts <- compileFunDecl cname as ps (map snd xs) resTcry \args resT ->
-                      pure () {-
-                      do let is = map (NameId . fst) xs
-                         let nms = zipWith IRName is args
-                         C.withIRLocals nms
-                           do def <- compileExpr body resT
-                              pure (IRFunDef is def) -}
-                   pure [ (i,ty,IRFunPrim) | (i,ty,_) <- insts ]
--}
+           do insts <- Spec.compileSchema cname (Cry.dSignature d)
+              let (as,xs,body) = prepExprDecl e
+              forM insts \(inst@(FunInstance pis),fty) ->
+                C.runConvertM
+                do let is = map (NameId . fst) xs
+                   let (sizePs, knownTs) = knownPs as pis
+                       su = Cry.listParamSubst knownTs
+                       ibody = Cry.apSubst su body
+                       xsTs = [ (IRName (NameId x) it, Cry.apSubst su t)
+                              | ((x,t),it) <- xs `zip` ftParams fty ]
+                   C.withNumericTParams sizePs $
+                     C.withLocals xsTs
+                       do def <- compileExpr ibody (ftResult fty)
+                          pure (inst, fty, IRFunDef is def)
 
      let isPrim def = case def of
                         IRFunPrim -> True
@@ -75,10 +79,9 @@ compileTopDecl d =
                    [ (irfnInstance (irfName fd), fd) | fd <- decls ]
      case mbMap of
        Right a  -> M.addCompiled cname a
-       Left err -> M.unsupported loc err
+       Left err -> M.unsupported err
 
   where
-  loc   = [pp cname]
   cname = Cry.dName d
 
   mkDecl funame (i,ty,def) =
@@ -103,34 +106,17 @@ compileTopDecl d =
             do print (pp cname <+> ":" <+> cryPP (Cry.dSignature d))
                print (pp err)
 
-
-
-
-makeInstance ::
-  Cry.Name ->
-  (FunInstance, FunType) {- ^ This is what we want -} ->
-  ([Cry.TParam], [Cry.Prop], [(Cry.Name,Cry.Type)], Cry.Expr) {- ^ Def -} ->
-  M.CryC FunDef
-makeInstance f (i@(FunInstance info), funTy) (tps, _, argsG, bodyG) =
-  do expr <-
-        C.runConvertM $
-        C.enterFun f i $
-        C.withNumericTParams (ftSizeParams funTy) $
-        C.withLocals args $
-        compileExpr body (ftResult funTy)
-     pure (IRFunDef (map (irNameName . fst) args) expr)
-  where
-  args = [ (IRName (NameId x) irt, Cry.apSubst crySu t)
-         | ((x,t),irt) <- argsG `zip` ftParams funTy ]
-  body = Cry.apSubst crySu bodyG
-
-  crySu = Cry.listParamSubst (foldr isKnown [] (zip info tps))
-  isKnown (pi,tp) rest =
-    case pi of
-      NumFixed n -> (tp, Cry.tNat' n) : rest
-      TyBool     -> (tp, Cry.tBit) : rest
-      _          -> rest
-
+  knownPs as is = foldr known ([],[]) (zip as is)
+    where
+    known (a,p) (sizes,su) =
+      case p of
+        NumFixed n -> ((a, sz) : sizes, (a, Cry.tNat' n) : su)
+          where sz = case n of
+                       Cry.Inf    -> IRInfSize
+                       Cry.Nat na -> IRSize (IRFixedSize na)
+        NumVar s -> ((a, IRSize (IRPolySize (IRSizeName a s))) : sizes, su)
+        TyBool -> (sizes, (a,Cry.tBit) : su)
+        _ -> (sizes, su)
 
 
 
@@ -138,12 +124,12 @@ makeInstance f (i@(FunInstance info), funTy) (tps, _, argsG, bodyG) =
 
 -- | Identify expressions that are functions
 prepExprDecl ::
-  Cry.Expr -> ([Cry.TParam], [Cry.Prop], [(Cry.Name,Cry.Type)],Cry.Expr)
-prepExprDecl expr = (tparams, quals, args, body)
+  Cry.Expr -> ([Cry.TParam], [(Cry.Name,Cry.Type)],Cry.Expr)
+prepExprDecl expr = (tparams, args, body)
   where
-  (tparams,expr1) = Cry.splitWhile Cry.splitTAbs     expr
-  (quals,expr2)   = Cry.splitWhile Cry.splitProofAbs expr1
-  (args,body)     = Cry.splitWhile Cry.splitAbs      expr2
+  (tparams,expr1)   = Cry.splitWhile Cry.splitTAbs     expr
+  (_quals,expr2)    = Cry.splitWhile Cry.splitProofAbs expr1
+  (args,body)       = Cry.splitWhile Cry.splitAbs      expr2
 
 
 seqElementType :: Type -> Type
@@ -181,7 +167,7 @@ compileExpr expr0 tgtT =
        Cry.ETuple es ->
          case tgtT of
            TTuple ts -> mkTuple <$> zipWithM compileExpr es ts
-           _  -> unexpected "ETuple of non-tuple type"
+           _ -> unexpected "ETuple of non-tuple type"
 
        Cry.ERec rec ->
           case tgtT of
@@ -204,6 +190,9 @@ compileExpr expr0 tgtT =
                 let ety = case tgtT of
                             TBool -> TWord len
                             _     -> TArray len tgtT
+                            -- NOTE: in this case ety may be a type
+                            -- containing a nested stream.
+
                 ce <- compileExpr e ety
                 pure (callPrimG ArrayLookup {- or word? -}
                           [(IRFixedSize i',MemSize)] [ce] tgtT)
@@ -227,6 +216,9 @@ compileExpr expr0 tgtT =
                                               ]
 
                (ty,len) <-
+                  -- XXX: in this care we don't care about the
+                  -- representations of types other than the one being
+                  -- selected, but we have no way to express this at the moment.
                   do t <- T.compileValType cty
                      case t of
                        TTuple ts
@@ -241,7 +233,7 @@ compileExpr expr0 tgtT =
                ce <- compileExpr e ty
                pure $ callPrim (TupleSel i len) [ce] tgtT
 
-
+       -- XXX: we shoudl do this
        Cry.ESet {} -> C.unsupported "ESet"
 
        Cry.EIf eCond eThen eElse ->
@@ -250,18 +242,20 @@ compileExpr expr0 tgtT =
             ceElse <- compileExpr eElse tgtT
             pure (IRExpr (IRIf ceCond ceThen ceElse))
 
-       Cry.EComp len ty res ms ->
+       Cry.EComp _len _ty res ms ->
          let elT = seqElementType tgtT
-         in compileComprehension len elT tgtT res ms
+         in compileComprehension elT tgtT res ms
 
        Cry.EWhere e ds -> compileLocalDeclGroups ds (compileExpr e tgtT)
 
+       -- XXX: This shoudl be similar to if-then else
        Cry.EPropGuards {}        -> C.unsupported "EPropGuards"
 
        Cry.ELocated _rng e       -> compileExpr e tgtT
 
        Cry.EAbs {} -> compileLam xs' e args tgtT
           where (xs',e) = Cry.splitWhile Cry.splitAbs expr
+
        Cry.EApp {}               -> unexpected "EApp"
        Cry.ETAbs {}              -> unexpected "ETAbs"
        Cry.ETApp {}              -> unexpected "ETApp"
@@ -340,8 +334,8 @@ Multiple arms, multiple matches:
 
 
 compileComprehension ::
-  Cry.Type -> Type -> Type -> Cry.Expr -> [[Cry.Match]] -> C.ConvertM Expr
-compileComprehension cryTotLen elT tgtT res mss =
+  Type -> Type -> Cry.Expr -> [[Cry.Match]] -> C.ConvertM Expr
+compileComprehension elT tgtT res mss =
   do e <- comp
             case seqLength tgtT of
               IRInfSize -> True
@@ -548,146 +542,7 @@ compileCall ::
 compileCall f ts es tgtT =
   do call <- selectInstance f ts tgtT
      es' <- zipWithM compileExpr es (ircArgTypes call)
-     pure (IRExpr (IRCallFun call { ircArgs = es' }))
-
-{-
-     tys    <- mapM compileType ts
-     (funName,funTy) <-
-        case lookupInstance tys instDB of
-          ITE gs opt1 opt2 -> doITE gs opt1 opt2
-          Found a -> pure a
-          NotFound ->
-            bad
-              [ "Missing instance"
-              , "Function: " ++ show (pp f)
-              , "Instance: " ++ show [ either pp pp x | x <- tys ]
-              ]
-     let (typeArgs',sizeArgs') = makeTArgs [] [] (irfnInstance funName) tys
-     typeArgs <- mapM C.zonk typeArgs'
-     sizeArgs <- forM sizeArgs' \(t',s) ->
-                   do t <- C.zonk t'
-                      pure (t,s)
-
-     let sizeSu = foldr (uncurry suAddSize) suEmpty
-                $ zip (map irsName (ftSizeParams funTy))
-                      (map (IRSize . fst) sizeArgs)
-
-         su = foldr (uncurry suAddType) sizeSu
-            $ zip (ftTypeParams funTy) typeArgs
-
-         argTs = apSubst su (ftParams funTy)
-         resT  = apSubst su (ftResult funTy)
-
-     let haveArgs = length es
-         needArgs = length argTs
-         (haveTs,needTs) = splitAt haveArgs argTs
-
-     ces <- zipWithM compileExpr es argTs
-     let call = IRCall { ircFun      = IRTopFun
-                                         IRTopFunCall
-                                           { irtfName = funName
-                                           , irtfTypeArgs = typeArgs
-                                           , irtfSizeArgs = sizeArgs
-                                           }
-                       , ircFunType   = funTy
-                       , ircArgTypes  = haveTs
-                       , ircResType   = resT
-                       , ircArgs      = ces
-                       }
-
-
-     res <- case compare haveArgs needArgs of
-              EQ -> pure (IRCallFun call)
-              LT -> pure (IRClosure call { ircResType = TFun needTs resT })
-              GT -> C.unsupported
-                      $ vcat [ "function over applied (higher order result)"
-                             , "function:" <+> pp funName
-                             , "type:" <+> pp funTy
-                             , "applied to" <+> pp haveArgs <+> "arguments"
-                             , "expected" <+> pp needArgs <+> "arguments"
-                             , "expected params" <+> hsep (map pp argTs) <+> "arguments"
-                             ]
-
-
-     coerceTo (IRExpr res) tgtT
-
-  where
-  bindNum sz ty args =
-    case ty of
-      Right e' ->
-        case e' of
-          IRSize e  -> (e,sz) : args
-          IRInfSize -> bad [ "Inf argument, to finite instnace" ]
-      Left {} -> bad [ "Type argument mismatch"
-                     , "Expected Num, got Type"
-                     ]
-  bindType ty args =
-    case ty of
-      Left t   -> t : args
-      Right {} -> bad [ "Type argument mismatch"
-                      , "Expected Type, got Num"
-                      ]
-
-  makeTArgs typeArgs sizeArgs (FunInstance ps) cts =
-    case (ps,cts) of
-      (p : morePs, t : moreTs) ->
-        let next a b = makeTArgs a b (FunInstance morePs) moreTs
-        in
-        case p of
-          NumVar sz   -> next typeArgs (bindNum sz t sizeArgs)
-          NumFixed {} -> next typeArgs sizeArgs
-          TyBool      -> next typeArgs sizeArgs
-          TyNotBool   -> next (bindType t typeArgs) sizeArgs
-          TyAny       -> next (bindType t typeArgs) sizeArgs
-
-      ([],[]) -> (reverse typeArgs, reverse sizeArgs)
-      _ -> bad ["Instance and type parameters do not match"]
-
-  doITE gs opt1 opt2 =
-    case gs of
-      [] -> doRes opt1
-      g : more ->
-        case g of
-          GBool x ->
-            do yes <- C.caseBool x
-               if yes then doITE more opt1 opt2 else doRes opt2
-          GNotBool x ->
-            do yes <- C.caseBool x
-               if yes then doRes opt2 else doITE more opt1 opt2
-
-          -- can consider dynamic check if all alternatives return
-          -- the same type
-          GNum x n ->
-            do yes <- C.caseConst (toCryS (IRPolySize x)) EQ n
-               if yes then doITE more opt1 opt2 else doRes opt2
-          GNumFun tf as rel n ->
-            do yes <- C.caseConst (toCryS (IRComputedSize tf as)) rel n
-               if yes then doITE more opt1 opt2 else doRes opt2
-
-  toCryS sz =
-    case sz of
-      IRFixedSize n         -> Cry.tNum n
-      IRPolySize x          -> Cry.TVar (Cry.TVBound (irsName x))
-      IRComputedSize tf as  -> Cry.TCon (Cry.TF tf) (map toCryS as)
-
-  doRes res =
-    case res of
-      Found a  -> pure a
-      NotFound -> bad ["NotFound"]
-      ITE gs opt1 opt2 -> doITE gs opt1 opt2
-
-  bad = panic "compileCall"
-
-
-compileType :: Cry.Type -> C.ConvertM (Either Type StreamSize)
-compileType ty =
-  case Cry.kindOf ty of
-    Cry.KNum  -> Right <$> compileStreamSizeType ty
-    Cry.KType -> Left  <$> compileValType ty
-    _         -> C.panic "compileTypes" ["Unexpecte higher order kind"]
-
--}
-
+     coerceTo (IRExpr (IRCallFun call { ircArgs = es' })) tgtT
 
 
 

@@ -20,6 +20,7 @@ module Cryptol.Compiler.Monad
   , Cry.floatName
 
     -- * Errors and Warnings
+  , enterLoc
   , addWarning
   , throwError
   , catchError
@@ -74,8 +75,9 @@ import qualified Cryptol.Utils.PP as Cry
 import qualified Cryptol.Utils.Logger as Cry
 import qualified Cryptol.Eval.Value as Cry
 
-import Cryptol.Compiler.PP(pp)
-import Cryptol.Compiler.Error
+import Cryptol.Compiler.PP(pp,Doc)
+import Cryptol.Compiler.Error hiding (unsupported)
+import Cryptol.Compiler.Error qualified as Err
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Cry2IR.InstanceMap
 
@@ -97,10 +99,13 @@ instance BaseM CryC CryC where
 
 
 -- | Context for compiler computations
-newtype CompilerContext = CompilerContext
+data CompilerContext = CompilerContext
   { roLocalTypes    :: Map Cry.Name Cry.Schema
     -- ^ Cryptol types of local variables.
     -- We need this to compute the Cryptol types of things.
+
+  , roLoc           :: !Loc
+    -- ^ Location for error reporting
   }
 
 -- | State of the compiler.
@@ -141,6 +146,7 @@ runCryC (CryC m) =
      let initialContext =
            CompilerContext
              { roLocalTypes = Map.empty
+             , roLoc        = []
              }
          initialState =
            CompilerState
@@ -409,3 +415,19 @@ getSolver :: CryC Cry.Solver
 getSolver =
   do s <- CryC get
      pure (Cry.minpTCSolver (rwModuleInput s))
+
+
+--------------------------------------------------------------------------------
+
+-- | Change the error location for the duration of the given computation.
+enterLoc :: Loc -> CryC a -> CryC a
+enterLoc loc (CryC m) =
+  CryC (mapReader (\ro -> ro { roLoc = loc ++ roLoc ro }) m)
+
+-- | Abort: we found something that's unsupported.
+unsupported :: Doc -> CryC a
+unsupported x =
+  do loc <- roLoc <$> CryC ask
+     Err.unsupported (reverse loc) x
+
+

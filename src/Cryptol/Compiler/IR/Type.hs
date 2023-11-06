@@ -182,8 +182,8 @@ matchSize t1 t2 =
        day we may want to fix Cryptol to be completely explicity about
        stuff like that, but it is not at the moment. -}
     IRComputedSize {}
-      | IRComputedSize {} <- t2 -> True
-      | otherwise -> False
+      | IRFixedSize {} <- t2 -> False
+      | otherwise            -> True
 
 
 --------------------------------------------------------------------------------

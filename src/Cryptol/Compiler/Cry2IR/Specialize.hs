@@ -1,7 +1,5 @@
 module Cryptol.Compiler.Cry2IR.Specialize
   ( compileSchema
-  , compileFunDecl
-  , compilePrimDecl
   , compileValType
   , compileSizeType
   , compileStreamSizeType
@@ -28,110 +26,8 @@ import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.IR.Subst
 import Cryptol.Compiler.IR.EvalType
 
-import Cryptol.Compiler.Cry2IR.Monad
+import Cryptol.Compiler.Cry2IR.SpecializeM
 import Cryptol.Compiler.Cry2IR.RepHints
-
-compilePrimDecl :: Cry.Name -> Cry.Schema -> M.CryC [(FunInstance, FunType)]
-compilePrimDecl = compileSchema
-
-compileFunDecl ::
-  (ApSubst a, TName a ~ Cry.TParam)  =>
-  Cry.Name                              {- ^ Name of what we are compiling -} ->
-  [Cry.TParam]                          {- ^ Type parameters -} ->
-  [Cry.Prop]                            {- ^ Type qualifiers -} ->
-  [Cry.Type]                            {- ^ Types of arguments -} ->
-  Cry.Type                              {- ^ Type of result -} ->
-  ([Type] -> Type -> SpecM a)           {- ^ Do actual work -} ->
-  M.CryC [(FunInstance, FunType, a)]
-compileFunDecl cn as quals args result k =
-  case ctrProps (infoFromConstraints quals) of
-
-    -- inconsistent
-    Nothing -> pure []
-
-    Just (traits,props,boolProps) ->
-      runSpecM $
-        enter cn
-        do addTParams as
-           mapM_ addTrait traits
-           addNumProps props
-           mapM_ (uncurry addIsBoolProp) (Map.toList boolProps)
-
-           (argTs,resT) <-
-              do mbHint <- getRepHint cn
-                 case mbHint of
-                   Nothing ->
-                     do argTs <- mapM compileValType args
-                        resT  <- compileValType result
-                        pure (argTs, resT)
-                   Just hint ->
-                      do let (ins,out) = splitRepHint hint
-                         let doOne h t =
-                               do ans <- compileValTypeWithHint h t
-                                  checkPossible
-                                  pure ans
-                         argTs <- zipWithM doOne ins args
-                         resT  <- doOne out result
-                         pure (argTs, resT)
-
-           body  <- k argTs resT
-           (su,info) <- doTParams suEmpty [] as
-           ts <- getTraits
-           let tparams = [ x
-                         | (x,ty) <- zip as info
-                         , case ty of
-                             TyNotBool -> True
-                             TyAny     -> True
-                             _         -> False
-                         ]
-
-           let sparams = [ IRSizeName x s
-                         | (x, NumVar s) <- zip as info ]
-
-
-
-           pure ( FunInstance info
-                , IRFunType
-                    { ftTypeParams = tparams
-                    , ftTraits     = ts
-                    , ftSizeParams = sparams
-                    , ftParams     = apSubst su argTs
-                    , ftResult     = apSubst su resT
-                    }
-                , apSubst su body
-                )
-  where
-  doTParams su info todo =
-    case todo of
-      [] -> pure (su, reverse info)
-      x : xs
-        | Cry.kindOf x == Cry.KNum ->
-          do mbYes <- checkSingleValue x
-             case mbYes of
-               Just v ->
-                 doTParams (suAddSize x sz su)
-                           (NumFixed v : info)
-                           xs
-                 where sz = case v of
-                              Cry.Inf -> IRInfSize
-                              Cry.Nat n -> IRSize (IRFixedSize n)
-
-               Nothing ->
-                 do s <- caseSize (Cry.TVar (Cry.TVBound x))
-                    case s of
-                      IsFin     -> doTParams su (NumVar LargeSize : info) xs
-                      IsFinSize -> doTParams su (NumVar MemSize : info) xs
-                      IsInf     -> doTParams su (NumFixed Cry.Inf : info) xs
-
-        | otherwise ->
-          do i <- getBoolConstraint x
-             case i of
-               Known True -> doTParams (suAddType x TBool su) (TyBool : info) xs
-               Known False -> doTParams su (TyNotBool : info) xs
-               Unknown {} -> doTParams su (TyAny : info) xs
-
-
-
 
 compileSchema ::
   Cry.Name                              {- ^ Name of what we are compiling -} ->

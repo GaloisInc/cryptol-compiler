@@ -26,7 +26,7 @@ import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Type
 import Cryptol.Compiler.Cry2IR.InstanceMap(instanceMapToList)
 import Cryptol.Compiler.Cry2IR.Compile
-import Cryptol.Compiler.Cry2IR.Monad qualified as S
+import Cryptol.Compiler.Cry2IR.SpecializeM qualified as S
 import Cryptol.Compiler.Cry2IR.Specialize qualified as S
 import Cryptol.Compiler.Rust.CodeGen
 import Cryptol.Compiler.Rust.Crate qualified as Crate

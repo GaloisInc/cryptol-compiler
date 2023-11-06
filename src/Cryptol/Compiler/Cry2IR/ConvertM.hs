@@ -24,11 +24,11 @@ type SpecImpl =
      ]
 
 data RO = RO
-  { roLoc         :: !Loc
-    -- ^ Location for error reporting
-
-  , roNumericParams :: Map Cry.TParam SizeName
-    -- ^ Information about type parameters
+  { roNumericParams :: Map Cry.TParam StreamSize
+    -- ^ Information about type parameters.
+    -- These will be either the variable used to represent them, or
+    -- a constant, if we are working on an instantiation where this
+    -- parameter is fixed.
 
   , roLocalIRNames  :: Map NameId Name
     -- ^ Maps Cryptol name to an IR name, which has the IRType of the local
@@ -39,8 +39,7 @@ runConvertM :: ConvertM a -> M.CryC a
 runConvertM (ConvertM m) = runReaderT ro m
   where
   ro = RO
-    { roLoc = mempty
-    , roNumericParams = mempty
+    { roNumericParams = mempty
     , roLocalIRNames = mempty
     }
 
@@ -54,18 +53,18 @@ doIO m = doCryC (M.doIO m)
 doCryC :: M.CryC a -> ConvertM a
 doCryC m = ConvertM (inBase m)
 
+-- | Do some nested CryC stuff.
 doCryCWith :: (forall a. M.CryC a -> M.CryC a) -> ConvertM b -> ConvertM b
 doCryCWith k (ConvertM m) =
   do ro <- ConvertM ask
-     a  <- doCryC (k (runReaderT ro m))
-     pure a
+     doCryC (k (runReaderT ro m))
 
 -- | Get the value of a numeric type parameter.
-lookupNumericTParam :: Cry.TParam -> ConvertM Size
+lookupNumericTParam :: Cry.TParam -> ConvertM StreamSize
 lookupNumericTParam tp =
   do ro <- ConvertM ask
      case Map.lookup tp (roNumericParams ro) of
-       Just s  -> pure (IRPolySize s)
+       Just s  -> pure s
        Nothing -> panic "lookupNumericTParam"
                     [ "Missing numeric parameter", show (pp tp) ]
 
@@ -74,13 +73,10 @@ lookupNumericTParam tp =
 
 -- | Abort: we found something that's unsupported.
 unsupported :: Doc -> ConvertM a
-unsupported x =
-  do loc <- roLoc <$> ConvertM ask
-     doCryC (M.unsupported (reverse loc) ("[cry2ir]" <+> x))
+unsupported x = doCryC (M.unsupported ("[cry2ir]" <+> x))
 
 enterLoc :: Loc -> ConvertM a -> ConvertM a
-enterLoc loc (ConvertM m) =
-  ConvertM (mapReader (\ro -> ro { roLoc = loc ++ roLoc ro }) m)
+enterLoc loc = doCryCWith (M.enterLoc loc)
 
 enterFun :: Cry.Name -> FunInstance -> ConvertM a -> ConvertM a
 enterFun f i = enterLoc [ cryPP f <+> pp i ]
@@ -90,11 +86,11 @@ enterLocal cnm = enterLoc [ cryPP cnm ]
 
 --------------------------------------------------------------------------------
 
-withNumericTParams :: [SizeName] -> ConvertM a -> ConvertM a
+withNumericTParams :: [(Cry.TParam, StreamSize)] -> ConvertM a -> ConvertM a
 withNumericTParams xs (ConvertM m) = ConvertM (mapReader upd m)
   where
-  upd ro = ro { roNumericParams = foldr add (roNumericParams ro) xs }
-  add x  = Map.insert (irsName x) x
+  upd ro = ro { roNumericParams = foldr (uncurry Map.insert)
+                                        (roNumericParams ro) xs }
 
 withLocals :: [(Name, Cry.Type)] -> ConvertM a -> ConvertM a
 withLocals xs k =
