@@ -1,18 +1,14 @@
 module Main where
 
 import Control.Exception
-import Control.Monad(forM_,forM)
+import Control.Monad(forM)
 import System.IO(hPrint,stderr)
 import System.Exit
 import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.List(intersperse)
 import Data.Maybe(mapMaybe)
-import System.Directory(createDirectoryIfMissing)
-import System.FilePath (splitDirectories, (</>), joinPath)
-
-import Language.Rust.Syntax qualified as Rust
-import Language.Rust.Pretty qualified as Rust
+import Data.Functor (void)
 
 import Cryptol.TypeCheck.AST qualified  as Cry
 import Cryptol.ModuleSystem.Name qualified as Cry
@@ -33,7 +29,7 @@ import Cryptol.Compiler.Rust.Crate qualified as Crate
 
 
 import Options
-
+import qualified Cryptol.Compiler.Rust.Compiler as Compiler
 
 main :: IO ()
 main =
@@ -45,22 +41,18 @@ main =
            doIO showHelp
 
          DefaultCommand ->
-           do loadInputs opts
-              doSimpleCompile opts
+           do Compiler.loadInputs (optFiles opts)
+              void $ Compiler.doSimpleCompile (optCrateName opts) (optOutputPath opts)
 
          ListPrimitives ->
-           do loadInputs opts
+           do Compiler.loadInputs (optFiles opts)
               listPrimitives
 
   `catch` \e ->
     do hPrint stderr (pp (e :: CompilerError))
        exitFailure
 
-loadInputs :: Options -> CryC ()
-loadInputs opts =
-  case optFiles opts of
-    [] -> mapM_ loadModuleByName [ floatName, preludeName ]
-    _  -> mapM_ loadModuleByPath (optFiles opts)
+
 
 listPrimitives :: CryC ()
 listPrimitives =

@@ -176,6 +176,18 @@ runCryC (CryC m) =
                            , Cry.evalPPOpts  = Cry.defaultPPOpts
                            }
 
+-- newtype CryCExec = CryCExec { runCryC' :: forall a. CryC a -> IO a }
+
+-- runCryCWithInit :: CryC () -> IO CryCExec
+-- runCryCWithInit i =
+--   do  compilerState <- runCryC (i >> CryC get)
+--       pure $ CryCExec (\cc -> runCryC (loadState compilerState >> cc))
+--   where
+--     loadState oldState =
+--       CryC $ sets_ $ \newState ->
+--         newState { rwNameGen = rwNameGen oldState
+--                  , rwCompiled = rwCompiled oldState
+--                  }
 
 -- | Do some IO stuff.
 doIO :: IO a ->  CryC a

@@ -12,7 +12,7 @@ maxSizeVal = 2^(64::Int) - 1
 data SizeVarSize =
     MemSize         -- ^ value will fit in usize
   | LargeSize       -- ^ value *is* large, use BigInt
-    deriving (Eq,Ord,Show)
+    deriving (Eq,Ord,Show,Read)
 
 
 -- | A pattern in a function instance.

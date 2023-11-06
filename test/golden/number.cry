@@ -1,0 +1,5 @@
+cryMain = 0xFFFFFFFFFFFFFFFFFF
+
+//:[8]
+// cryMain = 1
+//cryMain = 1 : [_]
