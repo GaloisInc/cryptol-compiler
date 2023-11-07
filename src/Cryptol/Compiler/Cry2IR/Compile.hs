@@ -25,26 +25,16 @@ import Cryptol.Compiler.Cry2IR.Type qualified as T
 import Cryptol.Compiler.Cry2IR.InstanceMap
 import Cryptol.Compiler.Cry2IR.ChooseSpec
 
-import qualified Debug.Trace as Trace
+compileModule :: Cry.Module -> M.CryC ()
+compileModule m = mapM_ compileDeclGroup (Cry.mDecls m)
 
-compileModule :: Bool -> Cry.Module -> M.CryC ()
-compileModule skipCompiled m = mapM_ (compileDeclGroup skipCompiled) (Cry.mDecls m)
-
-compileDeclGroup :: Bool -> Cry.DeclGroup -> M.CryC ()
-compileDeclGroup skipCompiled dg =
+compileDeclGroup :: Cry.DeclGroup -> M.CryC ()
+compileDeclGroup dg =
   case dg of
-    Cry.NonRecursive d -> compileTop d
-    Cry.Recursive ds   -> mapM_ (compileTop . toPrim) ds -- XXX
+    Cry.NonRecursive d -> compileTopDecl d
+    Cry.Recursive ds   -> mapM_ (compileTopDecl . toPrim) ds -- XXX
   where
   toPrim d = d { Cry.dDefinition = Cry.DPrim }
-  compileTop = if skipCompiled then compileTopDecl' else compileTopDecl
-
-compileTopDecl' :: Cry.Decl -> M.CryC ()
-compileTopDecl' d =
-  do  mbC <- Map.lookup (Cry.dName d) <$> M.getCompiled
-      case mbC of
-        Nothing -> Trace.traceM (show (Cry.dName d) ++ " - compiling") >> compileTopDecl d
-        Just _ -> Trace.traceM (show (Cry.dName d) ++ " - already compiled") >> pure ()
 
 compileTopDecl :: Cry.Decl -> M.CryC ()
 compileTopDecl d =

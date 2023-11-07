@@ -96,36 +96,6 @@ listPrimitives =
 isPrel :: Cry.Name -> Bool
 isPrel x = Cry.nameTopModule x `elem` [preludeName, floatName]
 
-doSimpleCompile :: Options -> CryC ()
-doSimpleCompile opts =
-  do ms <- getLoadedModules
-     forM_ ms \m ->
-        do let nm = show (cryPP (Cry.mName m))
-           doIO (putStrLn ("Processing module: " ++ nm))
-           doIO (putStrLn "Eta Expansion")
-           tys <- getTypes
-           m' <- doNameGen (\s -> etaModule tys s m)
-           -- doIO (print (cryPP m'))
-           doIO (putStrLn "Converting to IR")
-           -- doIO (print (cryPP m'))
-           compileModule m'
-
-     decls <- getCompiled
-     let declList = concatMap instanceMapToList (Map.elems decls)
-         gi = GenInfo { genCurModule       = Cry.mName (last ms)
-                      , genExternalModules = mempty
-                      }
-
-     srcFile <- doIO $ genModule gi declList
-
-     let crateName = optCrateName opts
-         outputPath = optOutputPath opts </> crateName
-     doIO (saveExample crateName outputPath srcFile)
-
-saveExample :: String -> FilePath -> Rust.SourceFile () -> IO ()
-saveExample name dir rust = Crate.writeExampleCrate name rust dir
-
-
 doTest :: CryC ()
 doTest =
   do let x = tp 1

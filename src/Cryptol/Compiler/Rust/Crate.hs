@@ -64,14 +64,14 @@ writeRtsTo fp = forM_ rtsCrateDir (writeEmbedFile fp)
 writeDwordTo :: FilePath -> IO ()
 writeDwordTo fp = forM_ dwordCrateDir (writeEmbedFile fp)
 
--- | `writeExampleCrate crateName sourceFile targetDir`  writes a single rust
---   source file to a new crate named `crateName` locaated at `targetDir` and adds a
+-- | `writeExampleCrate crateName targetDir sourceFile`  writes a single rust
+--   source file to a new crate named `crateName` located at `targetDir` and adds a
 --   `fn main` to invoke the `cry_main` function and print the result.
 --
 --   It also copies the cryptol-to-rust compiler RTS into `target` meaning that
 --   the resulting crate should be ready to compile with `cargo`.
-writeExampleCrate :: String -> Rust.SourceFile () -> FilePath -> IO ()
-writeExampleCrate crateName rust target =
+writeExampleCrate :: String -> FilePath -> Rust.SourceFile () -> IO ()
+writeExampleCrate crateName target rust =
   do  createDirectoryIfMissing True target
       writeFile (target </> "Cargo.toml") (crateToml crateName)
       writeRtsTo (target </> rtsPath)

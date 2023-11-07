@@ -24,8 +24,8 @@ tests =
 
 compileAndRunRust :: [FilePath] -> FilePath -> IO String
 compileAndRunRust cryFiles cratePath =
-  do  compilePath <- runCryC $ Compiler.compileExample cryFiles "test" cratePath
-      Process.readCreateProcess (cargoRun compilePath) ""
+  do  runCryC $ Compiler.compileExample cryFiles "test" cratePath
+      Process.readCreateProcess (cargoRun cratePath) ""
   where
     cargoRun cp =
       let p = Process.proc "cargo" ["run", "-q"]
