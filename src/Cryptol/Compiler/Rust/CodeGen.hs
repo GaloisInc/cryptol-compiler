@@ -4,10 +4,12 @@ module Cryptol.Compiler.Rust.CodeGen
   , GenInfo(..)
   )  where
 
+import Data.Map(Map)
 import Data.Set qualified as Set
 import Data.Maybe (catMaybes)
 import Control.Monad(forM, mapAndUnzipM)
 
+import Language.Rust.Data.Ident qualified as Rust
 import Language.Rust.Syntax qualified as Rust
 
 import Cryptol.Compiler.PP
@@ -234,16 +236,18 @@ genFunDecl decl =
 
 
 -- | Given a set of FunDecls, make a Rust SourceFile
-genSourceFile :: [FunDecl] -> Rust (Rust.SourceFile ())
+genSourceFile :: [FunDecl] -> Rust (Map FunName Rust.Ident, Rust.SourceFile ())
 genSourceFile decls =
-  do  doIO (print $ vcat $ map pp decls)
+  do  -- doIO (print $ vcat $ map pp decls)
 
       fnItems <- catMaybes <$> (genFunDecl `traverse` decls)
       let imports = [ mkUseGlob [ cryptolCrate, "trait_methods"]
                     ]
-      pure $ Rust.SourceFile Nothing [] (imports ++ fnItems)
+          file = Rust.SourceFile Nothing [] (imports ++ fnItems)
+      names <- getFunNames
+      pure (names, file)
 
-genModule :: GenInfo -> [FunDecl] -> IO (Rust.SourceFile ())
+genModule :: GenInfo -> [FunDecl] -> IO (Map FunName Rust.Ident, Rust.SourceFile ())
 genModule gi ds = runRustM gi (genSourceFile ds)
 
 --------------------------------------------------------------------------------

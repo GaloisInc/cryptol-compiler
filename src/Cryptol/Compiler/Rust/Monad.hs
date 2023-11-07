@@ -207,8 +207,9 @@ lookupFunName fu =
   case irfnName fu of
     IRPrimName p -> pure (Left p)
     IRDeclaredFunName f ->
-      do let mo = nameIdModule f
+      do -- let mo = nameIdModule f
          ro <- Rust ask
+         let mo = roModName ro -- XXX: For now everything goes in one module
          rw <- Rust get
          Right <$>
            if roModName ro == mo
@@ -249,6 +250,10 @@ localScope (Rust ma) =
       r <- ma
       _ <- sets_ (\s -> s { rwLocalNames = names })
       pure r
+
+-- | Get the ampping between IR names and Rust names for this module.
+getFunNames :: Rust (Map FunName Rust.Ident)
+getFunNames = lMap . rwLocalFunNames <$> Rust get
 
 --------------------------------------------------------------------------------
 -- Local names

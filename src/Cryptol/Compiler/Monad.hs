@@ -48,6 +48,7 @@ module Cryptol.Compiler.Monad
     -- * IR generation
   , addCompiled
   , getCompiled
+  , clearCompiled
 
     -- * SMT solver
   , getSolver
@@ -128,7 +129,11 @@ data CompilerState = CompilerState
   , rwNameGen     :: !Int
     -- ^ A seed for generating names.
 
-  , rwCompiled :: Map Cry.Name (InstanceMap FunDecl)
+  , rwFuns        :: !(Map Cry.Name (InstanceMap (FunName, FunType)))
+    -- ^ Known instance for each Cryptol function
+
+  , rwCompiled    :: !(Map Cry.Name [FunDecl])
+    -- ^ Generated code
   }
 
 -- | Information about primitives
@@ -154,6 +159,7 @@ runCryC (CryC m) =
               , rwTypes = Nothing
               , rwPrims = Nothing
               , rwNameGen = 0
+              , rwFuns = mempty
               , rwCompiled = mempty
               , rwModuleInput =
                   Cry.ModuleInput
@@ -400,17 +406,25 @@ getSchemaOf expr =
 
 addCompiled :: Cry.Name -> InstanceMap FunDecl -> CryC ()
 addCompiled x def =
-  CryC $ sets_ \s -> s { rwCompiled = Map.insert x def (rwCompiled s) }
+  CryC $ sets_ \s -> s { rwCompiled = Map.insert x newDecls (rwCompiled s)
+                       , rwFuns     = Map.insert x newKnown (rwFuns s)
+                       }
+  where
+  info d   = (irfName d, irfType d)
+  newKnown = info <$> def
+  newDecls = instanceMapToList def
 
-getCompiled :: CryC (Map Cry.Name (InstanceMap FunDecl))
+getCompiled :: CryC (Map Cry.Name [FunDecl])
 getCompiled = CryC $ rwCompiled <$> get
+
+clearCompiled :: CryC ()
+clearCompiled = CryC $ sets_ \rw -> rw { rwCompiled = mempty }
 
 getFun :: Cry.Name -> CryC (InstanceMap (FunName,FunType))
 getFun x =
-  do comp <- CryC (rwCompiled <$> get)
-     let info d = (irfName d, irfType d)
+  do comp <- CryC (rwFuns <$> get)
      case Map.lookup x comp of
-       Just fu -> pure (info <$> fu)
+       Just fu -> pure fu
        Nothing -> catchablePanic "getFunType" [ "Missing function"
                                               , show (pp x)
                                               ]

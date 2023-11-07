@@ -195,7 +195,8 @@ compileCryptolFloatPrim _ _ = unsupported "floating point primitve" -- XXX
 --------------------------------------------------------------------------------
 
 compilePrimAppend :: PrimArgs -> Rust RustExpr
-compilePrimAppend args =
+compilePrimAppend args = pure (todoExp "#")
+{-
   case primTypesOfArgs args of
     [ TWord (isKnownSize -> Just w1), TWord (isKnownSize -> Just w2) ] ->
       pure (callMacro (simplePath' [cryptolCrate,"append"])
@@ -204,4 +205,4 @@ compilePrimAppend args =
     -- XXX: array + array, array + stream, word + stream
 
     _ -> unsupportedPrim "#" args
-
+-}
