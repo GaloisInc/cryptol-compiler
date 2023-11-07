@@ -201,9 +201,27 @@ matchParamInfo pinfo t =
         Left (IRSize (IRFixedSize m)) | m == n -> pure []
         _ -> Nothing
 
-    NumVar _ ->
+    NumVar need ->
       case t of
-        Left (IRSize s) -> pure [Left s]
+        Left (IRSize s) ->
+          let ok = pure [Left s]
+          in
+          case s of
+             IRFixedSize n ->
+               case need of
+                 MemSize | n <= maxSizeVal -> ok
+                 LargeSize | n > maxSizeVal -> ok
+                 _ -> Nothing
+
+             IRPolySize x
+               | need == irsSize x -> ok
+               | otherwise -> Nothing
+
+             IRComputedSize {} -> ok
+             -- XXX:  We need a way to determine if the computation
+             -- fits the constraint on NumVar
+
+
         _ -> Nothing
 
     TyBool ->
