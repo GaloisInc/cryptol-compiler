@@ -161,7 +161,9 @@ compileExpr expr0 tgtT =
        Cry.EList es _t ->
          do let newTgtT = seqElementType tgtT
             ces <- mapM (`compileExpr` newTgtT) es
-            pure (callPrim MakeSeq ces tgtT)
+            let len = streamSizeToSize (seqLength tgtT)
+            let arr = callPrim ArrayLit ces (TArray len newTgtT)
+            pure (arr `coerceTo` tgtT)
 
        Cry.ETuple es ->
          case tgtT of
@@ -339,7 +341,7 @@ compileComprehension elT tgtT res mss =
             case seqLength tgtT of
               IRInfSize -> True
               _         -> False
-     e `coerceTo` tgtT
+     pure (e `coerceTo` tgtT)
   where
   comp isInf =
     case mss of
@@ -500,7 +502,8 @@ compileVar x ts args tgtT =
        Nothing -> compileCall x ts args tgtT
        Just n ->
          case (ts,args) of
-           ([], []) -> coerceTo (IRExpr (IRVar n)) tgtT   -- local mono value
+           ([], []) -> pure (coerceTo (IRExpr (IRVar n)) tgtT)
+                       -- local mono value
 
            -- local mono function
            ([], es) ->
@@ -523,7 +526,7 @@ compileVar x ts args tgtT =
                                  LT -> pure (IRClosure call
                                                { ircResType = TFun needTs b })
                                  GT -> C.unsupported "over application"
-                       coerceTo (IRExpr expr) tgtT
+                       pure (coerceTo (IRExpr expr) tgtT)
 
                   _ -> unexpected "application to non-function"
            (_ : _, _) -> C.unsupported "Polymorphic locals"
@@ -541,47 +544,46 @@ compileCall ::
 compileCall f ts es tgtT =
   do call <- selectInstance f ts tgtT
      es' <- zipWithM compileExpr es (ircArgTypes call)
-     coerceTo (IRExpr (IRCallFun call { ircArgs = es' })) tgtT
+     pure (coerceTo (IRExpr (IRCallFun call { ircArgs = es' })) tgtT)
 
 
 
-coerceTo :: Expr -> Type -> C.ConvertM Expr
+coerceTo :: Expr -> Type -> Expr
 coerceTo e tgtT =
-  do let srcT = typeOf e
 
-     case (srcT,tgtT) of
+  case (srcT,tgtT) of
 
-       (TStream (IRSize l1) t1, TArray l2 t2)
-         | (l1,t1) == (l2,t2) -> pure (callPrim Collect [e] tgtT)
+    (TStream (IRSize l1) t1, TArray l2 t2)
+      | (l1,t1) == (l2,t2) -> callPrim StreamToArray [e] tgtT
 
-       (TStream (IRSize l1) TBool, TWord l2)
-          | l1 == l2          -> pure (callPrim Collect [e] tgtT)
+    (TStream (IRSize l1) TBool, TWord l2)
+       | l1 == l2          -> callPrim StreamToWord [e] tgtT
 
-       (TArray l1 t1, TStream (IRSize l2) t2)
-         | (l1,t1) == (l2,t2) -> pure (callPrim Iter [e] tgtT)
+    (TArray l1 t1, TStream (IRSize l2) t2)
+      | (l1,t1) == (l2,t2) -> callPrim ArrayToStream [e] tgtT
 
-       (TWord l1, TStream (IRSize l2) TBool)
-         | l1 == l2           -> pure (callPrim Iter [e] tgtT)
+    (TWord l1, TStream (IRSize l2) TBool)
+      | l1 == l2           -> callPrim WordToStream [e] tgtT
 
-       -- somtimes the indexes are not exactly the same
-       -- (e.g., `a * b` vs  `b * a`)
-       (TWord _, TWord _) -> pure e
+    -- somtimes the indexes are not exactly the same
+    -- (e.g., `a * b` vs  `b * a`)
+    (TWord _, TWord _) -> e
 
-       -- Note that we are not checking the elements, but we probalby should
-       (TArray _ _, TArray _ _) -> pure e
+    -- Note that we are not checking the elements, but we probalby should
+    (TArray _ _, TArray _ _) -> e
 
-       -- Note that we are not checking the elements, but we probalby should
-       (TStream _ _, TStream _ _) -> pure e
+    -- Note that we are not checking the elements, but we probalby should
+    (TStream _ _, TStream _ _) -> e
 
-       _ | srcT == tgtT -> pure e
-         | otherwise -> panic "adjustType"
-                          [ "Cannot coerce types"
-                          , "From: " ++ show (pp srcT)
-                          , "To  : " ++ show (pp tgtT)
-                          , "Expr: " ++ show (pp e)
-                          ]
-
-
+    _ | srcT == tgtT -> e
+      | otherwise -> panic "coerceTo"
+                       [ "Cannot coerce types"
+                       , "From: " ++ show (pp srcT)
+                       , "To  : " ++ show (pp tgtT)
+                       , "Expr: " ++ show (pp e)
+                       ]
+  where
+  srcT = typeOf e
 --------------------------------------------------------------------------------
 
 -------------------------------------------------------------------------------

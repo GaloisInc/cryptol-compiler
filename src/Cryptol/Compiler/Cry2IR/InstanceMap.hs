@@ -39,8 +39,9 @@ instanceMapFromList ins =
             as
       in case res of
            Left doc ->
-              Left (doc $$ nest 2 (vcat [ pp a $$ nest 2 (pp b) | (a,b) <- ins ]))
-           Right a -> pure a
+              Left (doc $$ nest 2 (vcat [ pp fu $$ nest 2 (pp b)
+                                        | (fu,b) <- ins ]))
+           Right ok -> pure ok
 
 instanceMapToList :: InstanceMap a -> [a]
 instanceMapToList mp =

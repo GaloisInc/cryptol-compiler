@@ -9,12 +9,7 @@ import Cryptol.Compiler.PP
 data IRPrim =
     CryPrim Cry.PrimIdent       -- ^ A Cryptol primitve
 
-  | MakeSeq
-    -- ^ Make a sequence literal.
-    -- The arguments are the elementes of the sequence
-    -- The result type in the call has the type of sequences
-    -- we are making.
-
+  | ArrayLit
   | ArrayLookup
     -- ^ (index : usize, xs: Array n T) -> T
     -- The index to look at is in the *size* args of the call
@@ -44,11 +39,11 @@ data IRPrim =
   | FlatMap   -- ^ (xs : Stream m a, f : a -> Stream n b) -> Stream (m*n) b
   | Zip       -- ^ (xs : Stream m a, ys : Stream n b) -> Stream (min m n) (a,b)
 
-  | Collect   -- ^  (xs : Stream n a)    -> Array n a
-              -- or (xs : Stream n Bool) -> Word n
-
-  | Iter      -- ^   (xs : Array n a)  -> Stream n a
-              -- or  (xs : Word n)      -> Stream n Bit
+  | ArrayToWord     -- ^ @Array n Bool  -> Word n@
+  | ArrayToStream   -- ^ @Array n a     -> Stream n a@
+  | WordToStream    -- ^ @Array n a     -> Stream n Bool@
+  | StreamToWord    -- ^ @Stream n Bool -> Word n@
+  | StreamToArray   -- ^ @Stream n a    -> Array n a@
 
     -- Only in stream step expressions
   | Head      -- ^ Next element of external stream.
@@ -57,23 +52,6 @@ data IRPrim =
               -- (index: usize) -> a
     deriving (Show,Eq,Ord)
 
-
-data IRSizePrim =
-    IRSizeEq
-  | IRSizeLt
-  | IRSizeLeq
-  | IRSizeAdd
-  | IRSizeSub
-  | IRSizeMul
-  | IRSizeDiv
-  | IRSizeMod
-  | IRSizeExp
-  | IRSizeWidth
-  | IRSizeMin
-  | IRSizeMax
-  | IRSizeCeilDiv
-  | IRSizeCeilMod
-  | IRSizeLenFromThenTo
 
 --------------------------------------------------------------------------------
 -- Pretty printing

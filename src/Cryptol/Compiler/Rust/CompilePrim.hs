@@ -50,20 +50,28 @@ primIsConstructor prim =
   case prim of
     CryPrim {}  -> pure False
 
-    MakeSeq     -> pure True
+    ArrayLit    -> pure True
     ArrayLookup -> pure False
 
     Tuple       -> pure True
     TupleSel {} -> pure False
 
     EqSize      -> pure False
+    LtSize      -> pure False
     LeqSize     -> pure False
 
     Map         -> notYet
     FlatMap     -> notYet
     Zip         -> notYet
-    Collect     -> notYet
-    Iter        -> notYet
+
+    ArrayToStream -> pure True
+    ArrayToWord   -> pure True
+    WordToStream  -> pure True
+    StreamToWord  -> pure True
+    StreamToArray -> pure True
+
+    Head          -> pure False
+    Hist          -> pure False
 
   where
   notYet = unsupported ("primitive" <+> pp prim)
@@ -74,9 +82,8 @@ compilePrim name args =
   case name of
     CryPrim p -> compileCryptolPrim p args
 
-    MakeSeq   -> compileSeqLit args
+    ArrayLit   -> pure (callMacro (simplePath "vec") (primArgs args))
 
-    _         -> unsupportedPrim (pp name) args
 
 
 compileCryptolPrim :: Cry.PrimIdent -> PrimArgs -> Rust RustExpr
@@ -156,17 +163,6 @@ compileCryptolFloatPrim _ _ = unsupported "floating point primitve" -- XXX
 
 
 --------------------------------------------------------------------------------
-compileSeqLit :: PrimArgs -> Rust RustExpr
-compileSeqLit args =
-  case primTypeOfResult args of
-
-    TArray {} -> pure (callMacro (simplePath "vec") (primArgs args))
-    TWord {}  -> pure (callMacro (simplePath' [cryptolCrate,"word"])
-                                                            (primArgs args))
-    -- TStream sz _elTy
-
-    _ -> unsupportedPrim "MakeSeq" args
-
 
 compilePrimAppend :: PrimArgs -> Rust RustExpr
 compilePrimAppend args =
