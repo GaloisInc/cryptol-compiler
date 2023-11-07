@@ -80,9 +80,33 @@ primIsConstructor prim =
 compilePrim :: IRPrim -> PrimArgs -> Rust RustExpr
 compilePrim name args =
   case name of
-    CryPrim p -> compileCryptolPrim p args
+    CryPrim p   -> compileCryptolPrim p args
 
-    ArrayLit   -> pure (callMacro (simplePath "vec") (primArgs args))
+    ArrayLit    -> pure (callMacro (simplePath "vec") (primArgs args))
+
+    ArrayLookup ->
+      case (primArgs args, primSizeArgs args) of
+        ([a],[i]) -> pure (indexExpr a i)
+        _ -> bad
+
+    WordLookup ->
+      case (primArgs args, primSizeArgs args) of
+        ([a],[i]) -> pure (indexExpr a i)
+        _ -> bad
+
+    StreamToArray ->
+      case primArgs args of
+        [s] -> pure (callMethod s "collect" [])
+                -- XXX: type? specify that we want owned?
+        _ -> bad
+
+    _ -> unsupportedPrim (pp name) args
+  where
+  bad = panic "compilePrim"
+          [ "Malformed primitive arguments:"
+          , show (pp args)
+          ]
+
 
 
 
@@ -120,8 +144,13 @@ compileCryptolPreludePrim name args =
     "negate"  -> inferMethod "negate"
 
 
+{-
+    -- Integral --
+    "!"       -> undefined
+    "@"       -> undefined
+-}
 
-    _ -> unsupportedPrim (pp name) args
+    _ -> pure todo -- unsupportedPrim (pp name) args
 
 {-
     "fromInteger" -> ring "from_integer"
@@ -129,7 +158,6 @@ compileCryptolPreludePrim name args =
     --       a u32 before calling this? (or call `Integral::to_usize`?)
     "^^" -> Nothing
 
-    -- Integral --
     "/" -> integral "div"
     "%" -> integral "modulo"
     "toInteger" -> integral "to_integer"
@@ -145,6 +173,8 @@ compileCryptolPreludePrim name args =
     _ -> Nothing
 -}
   where
+  todo = callMacro (simplePath "todo") [ litExpr (strLit name) ]
+
   inferMethod method =
     pure (mkRustCall (typeQualifiedExpr inferType (simplePath method))
                      (map addrOf (primArgs args)))

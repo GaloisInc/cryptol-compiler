@@ -188,15 +188,14 @@ compileExpr expr0 tgtT =
                 len <- case mb of
                          Nothing -> unexpected "Missing length in ListSel"
                          Just l  -> pure (IRFixedSize (toInteger l))
-                let ety = case tgtT of
-                            TBool -> TWord len
-                            _     -> TArray len tgtT
-                            -- NOTE: in this case ety may be a type
-                            -- containing a nested stream.
+                let (ety,prim) = case tgtT of
+                                   TBool -> (TWord len, WordLookup)
+                                   _     -> (TArray len tgtT, ArrayLookup)
+                                   -- NOTE: in this case ety may be a type
+                                   -- containing a nested stream.
 
                 ce <- compileExpr e ety
-                pure (callPrimG ArrayLookup {- or word? -}
-                          [(IRFixedSize i',MemSize)] [ce] tgtT)
+                pure (callPrimG prim [(IRFixedSize i',MemSize)] [ce] tgtT)
 
          where
          doTuple n =

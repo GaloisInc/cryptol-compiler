@@ -2,6 +2,8 @@
 -- Nothing here should be specific to the compiler.
 module Cryptol.Compiler.Rust.Utils where
 
+import Data.Text(Text)
+import Data.Text qualified as Text
 import Data.List(intersperse)
 import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
@@ -38,6 +40,7 @@ dummySpan = Rust.Span Rust.NoPosition Rust.NoPosition
 
 --------------------------------------------------------------------------------
 -- Paths
+
 simplePath :: Rust.Ident -> RustPath
 simplePath n = Rust.Path False [Rust.PathSegment n Nothing ()] ()
 
@@ -229,6 +232,9 @@ mkUSizeLit = mkIntLit Rust.Us
 boolLit :: Bool -> RustLit
 boolLit b = Rust.Bool b Rust.Unsuffixed ()
 
+strLit :: Text -> RustLit
+strLit s = Rust.Str (Text.unpack s) Rust.Cooked Rust.Unsuffixed ()
+
 litExpr :: RustLit -> RustExpr
 litExpr l = Rust.Lit [] l ()
 
@@ -242,6 +248,10 @@ tupleExpr es = Rust.TupExpr [] es ()
 
 arrayExpr :: [RustExpr] -> RustExpr
 arrayExpr es = Rust.Vec [] es ()
+
+indexExpr :: RustExpr-> RustExpr -> RustExpr
+indexExpr a i = Rust.Index [] a i ()
+
 
 --------------------------------------------------------------------------------
 -- Types

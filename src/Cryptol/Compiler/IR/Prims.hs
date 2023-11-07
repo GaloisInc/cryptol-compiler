@@ -16,6 +16,7 @@ data IRPrim =
     -- The parameter is the name of the array
     -- Unspecified behavior if index >= n
 
+  | WordLookup  -- ^ (index: usize, xs: Word n) -> Bool
 
 
   | Tuple
