@@ -1,7 +1,6 @@
 module Cryptol.Compiler.Rust.Compiler where
 
 import qualified Data.Map as Map
-import System.FilePath ((</>))
 import Control.Monad (forM_)
 
 import Cryptol.Compiler.Monad
@@ -52,6 +51,7 @@ doSimpleCompile crateName outputPath =
 
      srcFile <- doIO $ genModule gi declList
 
+     doIO (putStrLn ("Saving output in " ++ show outputPath))
      doIO $ Crate.writeExampleCrate crateName outputPath srcFile
 
 compileExample :: [FilePath] -> String -> FilePath -> CryC ()

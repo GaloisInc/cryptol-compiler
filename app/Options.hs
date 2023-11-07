@@ -26,7 +26,7 @@ defaultOptions = Options
   { optCommand  = DefaultCommand
   , optFiles    = []
   , optCrateName = "cryptol-gen"
-  , optOutputPath = "."
+  , optOutputPath = "cry-rust"
   }
 
 options :: OptSpec Options
