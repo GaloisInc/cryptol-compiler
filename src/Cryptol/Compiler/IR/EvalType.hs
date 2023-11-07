@@ -103,7 +103,7 @@ evalSizeTypeSize tf args =
     Cry.TCDiv           -> op 0
     Cry.TCMod           -> op 1
     Cry.TCExp           -> LargeSize
-    Cry.TCWidth         -> op 0
+    Cry.TCWidth         -> MemSize
     Cry.TCMin           -> case (op 0, op 1) of
                              (MemSize,_)  -> MemSize
                              (_, MemSize) -> MemSize
