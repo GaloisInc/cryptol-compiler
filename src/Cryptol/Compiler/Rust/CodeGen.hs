@@ -162,7 +162,7 @@ genExpr how (IRExpr e0) =
 
     IRClosure {} -> unsupported "Closure" -- pure (justExpr (todoExp (show (pp call))))
 
-    IRLam {} -> unsupported "Lambda"
+    IRLam {} -> pure ([], todoExp "Lambda Expression")
   {-
     justExpr <$>
       do  let args' = irNameName <$> args
@@ -171,8 +171,7 @@ genExpr how (IRExpr e0) =
           pure $ mkClosure args'' lamStmt lamE
           -}
 
-    IRStream {} -> unsupported "Stream"
-
+    IRStream {} -> pure ([], todoExp "Stream Expression") -- unsupported "Stream"
 
 
         -- | Generate a RustItem corresponding to a function declaration.

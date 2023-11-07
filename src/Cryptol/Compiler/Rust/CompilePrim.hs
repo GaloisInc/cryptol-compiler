@@ -1,6 +1,7 @@
 module Cryptol.Compiler.Rust.CompilePrim where
 
 import Data.Text(Text)
+import Data.Text qualified as Text
 import qualified Language.Rust.Syntax as Rust
 import Cryptol.Utils.Ident qualified as Cry
 
@@ -60,9 +61,10 @@ primIsConstructor prim =
     LtSize      -> pure False
     LeqSize     -> pure False
 
-    Map         -> notYet
-    FlatMap     -> notYet
-    Zip         -> notYet
+    -- XXX: are these OK?
+    Map         -> pure True
+    FlatMap     -> pure True 
+    Zip         -> pure True 
 
     ArrayToStream -> pure True
     ArrayToWord   -> pure True
@@ -100,7 +102,7 @@ compilePrim name args =
                 -- XXX: type? specify that we want owned?
         _ -> bad
 
-    _ -> unsupportedPrim (pp name) args
+    _ -> pure (todoExp (show (pp name))) -- unsupportedPrim (pp name) args
   where
   bad = panic "compilePrim"
           [ "Malformed primitive arguments:"
@@ -150,7 +152,7 @@ compileCryptolPreludePrim name args =
     "@"       -> undefined
 -}
 
-    _ -> pure todo -- unsupportedPrim (pp name) args
+    _ -> pure (todoExp (Text.unpack name)) -- unsupportedPrim (pp name) args
 
 {-
     "fromInteger" -> ring "from_integer"
@@ -173,8 +175,6 @@ compileCryptolPreludePrim name args =
     _ -> Nothing
 -}
   where
-  todo = callMacro (simplePath "todo") [ litExpr (strLit name) ]
-
   inferMethod method =
     pure (mkRustCall (typeQualifiedExpr inferType (simplePath method))
                      (map addrOf (primArgs args)))
