@@ -28,11 +28,6 @@ module Cryptol.Compiler.Cry2IR.SpecializeM
   , caseIsInf
   , caseBool
 
-   -- * Locals
-  , withLocals
-  , withIRLocals
-  , getLocal
-
     -- * Queries
   , getTParams
   , getTraits
@@ -87,9 +82,6 @@ data RW = RW
   , rwProps       :: [Cry.Prop]
   , rwBoolProps   :: Map Cry.TParam BoolInfo
 
-  , roLocalIRNames:: Map NameId Name
-    -- ^ Maps Cryptol name to an IR name, which has the IRType of the local
-
   , rwSubst       :: Maybe Subst
     -- ^ This is a cache for the current substitution.
     -- Adding properties invalidates it.
@@ -114,7 +106,6 @@ runSpecM (SpecM m) = map fst <$> findAll (runStateT rw0 m)
            , roRepHints     = primRepHints
            , rwProps        = mempty
            , rwBoolProps    = mempty
-           , roLocalIRNames = mempty
            , rwSubst        = Nothing
            }
 
@@ -385,29 +376,6 @@ checkFixedSize =
                        Cry.Inf   -> IRInfSize
                        Cry.Nat n -> IRSize (IRFixedSize n)
 
-
-
---------------------------------------------------------------------------------
--- Local variables
-
-withLocals :: [(Name, Cry.Type)] -> SpecM a -> SpecM a
-withLocals xs k =
-  doCryCWith (M.withCryLocals [ (x,t) | (IRName (NameId x) _, t) <- xs ]) $
-  withIRLocals (map fst xs) k
-
--- | Add some locals for the duration of a compiler computation
-withIRLocals :: [Name] -> SpecM a -> SpecM a
-withIRLocals locs k =
-  do ls <- roLocalIRNames <$> SpecM get
-     SpecM $ sets_ \rw -> rw { roLocalIRNames = Map.union locNs ls }
-     a <- k
-     SpecM $ sets_ \rw -> rw { roLocalIRNames = ls }
-     pure a
-  where
-  locNs = Map.fromList [ (x,n) | n@(IRName x _) <- locs ]
-
-getLocal :: NameId -> SpecM (Maybe Name)
-getLocal x = Map.lookup x . roLocalIRNames <$> SpecM get
 
 
 --------------------------------------------------------------------------------
