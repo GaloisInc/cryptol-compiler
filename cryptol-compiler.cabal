@@ -67,6 +67,7 @@ library
       Cryptol.Compiler.IR.Free
       Cryptol.Compiler.IR.Cryptol
 
+      Cryptol.Compiler.Driver
       Cryptol.Compiler.Monad
       Cryptol.Compiler.Error
       Cryptol.Compiler.PP
@@ -80,7 +81,6 @@ library
       Cryptol.Compiler.Cry2IR.Compile
       Cryptol.Compiler.Cry2IR.RepHints
 
-      Cryptol.Compiler.Rust.Compiler
       Cryptol.Compiler.Rust.Names
       Cryptol.Compiler.Rust.NameMap
       Cryptol.Compiler.Rust.CompileType

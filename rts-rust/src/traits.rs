@@ -6,6 +6,16 @@ pub trait Zero : Type {
   fn zero(n : Self::Length) -> Self;
 }
 
+// Not sure that we need this, but we are generating it at the moment
+// so this is a place-holder to make things compile
+pub trait Eq {
+}
+
+// Not sure that we need this, but we are generating it at the moment
+// so this is a place-holder to make things compile
+pub trait Cmp {
+}
+
 pub trait Logic {
   fn complement(x: &Self) -> Self;
   fn xor(x: &Self, y: &Self) -> Self;

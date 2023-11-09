@@ -7,8 +7,10 @@ module Cryptol.Compiler.Rust.Names
   , snakeCase
   , screamingSnakeCase
   , upperCamelCase
+  , modNameToRustModName
 
     -- * Commonly used names
+  , cryptolCrateString
   , cryptolCrate
   ) where
 
@@ -31,8 +33,12 @@ import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR.Cryptol
 
 -- | Qualifier to use when accessing RTS names
+cryptolCrateString :: String
+cryptolCrateString = "cry_rts"
+
+-- | Qualifier to use when accessing RTS names
 cryptolCrate :: Rust.Ident
-cryptolCrate = "cryptol"
+cryptolCrate = Rust.mkIdent cryptolCrateString
 
 
 -- | Pick a name for something, so that it does not clash with the given names.
@@ -48,6 +54,14 @@ rustIdentAvoiding avoid names =
                 | name <- names
                 ]
 
+modNameToRustModName :: Cry.ModName -> Rust.Name
+modNameToRustModName x
+  | y == "main" = "cry_main"
+  | y == "lib"  = "cry_lib"
+  | otherwise   = y
+  where
+  y = snakeCase (escString (Text.unpack (Cry.modNameToText x)))
+  -- XXX: for anonymous names this results in too long nonse stuff
 
 --------------------------------------------------------------------------------
 -- Cases
@@ -157,14 +171,16 @@ instance RustIdent Text where
   rustIdent name
     | name `Set.member` rustKeywords = [(Rust.mkIdent str) { Rust.raw = True }]
     | Just i <- Map.lookup name knownOperators = [Rust.mkIdent i]
-    | otherwise =
-      [Rust.mkIdent (dflt (concat (zipWith escChar (True : repeat False) str)))]
+    | otherwise = [Rust.mkIdent (dflt (escString str))]
     where
     str = Text.unpack name
     dflt x = if null x then "x" else x
 
 
 --------------------------------------------------------------------------------
+
+escString :: String -> String
+escString = concat . zipWith escChar (True : repeat False)
 
 escChar :: Bool -> Char -> String
 escChar isFirst c

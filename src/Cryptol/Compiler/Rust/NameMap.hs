@@ -1,6 +1,7 @@
 -- | Maps names to rust identifier, and avoids reusing identifier.
 module Cryptol.Compiler.Rust.NameMap where
 
+import Data.Text qualified as Text
 import Data.Map(Map)
 import Data.Map qualified as Map
 import Data.Set(Set)
@@ -45,6 +46,12 @@ lookupName x mp =
     Nothing -> panic "lookupName"
                  [ "Undefined name"
                  , show (pp x)
+                 , "Available names"
+                 , show (pp mp)
                  ]
+
+instance PP a => PP (NameMap a) where
+  pp nm = vcat [ pp x <+> "->" <+> pp (Text.pack (show i))
+               | (x,i) <- Map.toList (lMap nm) ]
 
 

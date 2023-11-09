@@ -100,7 +100,7 @@ lenParamFor ty =
            elemLen <- lenParamFor elT
            pure (tupleExpr [vecLen,elemLen])
 
-    TStream {} -> unsupported "lenStream"
+    TStream {} -> pure (todoExp "lenStream") -- XXX
     TTuple ts  -> tupleExpr <$> mapM lenParamFor ts
     TFun _ t   -> lenParamFor t
     TPoly tp   -> lookupLenParam tp

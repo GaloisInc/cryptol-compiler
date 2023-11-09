@@ -11,6 +11,7 @@ import Language.Rust.Data.Position qualified as Rust
 
 import Cryptol.Compiler.Error (panic)
 
+type RustSourceFile = Rust.SourceFile ()
 type RustPath     = Rust.Path ()
 type RustType     = Rust.Ty ()
 type RustExpr     = Rust.Expr ()
@@ -169,6 +170,9 @@ rustIf eTest eThen eElse =
 --------------------------------------------------------------------------------
 -- Top Delcarations
 
+sourceFile :: Maybe Rust.Name -> [RustItem] -> RustSourceFile
+sourceFile nm = Rust.SourceFile nm []
+
 mkFnItem ::
   Rust.Ident -> RustGenerics -> [(Rust.Ident, RustType)] -> RustType ->
   RustBlock ->  RustItem
@@ -211,6 +215,9 @@ mkUseGlob xs = Rust.Use [] Rust.InheritedV useTree ()
   where
   useTree = Rust.UseTreeGlob (simplePath' xs) ()
 
+-- | Declare a public module.
+pubMod :: Rust.Ident -> RustItem
+pubMod i = Rust.Mod [] Rust.PublicV i Nothing ()
 
 
 
@@ -245,6 +252,9 @@ unitExpr = tupleExpr []
 
 tupleExpr :: [RustExpr] -> RustExpr
 tupleExpr es = Rust.TupExpr [] es ()
+
+tupleSelect :: RustExpr -> Int -> RustExpr
+tupleSelect e i = Rust.TupField [] e i ()
 
 arrayExpr :: [RustExpr] -> RustExpr
 arrayExpr es = Rust.Vec [] es ()

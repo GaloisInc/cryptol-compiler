@@ -57,7 +57,7 @@ doIO io = Rust (inBase io)
 
 -- | Information about previously compiled modules.
 data ExtModule = ExtModule
-  { extModuleName  :: RustPath
+  { extModuleName  :: Rust.Ident
     -- ^ Name of module
 
   , extModuleNames :: Map FunName Rust.Ident
@@ -207,9 +207,8 @@ lookupFunName fu =
   case irfnName fu of
     IRPrimName p -> pure (Left p)
     IRDeclaredFunName f ->
-      do -- let mo = nameIdModule f
+      do let mo = nameIdModule f
          ro <- Rust ask
-         let mo = roModName ro -- XXX: For now everything goes in one module
          rw <- Rust get
          Right <$>
            if roModName ro == mo
@@ -229,18 +228,13 @@ lookupFunName fu =
                                , "External modules"
                                ] ++ map (show.cryPP)
                                    (Map.keys (roExternalNames ro))
-                  let Rust.Path glob segs _ = extModuleName ext
-                  i <- case Map.lookup fu (extModuleNames ext) of
-                         Just it -> pure it
-                         Nothing -> panic "lookupFunName"
-                                      [ "Missing function"
-                                      , "Module: " ++ show (cryPP mo)
-                                      , "Function: " ++ show (pp fu)
-                                      ]
-                  let seg = Rust.PathSegment i Nothing ()
-                  -- XXX: Maybe we should record that we used this module
-                  -- so we can add imports, or maybe they are not needed?
-                  pure (Rust.Path glob (segs ++ [seg]) ())
+                  case Map.lookup fu (extModuleNames ext) of
+                    Just it -> pure (simplePath' [ extModuleName ext, it ])
+                    Nothing -> panic "lookupFunName"
+                                 [ "Missing function"
+                                 , "Module: " ++ show (cryPP mo)
+                                 , "Function: " ++ show (pp fu)
+                                 ]
 
 -- | Evaluate a computation, forgetting any locally bound variables afterward.
 localScope :: Rust a -> Rust a

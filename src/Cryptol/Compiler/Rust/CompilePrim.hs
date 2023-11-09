@@ -92,15 +92,17 @@ compilePrim name args =
         _ -> bad
 
     WordLookup ->
-      case (primArgs args, primSizeArgs args) of
-        ([a],[i]) -> pure (indexExpr a i)
-        _ -> bad
+      size1 \i ->
+      arg1  \a ->
+        pure (indexExpr a i)
 
     StreamToArray ->
-      case primArgs args of
-        [s] -> pure (callMethod s "collect" [])
+      arg1 \s -> pure (callMethod s "collect" [])
                 -- XXX: type? specify that we want owned?
-        _ -> bad
+
+    Tuple -> pure (tupleExpr (primArgs args))
+    TupleSel n _all ->
+      arg1 \x -> pure (tupleSelect x n)
 
     _ -> pure (todoExp (show (pp name))) -- unsupportedPrim (pp name) args
   where
@@ -108,6 +110,15 @@ compilePrim name args =
           [ "Malformed primitive arguments:"
           , show (pp args)
           ]
+  arg1 f =
+    case primArgs args of
+      [a] -> f a
+      _ -> bad
+
+  size1 f =
+    case primSizeArgs args of
+      [a] -> f a
+      _ -> bad
 
 
 

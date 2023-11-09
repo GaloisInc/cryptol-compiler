@@ -1,8 +1,8 @@
-use cryptol::trait_methods::*;
+use cry_rts::trait_methods::*;
 
 
 
 // This is just for testing stuff out.
 fn main() {
-  let x = cryptol::DWord::zero(129);
+  let x = cry_rts::DWord::zero(129);
 }

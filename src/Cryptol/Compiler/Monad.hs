@@ -41,7 +41,7 @@ module Cryptol.Compiler.Monad
   , getTopTypes
   , getFun
 
-    -- * Names generation
+    -- * Name generation
   , newNameId
   , doNameGen
 
@@ -50,8 +50,16 @@ module Cryptol.Compiler.Monad
   , getCompiled
   , clearCompiled
 
+    -- * Rust generation
+  , addRustInfo
+  , getRustInfo
+
     -- * SMT solver
   , getSolver
+
+    -- * Configuratoin
+  , getOutputDir
+  , getCrateName
   ) where
 
 import Data.Text(Text)
@@ -81,6 +89,7 @@ import Cryptol.Compiler.Error hiding (unsupported)
 import Cryptol.Compiler.Error qualified as Err
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Cry2IR.InstanceMap
+import Cryptol.Compiler.Rust.Monad qualified as Rust
 
 -- | This is the implementation of the monad
 type M =
@@ -107,6 +116,12 @@ data CompilerContext = CompilerContext
 
   , roLoc           :: !Loc
     -- ^ Location for error reporting
+
+  , roOutputDir     :: !FilePath
+    -- ^ Write output in here
+
+  , roCrateName     :: !String
+    -- ^ Name of the crete we wnat to generate
   }
 
 -- | State of the compiler.
@@ -132,8 +147,12 @@ data CompilerState = CompilerState
   , rwFuns        :: !(Map Cry.Name (InstanceMap (FunName, FunType)))
     -- ^ Known instance for each Cryptol function
 
-  , rwCompiled    :: !(Map Cry.Name [FunDecl])
-    -- ^ Generated code
+  , rwCompiled    :: ![FunDecl]
+    -- ^ Declarations in IR form (output of Cry2IR is collected here)
+
+  , rwRustModInfo :: !(Map Cry.ModName Rust.ExtModule)
+    -- ^ Information about modules already compiled to Rust (IR2Rust)
+
   }
 
 -- | Information about primitives
@@ -144,14 +163,16 @@ data Prims = Prims
   }
 
 -- | Execute a computation. May throw `CompilerError` if things go wrong.
-runCryC :: CryC a -> IO a
-runCryC (CryC m) =
+runCryC :: FilePath -> String -> CryC a -> IO a
+runCryC outDir crateName (CryC m) =
   Cry.withSolver (pure ()) tcSolverConfig \solver ->
   do env <- Cry.initialModuleEnv
      let initialContext =
            CompilerContext
              { roLocalTypes = Map.empty
              , roLoc        = []
+             , roOutputDir  = outDir
+             , roCrateName  = crateName
              }
          initialState =
            CompilerState
@@ -161,6 +182,7 @@ runCryC (CryC m) =
               , rwNameGen = 0
               , rwFuns = mempty
               , rwCompiled = mempty
+              , rwRustModInfo = mempty
               , rwModuleInput =
                   Cry.ModuleInput
                      { Cry.minpCallStacks = False
@@ -406,7 +428,7 @@ getSchemaOf expr =
 
 addCompiled :: Cry.Name -> InstanceMap FunDecl -> CryC ()
 addCompiled x def =
-  CryC $ sets_ \s -> s { rwCompiled = Map.insert x newDecls (rwCompiled s)
+  CryC $ sets_ \s -> s { rwCompiled = newDecls ++ rwCompiled s
                        , rwFuns     = Map.insert x newKnown (rwFuns s)
                        }
   where
@@ -414,7 +436,7 @@ addCompiled x def =
   newKnown = info <$> def
   newDecls = instanceMapToList def
 
-getCompiled :: CryC (Map Cry.Name [FunDecl])
+getCompiled :: CryC [FunDecl]
 getCompiled = CryC $ rwCompiled <$> get
 
 clearCompiled :: CryC ()
@@ -455,5 +477,24 @@ unsupported :: Doc -> CryC a
 unsupported x =
   do loc <- roLoc <$> CryC ask
      Err.unsupported (reverse loc) x
+
+
+--------------------------------------------------------------------------------
+
+addRustInfo :: Cry.ModName -> Rust.ExtModule -> CryC ()
+addRustInfo m i =
+  CryC (sets_ \rw -> rw { rwRustModInfo = Map.insert m i (rwRustModInfo rw) })
+
+getRustInfo :: CryC (Map Cry.ModName Rust.ExtModule)
+getRustInfo = CryC (rwRustModInfo <$> get)
+
+
+--------------------------------------------------------------------------------
+
+getOutputDir :: CryC FilePath
+getOutputDir = CryC (roOutputDir <$> ask)
+
+getCrateName :: CryC String
+getCrateName = CryC (roCrateName <$> ask)
 
 

@@ -8,44 +8,41 @@ import Data.Map qualified as Map
 import Data.Set qualified as Set
 import Data.List(intersperse)
 import Data.Maybe(mapMaybe)
-import Data.Functor (void)
 
 import Cryptol.TypeCheck.AST qualified  as Cry
 import Cryptol.ModuleSystem.Name qualified as Cry
 import Cryptol.Parser.Position qualified as Cry
 
-import Cryptol.IR.Eta(etaModule)
-
 import Cryptol.Compiler.Error
 import Cryptol.Compiler.Monad
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Type
-import Cryptol.Compiler.Cry2IR.InstanceMap(instanceMapToList)
-import Cryptol.Compiler.Cry2IR.Compile
 import Cryptol.Compiler.Cry2IR.SpecializeM qualified as S
 import Cryptol.Compiler.Cry2IR.Specialize qualified as S
-import Cryptol.Compiler.Rust.CodeGen
-import Cryptol.Compiler.Rust.Crate qualified as Crate
+
+import Cryptol.Compiler.Driver(loadInputs, cry2rust)
 
 
 import Options
-import qualified Cryptol.Compiler.Rust.Compiler as Compiler
 
 main :: IO ()
 main =
   do opts <- getOptions
-     runCryC
+     runCryC (optOutputPath opts) (optCrateName opts)
        case optCommand opts of
 
          ShowHelp ->
            doIO showHelp
 
          DefaultCommand ->
+            cry2rust (optFiles opts)
+{-
            do Compiler.loadInputs (optFiles opts)
               void $ Compiler.doSimpleCompile (optCrateName opts) (optOutputPath opts)
+-}
 
          ListPrimitives ->
-           do Compiler.loadInputs (optFiles opts)
+           do loadInputs (optFiles opts)
               listPrimitives
 
   `catch` \e ->
@@ -105,7 +102,7 @@ doTest =
             do S.addTParams [x,y]
                S.compileSeqLenSizeType t
      doIO (putStrLn ("Result number: " ++ show (length rs)))
-     doIO $ mapM_ (\x -> print (pp x) >> putStrLn "------") rs
+     doIO $ mapM_ (\i -> print (pp i) >> putStrLn "------") rs
   where
   v = Cry.TVar . Cry.tpVar
   tp n =

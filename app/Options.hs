@@ -6,7 +6,6 @@ module Options
   ) where
 
 import SimpleGetOpt
-import System.FilePath ((</>))
 
 data Command =
     DefaultCommand

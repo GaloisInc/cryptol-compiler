@@ -58,9 +58,9 @@ compileType mode ty =
                 life = Rust.AngleBracketed [Rust.Lifetime "_" ()] [] [] ()
              AsOwned -> pathType (simplePath tyI)
 
-    IR.TFun args ret  -> unsupported "function types"
-        {-funType <$> traverse compileType args
-                                 <*> compileType ret-}
+    IR.TFun args ret  ->
+        funType <$> traverse (compileType AsArg) args
+                                 <*> compileType AsOwned ret
 
 
 byRef :: TypeMode -> RustType -> RustType
@@ -76,10 +76,15 @@ streamOfType = vectorOfType -- XXX
 
 -- XXX
 funType :: [RustType] -> RustType -> RustType
-funType funArgs funRes = Rust.PathTy Nothing path ()
+funType funArgs funRes =
+  pathType $
+ simplePath' [ cryptolCrate, "Fun" ] -- (funArgs ++ [funRes]
+{-
   where
+  
   path = Rust.Path False [ Rust.PathSegment "Fun" (Just params) () ] ()
   params = Rust.AngleBracketed [] (funArgs ++ [funRes]) [] ()
+-}
 
 cryIntegerType :: RustType
 cryIntegerType = pathType (simplePath' ["num","BigInt"])

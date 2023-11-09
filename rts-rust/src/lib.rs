@@ -36,6 +36,10 @@ pub mod trait_methods {
 }
 
 
+// XXX: Placeholder type for functions
+pub struct Fun;
+
+
 #[macro_export]
 /// Generate the `Type` instance for a type that is passed by value (Copy),
 /// and has no interesting lenght.

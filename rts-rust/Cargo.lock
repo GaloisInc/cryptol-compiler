@@ -27,6 +27,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
+name = "cry_rts"
+version = "0.1.0"
+dependencies = [
+ "apint",
+ "crypto-bigint",
+ "dword",
+ "num",
+]
+
+[[package]]
 name = "crypto-bigint"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -34,16 +44,6 @@ checksum = "cf4c2f4e1afd912bc40bfd6fed5d9dc1f288e0ba01bfcc835cc5bc3eb13efe15"
 dependencies = [
  "rand_core 0.6.4",
  "subtle",
-]
-
-[[package]]
-name = "cryptol"
-version = "0.1.0"
-dependencies = [
- "apint",
- "crypto-bigint",
- "dword",
- "num",
 ]
 
 [[package]]

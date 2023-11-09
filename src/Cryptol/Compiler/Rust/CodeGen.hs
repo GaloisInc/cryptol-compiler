@@ -4,15 +4,16 @@ module Cryptol.Compiler.Rust.CodeGen
   , GenInfo(..)
   )  where
 
-import Data.Map(Map)
 import Data.Set qualified as Set
 import Data.Maybe (catMaybes)
 import Control.Monad(forM, mapAndUnzipM)
 
-import Language.Rust.Data.Ident qualified as Rust
 import Language.Rust.Syntax qualified as Rust
+import Language.Rust.Data.Ident qualified as Rust
 
-import Cryptol.Compiler.PP
+import Cryptol.Utils.Ident qualified as Cry
+
+-- import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
@@ -74,7 +75,7 @@ genCall call =
 
     -- Closures don't have polymorphic arguments, and so shouldn't have
     -- size or lenght arguments. Captured length arguments should be in scope.
-    IRFunVal fnIR -> unsupported "Call closure"
+    IRFunVal fnIR -> pure ([], todoExp "Call closure")
 {-
       do fnExpr       <- doGenExpr BorrowContext fnIR
          -- XXX: is Borrow sufficient here?
@@ -190,7 +191,7 @@ genFunDecl decl =
 
   where
   doCompile argNames expr =
-    do doIO (print $ pp decl)
+    do -- doIO (print $ pp decl)
        resetFunLocalNames
        name <- bindFun (irfName decl)
        let ft = irfType decl
@@ -236,19 +237,30 @@ genFunDecl decl =
 
 
 -- | Given a set of FunDecls, make a Rust SourceFile
-genSourceFile :: [FunDecl] -> Rust (Map FunName Rust.Ident, Rust.SourceFile ())
-genSourceFile decls =
+genSourceFile ::
+  Cry.ModName ->
+  [FunDecl] ->
+  Rust (ExtModule, Rust.SourceFile ())
+genSourceFile m decls =
   do  -- doIO (print $ vcat $ map pp decls)
 
       fnItems <- catMaybes <$> (genFunDecl `traverse` decls)
       let imports = [ mkUseGlob [ cryptolCrate, "trait_methods"]
                     ]
-          file = Rust.SourceFile Nothing [] (imports ++ fnItems)
+          modName = modNameToRustModName m
+          file = Rust.SourceFile (Just modName) [] (imports ++ fnItems)
       names <- getFunNames
-      pure (names, file)
+      let extMod =
+            ExtModule { extModuleName  = Rust.mkIdent modName
+                      , extModuleNames = names
+                      }
+      pure (extMod, file)
 
-genModule :: GenInfo -> [FunDecl] -> IO (Map FunName Rust.Ident, Rust.SourceFile ())
-genModule gi ds = runRustM gi (genSourceFile ds)
+genModule ::
+  GenInfo ->
+  [FunDecl] ->
+  IO (ExtModule, Rust.SourceFile ())
+genModule gi ds = runRustM gi (genSourceFile (genCurModule gi) ds)
 
 --------------------------------------------------------------------------------
 
