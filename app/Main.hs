@@ -28,7 +28,10 @@ import Options
 main :: IO ()
 main =
   do opts <- getOptions
-     runCryC (optOutputPath opts) (optCrateName opts)
+     let ents = case optEntryModules opts of
+                  [] -> ["Main"]
+                  _  -> []
+     runCryC (optOutputPath opts) (optCrateName opts) ents
        case optCommand opts of
 
          ShowHelp ->

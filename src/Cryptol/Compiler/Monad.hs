@@ -60,6 +60,7 @@ module Cryptol.Compiler.Monad
     -- * Configuratoin
   , getOutputDir
   , getCrateName
+  , getEntryModules
   ) where
 
 import Data.Text(Text)
@@ -122,6 +123,11 @@ data CompilerContext = CompilerContext
 
   , roCrateName     :: !String
     -- ^ Name of the crete we wnat to generate
+
+  , roEntryModules  :: [String]
+    -- ^ Entry points for the code.
+    -- We only generate code that is needed to support these.
+
   }
 
 -- | State of the compiler.
@@ -163,8 +169,8 @@ data Prims = Prims
   }
 
 -- | Execute a computation. May throw `CompilerError` if things go wrong.
-runCryC :: FilePath -> String -> CryC a -> IO a
-runCryC outDir crateName (CryC m) =
+runCryC :: FilePath -> String -> [String] -> CryC a -> IO a
+runCryC outDir crateName ents (CryC m) =
   Cry.withSolver (pure ()) tcSolverConfig \solver ->
   do env <- Cry.initialModuleEnv
      let initialContext =
@@ -173,6 +179,7 @@ runCryC outDir crateName (CryC m) =
              , roLoc        = []
              , roOutputDir  = outDir
              , roCrateName  = crateName
+             , roEntryModules = ents
              }
          initialState =
            CompilerState
@@ -496,5 +503,10 @@ getOutputDir = CryC (roOutputDir <$> ask)
 
 getCrateName :: CryC String
 getCrateName = CryC (roCrateName <$> ask)
+
+getEntryModules :: CryC [String]
+getEntryModules = CryC (roEntryModules <$> ask)
+
+
 
 

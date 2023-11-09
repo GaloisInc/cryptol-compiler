@@ -23,6 +23,7 @@ common warnings
 
 common extensions
     default-extensions:
+      BangPatterns,
       OverloadedStrings,
       BlockArguments,
       ImportQualifiedPost,

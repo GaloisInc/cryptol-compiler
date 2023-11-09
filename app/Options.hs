@@ -18,14 +18,16 @@ data Options = Options
   , optFiles      :: [FilePath]
   , optCrateName  :: String
   , optOutputPath :: FilePath
+  , optEntryModules :: [String]
   } deriving Show
 
 defaultOptions :: Options
 defaultOptions = Options
   { optCommand  = DefaultCommand
   , optFiles    = []
-  , optCrateName = "cryptol-gen"
+  , optCrateName  = "cryptol-gen"
   , optOutputPath = "cry-rust"
+  , optEntryModules = []
   }
 
 options :: OptSpec Options
@@ -48,6 +50,11 @@ options = optSpec
       , Option [] ["crate"]
         ("Name of crate to be generated (default \"" ++ optCrateName defaultOptions ++ "\")")
         $ ReqArg "NAME" \s o -> Right o { optCrateName = s }
+
+      , Option [] ["entry-module"]
+        "Generate code for public definitions from this module"
+        $ ReqArg "MODULE" \s o -> Right o { optEntryModules =
+                                                  s : optEntryModules o }
       ]
 
   , progParamDocs =
@@ -63,3 +70,6 @@ getOptions = getOpts defaultOptions options
 
 showHelp :: IO ()
 showHelp = dumpUsage options
+
+
+
