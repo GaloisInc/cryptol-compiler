@@ -26,8 +26,6 @@ import Cryptol.Compiler.Cry2IR.Compile qualified as Cry2IR
 import Cryptol.Compiler.Rust.CodeGen qualified as Rust
 import Cryptol.Compiler.Rust.Crate qualified as Rust
 
-import Debug.Trace
-
 -- | Load some Cryptol specs and generate Rust for them.
 cry2rust :: [FilePath] -> CryC ()
 cry2rust files =
@@ -50,10 +48,10 @@ cryModRoots entMods m
   | Cry.modNameToText (Cry.mName m) `Set.member` entMods =
     let ex  = Cry.exported Cry.NSValue (Cry.mExports m)
         ds  = concatMap Cry.groupDecls (Cry.mDecls m)
-        rs  = [ x | d <- ds, let x = Cry.dName d, x `Set.member` ex ]
-    in trace (show (map cryPP rs)) rs
+    in [ x | d <- ds, let x = Cry.dName d, x `Set.member` ex ]
   | otherwise = []
 
+-- | Only keep declarations relevant for the given entry modules.
 cryFilterDecls :: Set Text -> [Cry.Module] -> [Cry.Module]
 cryFilterDecls entMods ms = map filterMod ms
   where

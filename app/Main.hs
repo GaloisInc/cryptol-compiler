@@ -30,7 +30,7 @@ main =
   do opts <- getOptions
      let ents = case optEntryModules opts of
                   [] -> ["Main"]
-                  _  -> []
+                  xs -> xs
      runCryC (optOutputPath opts) (optCrateName opts) ents
        case optCommand opts of
 
