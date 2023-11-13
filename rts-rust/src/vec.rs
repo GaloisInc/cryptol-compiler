@@ -26,12 +26,16 @@ impl<T> FromFn<T> for Vec<T>{
 impl<T: Type> Type for Vec<T> {
   type Length = (u64, T::Length);
   type Arg<'a> = &'a [T] where T: 'a;
-  fn as_owned(arg: Self::Arg<'_>) -> Self {
-    let mut result = Vec::with_capacity(arg.len());
-    result.extend_from_slice(arg);
+  fn as_arg(&self) -> Self::Arg<'_> { &self[..] }
+}
+
+impl<T: Type> CloneArg for &[T] {
+  type Owned = Vec<T>;
+  fn clone_arg(self) -> Self::Owned {
+    let mut result = Vec::with_capacity(self.len());
+    result.extend_from_slice(self);
     result
   }
-  fn as_arg(&self) -> Self::Arg<'_> { &self[..] }
 }
 
 impl<T:Zero> Zero for Vec<T> {
@@ -42,46 +46,46 @@ impl<T:Zero> Zero for Vec<T> {
 
 /* Sequence operations */
 
-impl<T: Type> Sequence for Vec<T> {
+impl<T: Type> Sequence for &[T] {
   type Item = T;
 
-  fn length(&self) -> usize { self.len() }
+  fn length(self) -> usize { self.len() }
 
-  fn index(&self, i: usize) -> T { self[i].clone() }
+  fn index(self, i: usize) -> T { self[i].clone() }
 
-  fn shift_right(&self, n: T::Length, amt: usize) -> Self
+  fn shift_right(self, n: T::Length, amt: usize) -> Self::Owned
     where T : Zero
   {
-    Self::from_fn( self.length()
+    Vec::<T>::from_fn( self.length()
                  , |i| if i < amt { T::zero(n) } else { self.index(i-amt) })
   }
 
 
-  fn shift_right_signed(&self, amt: usize) -> Self {
-    Self::from_fn( self.length()
+  fn shift_right_signed(self, amt: usize) -> Self::Owned {
+    Vec::<T>::from_fn( self.length()
                  , |i| self.index(if i < amt { 0 } else { i - amt }))
   }
 
-  fn rotate_right(&self, amt: usize) -> Self {
+  fn rotate_right(self, amt: usize) -> Self::Owned {
     let n = self.length();
-    if n == 0 { return self.clone() };
+    if n == 0 { return self.clone_arg() };
     let a = amt % n;
-    Self::from_fn(n, |i| self.index((n + i - a) % n))
+    Vec::<T>::from_fn(n, |i| self.index((n + i - a) % n))
   }
 
 
-  fn shift_left(&self, n: T::Length, amt: usize) -> Self
+  fn shift_left(self, n: T::Length, amt: usize) -> Self::Owned
     where T : Zero
   {
     let vec_len = self.length();
-    Self::from_fn(vec_len, |i| {
+    Vec::<T>::from_fn(vec_len, |i| {
       let j = amt + i;
       if j >= vec_len { T::zero(n) } else { self.index(j) } })
   }
 
-  fn rotate_left(&self, amt: usize) -> Self {
+  fn rotate_left(self, amt: usize) -> Self::Owned {
     let n = self.length();
-    Self::from_fn(n, |i| self.index((amt + i) % n))
+    Vec::<T>::from_fn(n, |i| self.index((amt + i) % n))
   }
 }
 
