@@ -16,7 +16,7 @@ import Cryptol.Compiler.Rust.Monad
 compileSizeType :: SizeVarSize -> RustType
 compileSizeType szT =
   case szT of
-    MemSize   -> simpleType "u64"
+    MemSize   -> simpleType "usize"
     LargeSize -> refType (pathType (simplePath' ["num","BigUint"]))
 
 -- | Compile a size argument, using the specified type.
@@ -26,7 +26,7 @@ compileSize sz tgtSz =
   case sz of
     IRFixedSize n ->
       case tgtSz of
-        MemSize   -> pure (litExpr (mkU64Lit n))
+        MemSize   -> pure (litExpr (mkUSizeLit n))
         LargeSize -> pure (addrOf (mkRustCall fn [arg]))
           where
           fn   = pathExpr (simplePath' ["num","BigUint","from_bytes_le"])

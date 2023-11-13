@@ -77,5 +77,9 @@ pub trait Word : Sequence<Item=bool> {
 }
 
 
+// All stream representaitons should support these operations.
+pub trait Stream<T:Type> : Type + CloneArg<Owned=Self> + Iterator<Item=T> {
+}
+
 
 

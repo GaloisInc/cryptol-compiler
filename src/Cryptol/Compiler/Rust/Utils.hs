@@ -5,6 +5,7 @@ module Cryptol.Compiler.Rust.Utils where
 import Data.Text(Text)
 import Data.Text qualified as Text
 import Data.List(intersperse)
+import Data.List.NonEmpty qualified as NonEmpty
 import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
 import Language.Rust.Data.Position qualified as Rust
@@ -19,6 +20,7 @@ type RustStmt     = Rust.Stmt ()
 type RustBlock    = Rust.Block ()
 type RustItem     = Rust.Item ()
 type RustGenerics = Rust.Generics ()
+type RustLifetime = Rust.Lifetime ()
 type RustLifetimeDef = Rust.LifetimeDef ()
 type RustTyParam = Rust.TyParam ()
 type RustWherePredicate = Rust.WherePredicate ()
@@ -77,7 +79,29 @@ pathAddTypeSuffix (Rust.Path global seg an) newTys = Rust.Path global seg' an
           Rust.AngleBracketed lts curTys [] () ->
             Rust.AngleBracketed lts (curTys++newTys) [] ()
 
+pathAddLifetimeSuffix :: RustPath -> [RustLifetime] -> RustPath
+pathAddLifetimeSuffix (Rust.Path global seg an) newLifes =
+  Rust.Path global seg' an
+  where
+  seg' = init seg ++ [modSegment (last seg)]
 
+  modSegment (Rust.PathSegment name mbParams a) =
+    Rust.PathSegment name (Just (modPathParams mbParams)) a
+
+  modPathParams mbParams =
+    case mbParams of
+      Nothing -> Rust.AngleBracketed newLifes [] [] ()
+      Just params ->
+        case params of
+          Rust.Parenthesized {} -> panic "pathAddTypeSuffix" ["Parenthesized"]
+          Rust.AngleBracketed _ _ (_:_) () ->
+            panic "pathAddTypeSuffix" ["AngleBracketed with arg 3"]
+          Rust.AngleBracketed lts curTys [] () ->
+            Rust.AngleBracketed (lts ++ newLifes) curTys [] ()
+
+
+lifetime :: Rust.Name -> RustLifetime
+lifetime x = Rust.Lifetime x ()
 --------------------------------------------------------------------------------
 
 typeQualifiedExpr :: RustType -> RustPath -> RustExpr
@@ -310,3 +334,14 @@ refType ty = Rust.Rptr Nothing Rust.Immutable ty ()
 
 mutRefType :: RustType -> RustType
 mutRefType ty = Rust.Rptr Nothing Rust.Mutable ty ()
+
+implTraitType :: [RustPath] -> RustType
+implTraitType traits =
+  Rust.ImplTrait
+    (NonEmpty.fromList
+       [ Rust.TraitTyParamBound
+            (Rust.PolyTraitRef [] (Rust.TraitRef t) ())
+            Rust.None ()
+       | t <- traits
+       ]
+    ) ()

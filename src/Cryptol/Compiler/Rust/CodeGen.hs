@@ -86,7 +86,7 @@ genCall call =
 -}
 
     IRTopFun tf ->
-      do typeArgs     <- traverse (compileType AsOwned) (irtfTypeArgs tf)
+      do typeArgs <- traverse (compileType TypeAsParam AsOwned) (irtfTypeArgs tf)
          lenArgs      <- genCallLenArgs call
          szArgs       <- genCallSizeArgs call
          name         <- lookupFunName (irtfName tf)
@@ -227,10 +227,10 @@ genFunDecl decl =
             -- Normal parameters
             nParams <- forM (argNames `zip` ftParams ft) \(arg,ty) ->
               do i <- bindLocal (addLocalVar False) arg
-                 t <- compileType AsArg ty
+                 t <- compileType TypeInFunSig AsArg ty
                  pure (i, t)
 
-            returnTy  <- compileType AsOwned (ftResult ft)
+            returnTy  <- compileType TypeInFunSig AsOwned (ftResult ft)
 
             funExpr   <- genBlock OwnContext expr
 

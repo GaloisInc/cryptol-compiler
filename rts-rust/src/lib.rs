@@ -21,6 +21,7 @@ pub mod trait_methods {
   pub use crate::type_traits::CloneArg as _;
   pub use crate::type_traits::Sequence as _;
   pub use crate::type_traits::Word as _;
+  pub use crate::type_traits::Stream as _;
 
   pub use crate::traits::Zero as _;
   pub use crate::traits::Literal as _;

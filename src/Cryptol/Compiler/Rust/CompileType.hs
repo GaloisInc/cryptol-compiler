@@ -15,9 +15,15 @@ data TypeMode =
   -- ^ Owned representation, currently used for locals, function results,
   -- and when the type is a field of another type
 
+-- | Type use
+data TypeUse =
+    TypeInFunSig  -- ^ Argument or result of a functoin
+  | TypeAsParam   -- ^ Type application in a function call
+
+
 -- | Compute the Rust type used to represent the given Cryptol type.
-compileType :: TypeMode -> IR.Type -> Rust RustType
-compileType mode ty =
+compileType :: TypeUse -> TypeMode -> IR.Type -> Rust RustType
+compileType use mode ty =
   case ty of
     IR.TBool          -> pure boolType
     IR.TInteger       -> pure (byRef mode cryIntegerType)
@@ -27,21 +33,27 @@ compileType mode ty =
     IR.TDouble        -> pure (simpleType "f64")
 
     IR.TWord sz ->
-      pure (byRef mode (maybe cryDWordType cryWordType (IR.isKnownSize sz)))
+      pure
+        case mode of
+          AsArg   -> cryDWordRefType
+          AsOwned -> cryDWordType
 
     IR.TArray _sz t ->
-      do elTy <- compileType AsOwned t
+      do elTy <- compileType use AsOwned t
          pure
            case mode of
              AsArg   -> refType (sliceType elTy)
              AsOwned -> cryVectorType elTy
 
-    IR.TStream _sz t -> byRef mode . streamOfType <$> compileType AsOwned t
+    IR.TStream _sz t ->
+      case use of
+        TypeInFunSig -> streamOfType <$> compileType use AsOwned t
+        TypeAsParam  -> pure inferType
 
     IR.TTuple ts ->
       case ts of
         [] -> pure unitType
-        _  -> do elTs <- traverse (compileType AsOwned) ts
+        _  -> do elTs <- traverse (compileType use AsOwned) ts
                  pure (byRef mode (tupleType elTs))
 
     IR.TPoly x ->
@@ -58,9 +70,10 @@ compileType mode ty =
                 life = Rust.AngleBracketed [Rust.Lifetime "_" ()] [] [] ()
              AsOwned -> pathType (simplePath tyI)
 
+    -- XXX: Are `impls` allowd in these??
     IR.TFun args ret  ->
-        funType <$> traverse (compileType AsArg) args
-                                 <*> compileType AsOwned ret
+        funType <$> traverse (compileType use AsArg) args
+                                 <*> compileType use AsOwned ret
 
 
 byRef :: TypeMode -> RustType -> RustType
@@ -72,7 +85,10 @@ byRef mode ownTy =
 
 -- types
 streamOfType :: RustType -> RustType
-streamOfType = vectorOfType -- XXX
+streamOfType elT = implTraitType [ path ]
+  where
+  path = pathAddTypeSuffix trait [ elT ]
+  trait = simplePath' [ cryptolCrate, "Stream" ]
 
 -- XXX
 funType :: [RustType] -> RustType -> RustType
@@ -89,15 +105,11 @@ funType funArgs funRes =
 cryIntegerType :: RustType
 cryIntegerType = pathType (simplePath' ["num","BigInt"])
 
--- XXX
 cryZType :: RustType
 cryZType = pathType (simplePath' [cryptolCrate,"Z"])
 
 cryRationalType :: RustType
 cryRationalType = pathType (simplePath' ["num","BigRational"])
-
-cryArrayType :: Integer -> RustType -> RustType
-cryArrayType _n = cryVectorType -- for now we just use vectors for all
 
 cryVectorType :: RustType -> RustType
 cryVectorType = vectorOfType
@@ -105,11 +117,9 @@ cryVectorType = vectorOfType
 cryDWordType :: RustType
 cryDWordType = pathType (simplePath' [cryptolCrate,"DWord"])
 
-cryWordType :: Integer -> RustType
-cryWordType bits = Rust.MacTy mac ()
+cryDWordRefType :: RustType
+cryDWordRefType = pathType (pathAddLifetimeSuffix path [lifetime "_"])
   where
-      mac = Rust.Mac (simplePath' [cryptolCrate, "Word"]) tokenStream ()
-      tokenStream = Rust.Tree lengthTok
-      lengthTok = Rust.Token dummySpan
-                    (Rust.LiteralTok (Rust.IntegerTok (show bits)) Nothing)
+  path = simplePath' [cryptolCrate,"DWordRef"]
+
 

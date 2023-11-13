@@ -8,7 +8,7 @@ impl Zero for num::BigInt {
 }
 
 impl Literal for num::BigInt {
-  fn number_u64(_: (), x: u64)           -> Self { Self::from(x) }
+  fn number_usize(_: (), x: usize)       -> Self { Self::from(x) }
   fn number_int(_: (), x: &num::BigUint) -> Self {
     Self::from(x.clone())
   }

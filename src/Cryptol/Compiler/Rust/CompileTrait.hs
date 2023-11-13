@@ -89,23 +89,16 @@ lenParamFor ty =
     TRational -> pure unitExpr
     TFloat    -> pure unitExpr
     TDouble   -> pure unitExpr
-    TWord sz
-      | Just _ <- isKnownSize sz -> pure unitExpr
-      | otherwise                -> compileSize sz MemSize
+    TWord sz  -> compileSize sz MemSize
 
-    TArray sz elT
-      | Just _ <- isKnownSize sz  -> lenParamFor elT
-      | otherwise ->
-        do vecLen  <- compileSize sz MemSize
-           elemLen <- lenParamFor elT
-           pure (tupleExpr [vecLen,elemLen])
+    TArray sz elT ->
+      do vecLen  <- compileSize sz MemSize
+         elemLen <- lenParamFor elT
+         pure (tupleExpr [vecLen,elemLen])
 
-    TStream {} -> pure (todoExp "lenStream") -- XXX
+    -- XXX
+    TStream {} -> unsupported "Stream len"
+
     TTuple ts  -> tupleExpr <$> mapM lenParamFor ts
     TFun _ t   -> lenParamFor t
     TPoly tp   -> lookupLenParam tp
-
-
-
-lenParamForSize :: Size -> Rust RustExpr
-lenParamForSize = undefined
