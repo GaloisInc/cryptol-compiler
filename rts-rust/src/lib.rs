@@ -18,6 +18,7 @@ pub mod trait_methods {
   pub use crate::display::Base as _;
 
   pub use crate::type_traits::Type as _;
+  pub use crate::type_traits::CloneArg as _;
   pub use crate::type_traits::Sequence as _;
   pub use crate::type_traits::Word as _;
 
