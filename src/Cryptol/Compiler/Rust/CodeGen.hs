@@ -6,7 +6,7 @@ module Cryptol.Compiler.Rust.CodeGen
 
 import Data.Set qualified as Set
 import Data.Maybe (catMaybes)
-import Control.Monad(forM, mapAndUnzipM)
+import Control.Monad(forM, mapAndUnzipM, foldM)
 
 import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
@@ -15,6 +15,7 @@ import Cryptol.Utils.Ident qualified as Cry
 
 -- import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Cryptol
+import Cryptol.Compiler.IR.Free
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.Names
@@ -114,6 +115,10 @@ genCall call =
 
 -- | From a Cryptol IR expression, generate a Rust expressions along with
 --   a set of Rust statements that contextualize it, such as let bindings
+-- IMPORTANT: we should be generating code "backwards" meaning first generate
+-- the continuation, and then the stuff using the continuation.  We do this
+-- becasue we are also doing an analysis of what is used in the continuation
+-- and how many times.  Use `withSameCont` for things that share a continuation.
 genExpr :: ExprContext -> Expr -> Rust (PartialBlock RustExpr)
 genExpr how (IRExpr e0) =
   case e0 of
@@ -128,10 +133,7 @@ genExpr how (IRExpr e0) =
                     then rexpr
                     else callMethod rexpr "clone" []
 
-               | otherwise ->
-                 do rty <- compileType AsOwned ty
-                    let fn = typeQualifiedExpr rty (simplePath "as_owned")
-                    pure (mkRustCall fn [rexpr])
+               | otherwise -> pure (callMethod rexpr "clone_arg" [])
 
              BorrowContext
                | isLocal   -> pure (callMethod rexpr "as_arg" [])
@@ -147,7 +149,9 @@ genExpr how (IRExpr e0) =
            )
 
     IRIf eTest eThen eElse ->
-      do ~[ rThen, rElse ] <- withSameCont (map (genBlock how) [ eThen, eElse ])
+      do res <- withSameCont (map (genBlock how) [ eThen, eElse ])
+         let rThen = res !! 0
+             rElse = res !! 1
          (stmts,rTest) <- genExpr OwnContext eTest
          pure (stmts, rustIf rTest rThen rElse)
 
@@ -174,7 +178,9 @@ genExpr how (IRExpr e0) =
           pure $ mkClosure args'' lamStmt lamE
           -}
 
-    IRStream {} -> pure ([], todoExp "Stream Expression") -- unsupported "Stream"
+
+
+    IRStream streamExpr -> genStream how streamExpr
 
 
         -- | Generate a RustItem corresponding to a function declaration.
@@ -261,6 +267,37 @@ genModule ::
   [FunDecl] ->
   IO (ExtModule, Rust.SourceFile ())
 genModule gi ds = runRustM gi (genSourceFile (genCurModule gi) ds)
+
+--------------------------------------------------------------------------------
+
+genStream :: ExprContext -> StreamExpr -> Rust (PartialBlock RustExpr)
+genStream ctxt sexpr =
+  do (extStrStmts, binds) <- foldM doExtStream ([],[]) (irsExterns sexpr)
+     (initStmts,initE) <- genExpr OwnContext (irsInit sexpr)
+     let extStreamSmts = concat (initStmts : extStrStmts)
+     undefined
+
+
+      -- S { index = 0, history = init, nonStream, stream }
+
+     undefined
+
+  -- For each extrenal stream we need a new type paramer: XS: Stream<a>
+  -- For each type parameter we depend on (in extrenal stream + non-steram and next)
+  -- we need a parameter with all the constraints that we have in the function
+  where
+  extNonStream = freeLocals (freeNames (irsNext sexpr))
+
+  doExtStream (ss,binds) (x,e) =
+    do (xs,y) <- genExpr OwnContext e
+       pure (xs : ss, (x,y) : binds)
+
+  nextBody = undefined
+  -- i = self.index
+  -- x = x.self.clone() -- for all locals
+  --
+  -- hist(x) ~> self.history[(i + hist_size - x) % hist_size]
+  -- head(xs) ~> self.xs.next()
 
 --------------------------------------------------------------------------------
 
