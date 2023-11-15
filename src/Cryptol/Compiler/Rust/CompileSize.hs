@@ -17,7 +17,7 @@ compileSizeType :: SizeVarSize -> RustType
 compileSizeType szT =
   case szT of
     MemSize   -> simpleType "usize"
-    LargeSize -> refType (pathType (simplePath' ["num","BigUint"]))
+    LargeSize -> refType Nothing (pathType (simplePath' ["num","BigUint"]))
 
 -- | Compile a size argument, using the specified type.
 -- For big nums, this produces a reference.

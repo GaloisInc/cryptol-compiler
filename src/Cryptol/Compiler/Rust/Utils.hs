@@ -4,6 +4,7 @@ module Cryptol.Compiler.Rust.Utils where
 
 import Data.Text(Text)
 import Data.Text qualified as Text
+import Data.Maybe(fromMaybe)
 import Data.List(intersperse)
 import Data.List.NonEmpty qualified as NonEmpty
 import Language.Rust.Syntax qualified as Rust
@@ -102,6 +103,9 @@ pathAddLifetimeSuffix (Rust.Path global seg an) newLifes =
 
 lifetime :: Rust.Name -> RustLifetime
 lifetime x = Rust.Lifetime x ()
+
+lifetimeMaybe :: Maybe RustLifetime -> RustLifetime
+lifetimeMaybe = fromMaybe (lifetime "_")
 --------------------------------------------------------------------------------
 
 typeQualifiedExpr :: RustType -> RustPath -> RustExpr
@@ -280,6 +284,9 @@ tupleExpr es = Rust.TupExpr [] es ()
 tupleSelect :: RustExpr -> Int -> RustExpr
 tupleSelect e i = Rust.TupField [] e i ()
 
+fieldSelect :: RustExpr -> Rust.Ident -> RustExpr
+fieldSelect e l = Rust.FieldAccess [] e l ()
+
 arrayExpr :: [RustExpr] -> RustExpr
 arrayExpr es = Rust.Vec [] es ()
 
@@ -329,8 +336,8 @@ fixedArrayOfType ty i = Rust.Array ty sizeExpr ()
 sliceType :: RustType -> RustType
 sliceType ty = Rust.Slice ty ()
 
-refType :: RustType -> RustType
-refType ty = Rust.Rptr Nothing Rust.Immutable ty ()
+refType :: Maybe RustLifetime -> RustType -> RustType
+refType l ty = Rust.Rptr l Rust.Immutable ty ()
 
 mutRefType :: RustType -> RustType
 mutRefType ty = Rust.Rptr Nothing Rust.Mutable ty ()
@@ -345,3 +352,9 @@ implTraitType traits =
        | t <- traits
        ]
     ) ()
+
+implFnTraitType :: [RustType] -> RustType -> RustType
+implFnTraitType args res = implTraitType [path]
+  where
+  path = Rust.Path False [Rust.PathSegment "Fn" (Just params) ()] ()
+  params = Rust.Parenthesized args (Just res) ()

@@ -12,6 +12,7 @@ pub use type_traits::*;
 pub use traits::*;
 pub use display::*;
 pub use dword::DWord;
+pub use dword::DWordRef;
 
 pub mod trait_methods {
   pub use crate::display::Display as _;
@@ -77,5 +78,6 @@ macro_rules! RefType {
     }
   };
 }
+
 
 

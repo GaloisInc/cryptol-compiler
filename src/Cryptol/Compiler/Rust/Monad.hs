@@ -34,6 +34,7 @@ runRustM gi (Rust m) = fst <$> runStateT rw (runReaderT ro m)
       { roModName = genCurModule gi
       , roExternalNames = genExternalModules gi
       , roLoc = []
+      , roInStreamClosure = Nothing
       }
   rw =
     RW
@@ -41,6 +42,10 @@ runRustM gi (Rust m) = fst <$> runStateT rw (runReaderT ro m)
       , rwLocalNames      = emptyLocalNames
       }
 
+data ExprContext =
+    OwnContext    -- ^ We are generating an ownded expression
+  | BorrowContext -- ^ We are generating a borrowed expression
+    deriving Eq
 
 type RustImpl =
   WithBase IO
@@ -81,6 +86,11 @@ data RO = RO
 
   , roLoc :: Loc
     -- ^ Location, for error reporting
+
+  , roInStreamClosure :: !(Maybe ExprContext)
+    -- ^ If this is `Just`, then access local variables through self.
+    -- The value indicates how variables are stored in the closure
+    -- (i.e., are they borrowed or owned by the closure).
   }
 
 data RW = RW
@@ -118,6 +128,22 @@ bindLocalLet x k =
                                removeLocalVar x i (rwLocalNames rw)})
      pure a
 
+
+-- | Add a type bound for a parameter.
+addTypeBound :: Cry.TParam -> RustWherePredicate -> Rust ()
+addTypeBound x b =
+  Rust $ sets_ \rw ->
+          let ln = rwLocalNames rw
+              bs = Map.insertWith (++) x [b] (lTypeBounds ln)
+          in rw { rwLocalNames = ln { lTypeBounds = bs } }
+
+-- | Get the type bounds for this parameter.
+getTypeBounds :: Cry.TParam -> Rust [RustWherePredicate]
+getTypeBounds x =
+  do bs <- Rust (lTypeBounds . rwLocalNames <$> get)
+     pure (Map.findWithDefault [] x bs)
+
+
 {- | Execute the given computation with the same continuation.
 This means that all expressions will see the same set of used variables.
 The resulting expressions uses a variable if any of the computation does.
@@ -132,10 +158,19 @@ withSameCont ms =
           pure (a,us)
      setUsed (Set.unions us)
      pure as
-  where
-  getUsed   = lUsedVars . rwLocalNames <$> Rust get
-  setUsed x = Rust $ sets_ \rw -> let ls = rwLocalNames rw
+
+getUsed :: Rust (Set Rust.Ident)
+getUsed   = lUsedVars . rwLocalNames <$> Rust get
+
+setUsed :: Set Rust.Ident -> Rust ()
+setUsed x = Rust $ sets_ \rw -> let ls = rwLocalNames rw
                                   in rw { rwLocalNames = ls { lUsedVars = x } }
+
+-- | Do something without affecting the continuation, and variables
+-- are only accessed through Self.
+inStreamClosure :: ExprContext -> Rust a -> Rust a
+inStreamClosure ctxt (Rust m) =
+  Rust (mapReader (\ro -> ro { roInStreamClosure = Just ctxt }) m)
 
 -- | Bind a function in this module
 bindFun :: FunName -> Rust Rust.Ident
@@ -172,11 +207,26 @@ lookupNameId x =
      let locals     = rwLocalNames rw
      let rid        = lookupName x (lValNames (rwLocalNames rw))
      let isLoc      = rid `Set.member` lLocalVars locals
-     let used       = lUsedVars locals
-     let isLastUse  = not (rid `Set.member` used)
-     Rust $ set $ rw { rwLocalNames = locals { lUsedVars = Set.insert rid used }
-                     }
-     pure (isLoc, isLastUse, pathExpr (simplePath rid))
+     inStreamClo <- Rust (roInStreamClosure <$> ask)
+     case inStreamClo of
+        Nothing ->
+          do let used       = lUsedVars locals
+             let isLastUse  = not (rid `Set.member` used)
+             Rust $ set $ rw { rwLocalNames =
+                                  locals { lUsedVars = Set.insert rid used }
+                             }
+             pure (isLoc, isLastUse, pathExpr (simplePath rid))
+
+        Just mode ->
+          pure ( mode == OwnContext, False
+               , fieldSelect (pathExpr (simplePath "self")) rid
+               )
+
+-- | Get the identifier for to use for the given local names
+lookupNameRustIdent :: NameId -> Rust Rust.Ident
+lookupNameRustIdent x =
+  do rw <- Rust get
+     pure (lookupName x (lValNames (rwLocalNames rw)))
 
 
 -- | Get the expression for a length parametes associated with the given
@@ -254,8 +304,14 @@ getFunNames = lMap . rwLocalFunNames <$> Rust get
 
 -- | Names local to a declaration
 data LocalNames = LocalNames
-  { lTypeNames  :: NameMap Cry.TParam           -- ^ Names for type params
-  , lValNames   :: NameMap NameId               -- ^ Names for local values
+  { lTypeNames  :: NameMap Cry.TParam   -- ^ Names for type params
+  , lTypeBounds :: Map Cry.TParam [RustWherePredicate]
+    -- ^ Bounds on type parameters we have.  We keep this around,
+    -- so that if we need to make a stream closure, we can copy them
+    -- in the struct declaration.
+
+  , lValNames   :: NameMap NameId       -- ^ Names for local values
+
   , lLenParams  :: Map Cry.TParam Rust.Ident
     -- ^ Names for Length params.  When generating these we use the "used"
     -- set of `lValNames`, because they are values.
@@ -268,12 +324,18 @@ data LocalNames = LocalNames
        We generate code "backwards" (continuation first),
        and this field tells us which variables were mentioned in the
        continuation. -}
+
+
   }
+
+-- | How to access a local variable
+data LocVarLocation = LocVarInScope | LocVarInClosure
 
 -- | Empty local names, useful when starting a new declaration.
 emptyLocalNames :: LocalNames
 emptyLocalNames = LocalNames
   { lTypeNames  = emptyNameMap
+  , lTypeBounds = mempty
   , lValNames   = emptyNameMap
   , lLenParams  = mempty
   , lLocalVars  = Set.empty
@@ -285,6 +347,7 @@ addLocalType :: Cry.TParam -> LocalNames -> (Rust.Ident, LocalNames)
 addLocalType t ns = (i, ns { lTypeNames = mp })
   where
   (i, mp) = addName t (lTypeNames ns)
+
 
 -- | Bind a local variable/paramter.
 addLocalVar :: Bool -> NameId -> LocalNames -> (Rust.Ident, LocalNames)

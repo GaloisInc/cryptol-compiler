@@ -43,11 +43,13 @@ isCryType arg =
 
 
 -- | Compile a trait.  The set returns type parameters that need
--- an associated Lenght parmaeter.
+-- an associated Length parmaeter.
 compileTrait :: Trait -> Rust (Set Cry.TParam, RustWherePredicate)
 compileTrait t@(IRTrait name arg) =
   do tparam <- getTParams
-     pure (traitNeedsLen t, Rust.BoundPredicate [] (tparam arg) [bound] ())
+     let p = Rust.BoundPredicate [] (tparam arg) [bound] ()
+     addTypeBound arg p
+     pure (traitNeedsLen t, p)
   where
   bound     = Rust.TraitTyParamBound traitName Rust.None ()
   traitName = Rust.PolyTraitRef [] (Rust.TraitRef path) ()

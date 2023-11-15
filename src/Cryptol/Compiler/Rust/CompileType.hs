@@ -10,7 +10,9 @@ import Cryptol.Compiler.Rust.Names
 
 -- | Different representations for a Cryptol type.
 data TypeMode =
-    AsArg     -- ^ Borrowed represewntation, used to pass arguments
+    AsArg (Maybe RustLifetime)
+    -- ^ Borrowed represewntation, used to pass arguments
+
   | AsOwned
   -- ^ Owned representation, currently used for locals, function results,
   -- and when the type is a field of another type
@@ -19,6 +21,11 @@ data TypeMode =
 data TypeUse =
     TypeInFunSig  -- ^ Argument or result of a functoin
   | TypeAsParam   -- ^ Type application in a function call
+  | TypeAsStored  -- ^ Stored in another type (e.g., array/stream)
+
+
+data CloInfo = VarStream | VarFn | Normal
+
 
 
 -- | Compute the Rust type used to represent the given Cryptol type.
@@ -32,23 +39,25 @@ compileType use mode ty =
     IR.TFloat         -> pure (simpleType "f32")
     IR.TDouble        -> pure (simpleType "f64")
 
-    IR.TWord sz ->
+    IR.TWord {} ->
       pure
         case mode of
-          AsArg   -> cryDWordRefType
+          AsArg r -> cryDWordRefType r
           AsOwned -> cryDWordType
 
     IR.TArray _sz t ->
-      do elTy <- compileType use AsOwned t
+      do elTy <- compileType TypeAsStored AsOwned t
          pure
            case mode of
-             AsArg   -> refType (sliceType elTy)
+             AsArg a -> refType a (sliceType elTy)
              AsOwned -> cryVectorType elTy
 
     IR.TStream _sz t ->
       case use of
-        TypeInFunSig -> streamOfType <$> compileType use AsOwned t
+        TypeInFunSig -> stream <$> compileType TypeAsStored AsOwned t
+          where stream el = implTraitType [streamTraitPath el]
         TypeAsParam  -> pure inferType
+        TypeAsStored -> unsupported "Streams stored in containers"
 
     IR.TTuple ts ->
       case ts of
@@ -60,47 +69,39 @@ compileType use mode ty =
       do tyI <- lookupTParam x
          pure
            case mode of
-             -- T::Arg<'_>
-             AsArg   -> pathType path
+             AsArg a  -> pathType path
                 where
                 path = Rust.Path False segments ()
                 segments = [ Rust.PathSegment tyI   Nothing ()
                            , Rust.PathSegment "Arg" (Just life) ()
                            ]
-                life = Rust.AngleBracketed [Rust.Lifetime "_" ()] [] [] ()
+                life = Rust.AngleBracketed [lifetimeMaybe a] [] [] ()
              AsOwned -> pathType (simplePath tyI)
 
-    -- XXX: Are `impls` allowd in these??
     IR.TFun args ret  ->
-        funType <$> traverse (compileType use AsArg) args
-                                 <*> compileType use AsOwned ret
+      case use of
+        TypeAsStored -> unsupported "function stored in a container"
+        TypeAsParam -> pure inferType
+        TypeInFunSig ->
+          case mode of
+            AsOwned -> unsupported "Owned function"
+            AsArg r ->
+              implFnTraitType
+                  <$> traverse (compileType use (AsArg r)) args
+                  <*> compileType use AsOwned ret
 
 
 byRef :: TypeMode -> RustType -> RustType
 byRef mode ownTy =
   case mode of
-    AsArg   -> refType ownTy
+    AsArg r -> refType r ownTy
     AsOwned -> ownTy
 
 
--- types
-streamOfType :: RustType -> RustType
-streamOfType elT = implTraitType [ path ]
+streamTraitPath :: RustType -> RustPath
+streamTraitPath elT = pathAddTypeSuffix trait [ elT ]
   where
-  path = pathAddTypeSuffix trait [ elT ]
   trait = simplePath' [ cryptolCrate, "Stream" ]
-
--- XXX
-funType :: [RustType] -> RustType -> RustType
-funType funArgs funRes =
-  pathType $
- simplePath' [ cryptolCrate, "Fun" ] -- (funArgs ++ [funRes]
-{-
-  where
-  
-  path = Rust.Path False [ Rust.PathSegment "Fun" (Just params) () ] ()
-  params = Rust.AngleBracketed [] (funArgs ++ [funRes]) [] ()
--}
 
 cryIntegerType :: RustType
 cryIntegerType = pathType (simplePath' ["num","BigInt"])
@@ -117,9 +118,12 @@ cryVectorType = vectorOfType
 cryDWordType :: RustType
 cryDWordType = pathType (simplePath' [cryptolCrate,"DWord"])
 
-cryDWordRefType :: RustType
-cryDWordRefType = pathType (pathAddLifetimeSuffix path [lifetime "_"])
+cryDWordRefType :: Maybe RustLifetime -> RustType
+cryDWordRefType a = pathType (pathAddLifetimeSuffix path [life])
   where
   path = simplePath' [cryptolCrate,"DWordRef"]
+  life = case a of
+           Just l -> l
+           Nothing -> lifetime "_"
 
 
