@@ -13,6 +13,7 @@ pub use traits::*;
 pub use display::*;
 pub use dword::DWord;
 pub use dword::DWordRef;
+pub use stream::*;
 
 pub mod trait_methods {
   pub use crate::display::Display as _;

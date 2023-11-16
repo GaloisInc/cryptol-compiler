@@ -6,7 +6,7 @@ module Cryptol.Compiler.Rust.CodeGen
 
 import Data.Set qualified as Set
 import Data.Maybe (catMaybes)
-import Control.Monad(forM, mapAndUnzipM, foldM, zipWithM)
+import Control.Monad(forM, mapAndUnzipM)
 
 import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
@@ -14,9 +14,7 @@ import Language.Rust.Data.Ident qualified as Rust
 import Cryptol.Utils.Ident qualified as Cry
 
 -- import Cryptol.Compiler.PP
-import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR.Cryptol
-import Cryptol.Compiler.IR.Free
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.Names
@@ -24,6 +22,7 @@ import Cryptol.Compiler.Rust.CompileSize
 import Cryptol.Compiler.Rust.CompileType
 import Cryptol.Compiler.Rust.CompileTrait
 import Cryptol.Compiler.Rust.CompilePrim
+import Cryptol.Compiler.Rust.CompileStream
 
 
 
@@ -160,9 +159,7 @@ genExpr how (IRExpr e0) =
                 pure (rname,rstmts,e)
 
          eBound' <- doGenExpr OwnContext eBound
-         let ty = Nothing
-             letBind = Rust.Local (identPat rname) ty (Just eBound') [] ()
-
+         let letBind = localLet rname Nothing eBound'
          pure (letBind : rstmts, rexpr)
 
     IRClosure {} -> unsupported "Closure" -- pure (justExpr (todoExp (show (pp call))))
@@ -178,7 +175,9 @@ genExpr how (IRExpr e0) =
 
 
 
-    IRStream streamExpr -> genStream how streamExpr
+    IRStream streamExpr ->
+      let ?genExpr = genExpr
+      in genStream how streamExpr
 
 
         -- | Generate a RustItem corresponding to a function declaration.
@@ -265,160 +264,4 @@ genModule ::
   [FunDecl] ->
   IO (ExtModule, Rust.SourceFile ())
 genModule gi ds = runRustM gi (genSourceFile (genCurModule gi) ds)
-
---------------------------------------------------------------------------------
-
-{- The plan:
-
-  Generate code like this:
-
-    {
-      struct S<I,T>
-        where I: Stream<T>,
-              T: Ring
-      {
-        index:    usize,          // indicates which element we are computing
-        history:  [ T; 2 ],       // initial things
-        xs:       I               // An external stream
-      }
-
-      impl<I,T> Iterator for S<I,T>
-        where I: Stream<T>,
-              T: Ring
-      {
-        type Item = T;
-        fn next(&mut self) -> Option<T> {
-          let result = if self.index < 2 {
-            self.history[self.index]
-          } else {
-  
-            // From "next"
-            let x = self.xs.next()?
-            let y = self.history[ (self.index + 2 - 1) % 2 ]
-            let z = self.history[ (self.index + 2 - 2) % 2 ]
-            x + y + z
-          };
-  
-          self.history[ self.index % 2 ] = result;
-          self.index += 1;
-          Some(result)
-        }
-      }
-  
-      impl Stream ...
-  
-      S { index: 0, hist: [0,1] {- form "next" -}, xs: xs.clone() }
-    }
-
-
--}
-
-
-genStream :: ExprContext -> StreamExpr -> Rust (PartialBlock RustExpr)
-genStream ctxt sexpr =
-  do elT <- case irsType sexpr of
-              TStream _ elT -> compileType TypeAsStored AsOwned elT
-              _ -> panic "genStream" ["Not a stream"]
-
-     let (histLen, histType) =
-            case typeOf (irsInit sexpr) of
-              TArray (IRFixedSize i) _ -> (i, fixedArrayOfType elT i)
-              _ -> panic "genStream" ["init fields is not a know fixed array"]
-
-     extStreamInfo <- zipWithM streamTypeVar [1..] (irsExterns sexpr)
-
-     -- XXX: we should abstract over history and index, and make sure
-     -- they don't clash with other names.
-     let fields =
-           [ field (Rust.mkIdent "index")    (simpleType "usize")
-           , field (Rust.mkIdent "history")  histType
-           ] ++
-           [ field i ty | (i,ty,_bnd) <- extStreamInfo ]
-            ++
-            [] -- XXX: capture external non-stream things
-
-
-     -- extTypeBounds <- concat <$> mapM getTypeBounds allTypeVars
-
-
-     undefined fields
-
-
-{-
-  do (extStrStmts, binds) <- foldM doExtStream ([],[]) (irsExterns sexpr)
-     (initStmts,initE)    <- genExpr OwnContext (irsInit sexpr)
-     let extStreamSmts = concat (initStmts : extStrStmts)
-
-
-
-     undefined
-
-
-      -- S { index = 0, history = init, nonStream, stream }
-
-     undefined
-
-  -- For each extrenal stream we need a new type paramer: XS: Stream<a>
-  -- For each type parameter we depend on (in extrenal stream + non-steram and next)
-  -- we need a parameter with all the constraints that we have in the function
--}
-  where
-
-
-  -- All type variables mentioned in the closure
-  allTypeVars  =
-    Set.toList (
-      Set.unions
-       $ freeValTypeVars (irsType sexpr)
-       : [ freeValTypeVars (typeOf x) | x <- Set.toList extNonStream ]
-      ++ [ freeValTypeVars (typeOf s) | (s,_) <- irsExterns sexpr ]
-    )
-
-  -- Information about the name and type of an external stream vairable
-  streamTypeVar i (s,_) =
-    case irNameType s of
-      TStream _ elT ->
-        do ruT <- compileType TypeAsStored AsOwned elT
-           let ident = Rust.mkIdent ("SI" ++ show (i::Int))
-               ty    = pathType (simplePath ident)
-               path  = streamTraitPath ruT
-               b     = Rust.PolyTraitRef [] (Rust.TraitRef path) ()
-               bound = Rust.BoundPredicate [] ty
-                              [Rust.TraitTyParamBound b Rust.None ()] ()
-           vi <- lookupNameRustIdent (irNameName s)
-           pure (vi, ty, bound)
-
-      _ -> panic "streamTypeVar" ["Extern stream is no a stream"]
-
-
-  -- XXX: if there are external capturing things that are functions,
-  -- those should be treated like the streams: we generate a new type variable
-  -- for each, and add `Fn((xs) -> y)` constraint on each.
-
-  -- Free variables that need to packed with the stream.
-  extNonStream = freeLocals (freeNames (irsNext sexpr))
-
-  doExtStream (ss,binds) (x,e) =
-    do (xs,y) <- genExpr OwnContext e
-       pure (xs : ss, (x,y) : binds)
-
-  nextFun ctxt =
-    inStreamClosure ctxt
-    do (nextStmts,nextExpr) <- genExpr OwnContext (irsNext sexpr)
-       undefined
-
-  nextBody = undefined
-
-  genStructType name bounds =
-    do let fields = [ 
-                    ]
-           gen    = undefined
-            -- variables for each external stream
-            -- variables for each type parameter of function
-            -- lifetime,  if any external non-stream
-
-       undefined
-
-  field x t = Rust.StructField (Just x) Rust.InheritedV t [] ()
---------------------------------------------------------------------------------
 

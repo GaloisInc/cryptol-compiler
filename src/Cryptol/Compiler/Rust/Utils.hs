@@ -20,6 +20,9 @@ type RustExpr     = Rust.Expr ()
 type RustStmt     = Rust.Stmt ()
 type RustBlock    = Rust.Block ()
 type RustItem     = Rust.Item ()
+type RustImplItem = Rust.ImplItem ()
+type RustMethodSig = Rust.MethodSig ()
+type RustArg       = Rust.Arg ()
 type RustGenerics = Rust.Generics ()
 type RustLifetime = Rust.Lifetime ()
 type RustLifetimeDef = Rust.LifetimeDef ()
@@ -100,6 +103,21 @@ pathAddLifetimeSuffix (Rust.Path global seg an) newLifes =
           Rust.AngleBracketed lts curTys [] () ->
             Rust.AngleBracketed (lts ++ newLifes) curTys [] ()
 
+-- | Fn((u8) -> u8)
+fnTraitPath :: [RustType] -> RustType -> RustPath
+fnTraitPath args res =
+  Rust.Path False [Rust.PathSegment "Fn" (Just params) ()] ()
+  where
+  params = Rust.Parenthesized args (Just res) ()
+
+
+-- | Iterator<Item=T>
+iteratorWithTypePath :: RustType -> RustPath
+iteratorWithTypePath ty =
+  Rust.Path False [Rust.PathSegment "Iterator" (Just params) ()] ()
+  where
+  params = Rust.AngleBracketed [] [] [(Rust.mkIdent "Item", ty)] ()
+
 
 lifetime :: Rust.Name -> RustLifetime
 lifetime x = Rust.Lifetime x ()
@@ -125,6 +143,10 @@ stmtNoSemi e = Rust.NoSemi e ()
 
 assign :: RustExpr -> RustExpr -> RustStmt
 assign lhs rhs = Rust.Semi (Rust.Assign [] lhs rhs ()) ()
+
+localLet :: Rust.Ident -> Maybe RustType -> RustExpr -> RustStmt
+localLet rname ty def =
+  Rust.Local (identPat rname) ty (Just def) [] ()
 
 mkRustCall :: RustExpr -> [RustExpr] -> RustExpr
 mkRustCall fn args = Rust.Call [] fn args ()
@@ -160,6 +182,9 @@ mkGenerics ::
   RustWhereClause ->
   RustGenerics
 mkGenerics lts tps wc = Rust.Generics lts tps wc ()
+
+noGenerics :: RustGenerics
+noGenerics = mkGenerics [] [] (Rust.WhereClause [] ())
 
 blockExprIfNeeded :: [RustStmt] -> RustExpr -> RustExpr
 blockExprIfNeeded stmts e =
@@ -247,6 +272,32 @@ mkUseGlob xs = Rust.Use [] Rust.InheritedV useTree ()
 pubMod :: Rust.Ident -> RustItem
 pubMod i = Rust.Mod [] Rust.PublicV i Nothing ()
 
+mkImplTrait ::
+  RustGenerics -> RustPath -> RustType -> [RustImplItem] -> RustItem
+mkImplTrait gen trait ty is =
+  Rust.Impl [] Rust.InheritedV Rust.Final Rust.Normal Rust.Positive
+    gen (Just (Rust.TraitRef trait)) ty is ()
+
+
+-- | Definition of an associated type in a trait impl
+implType :: Rust.Ident -> RustType -> RustImplItem
+implType x t = Rust.TypeI [] Rust.InheritedV Rust.Final x t ()
+
+implMethod ::
+  Rust.Ident -> RustGenerics -> RustMethodSig -> RustBlock -> RustImplItem
+implMethod x gen sig def =
+  Rust.MethodI [] Rust.InheritedV Rust.Final x gen sig def ()
+
+methodSig :: [RustArg] -> Maybe RustType -> RustMethodSig
+methodSig args res =
+  Rust.MethodSig Rust.Normal Rust.NotConst Rust.Rust
+  (Rust.FnDecl args res False ())
+
+selfRef :: Rust.Mutability -> RustArg
+selfRef mut = Rust.SelfRegion Nothing mut ()
+
+structField :: Rust.Ident -> RustType -> Rust.StructField ()
+structField x t = Rust.StructField (Just x) Rust.InheritedV t [] ()
 
 
 --------------------------------------------------------------------------------
@@ -342,6 +393,7 @@ refType l ty = Rust.Rptr l Rust.Immutable ty ()
 mutRefType :: RustType -> RustType
 mutRefType ty = Rust.Rptr Nothing Rust.Mutable ty ()
 
+-- | Make a type like `impl T` where `T` is a trait.
 implTraitType :: [RustPath] -> RustType
 implTraitType traits =
   Rust.ImplTrait
@@ -354,7 +406,7 @@ implTraitType traits =
     ) ()
 
 implFnTraitType :: [RustType] -> RustType -> RustType
-implFnTraitType args res = implTraitType [path]
-  where
-  path = Rust.Path False [Rust.PathSegment "Fn" (Just params) ()] ()
-  params = Rust.Parenthesized args (Just res) ()
+implFnTraitType args res = implTraitType [fnTraitPath args res]
+
+tyParam :: Rust.Ident -> RustTyParam
+tyParam i = Rust.TyParam [] i [] Nothing ()

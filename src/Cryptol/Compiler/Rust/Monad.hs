@@ -87,10 +87,12 @@ data RO = RO
   , roLoc :: Loc
     -- ^ Location, for error reporting
 
-  , roInStreamClosure :: !(Maybe ExprContext)
-    -- ^ If this is `Just`, then access local variables through self.
-    -- The value indicates how variables are stored in the closure
-    -- (i.e., are they borrowed or owned by the closure).
+  , roInStreamClosure :: !(Maybe (ExprContext,Integer))
+    -- ^ If this is `Just`, then we are compiling a stream.
+    --  * Then we should access local variables through self.
+    --  * The ExprContext indicates how variables are stored in the closure
+    --    (i.e., are they borrowed or owned by the closure).
+    --  * The Integer is the size of the history
   }
 
 data RW = RW
@@ -128,6 +130,15 @@ bindLocalLet x k =
                                removeLocalVar x i (rwLocalNames rw)})
      pure a
 
+
+-- | In some cases, instead of using `bindLocalLet` it is more convenient
+-- to first add some locals and them remove them.  This avoids having
+-- to nest stuff.
+removeLocalLet :: NameId -> Rust ()
+removeLocalLet x =
+  do i <- lookupNameRustIdent x
+     Rust (sets_ \rw ->
+                  rw { rwLocalNames = removeLocalVar x i (rwLocalNames rw) })
 
 -- | Add a type bound for a parameter.
 addTypeBound :: Cry.TParam -> RustWherePredicate -> Rust ()
@@ -168,9 +179,17 @@ setUsed x = Rust $ sets_ \rw -> let ls = rwLocalNames rw
 
 -- | Do something without affecting the continuation, and variables
 -- are only accessed through Self.
-inStreamClosure :: ExprContext -> Rust a -> Rust a
-inStreamClosure ctxt (Rust m) =
-  Rust (mapReader (\ro -> ro { roInStreamClosure = Just ctxt }) m)
+inStreamClosure :: ExprContext -> Integer -> Rust a -> Rust a
+inStreamClosure ctxt h (Rust m) =
+  Rust (mapReader (\ro -> ro { roInStreamClosure = Just (ctxt,h) }) m)
+
+getStreamHistoryLength :: Rust Integer
+getStreamHistoryLength = Rust (getIt <$> ask)
+  where
+  getIt ro =
+    case roInStreamClosure ro of
+      Just (_,i) -> i
+      Nothing -> panic "getStreamHistoryLength" ["Not compiling a stream"]
 
 -- | Bind a function in this module
 bindFun :: FunName -> Rust Rust.Ident
@@ -217,7 +236,7 @@ lookupNameId x =
                              }
              pure (isLoc, isLastUse, pathExpr (simplePath rid))
 
-        Just mode ->
+        Just (mode,_) ->
           pure ( mode == OwnContext, False
                , fieldSelect (pathExpr (simplePath "self")) rid
                )
