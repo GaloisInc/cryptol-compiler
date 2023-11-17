@@ -4,24 +4,6 @@ pub trait Base<const BASE: usize> {
   fn format(&self, fmt: &mut fmt::Formatter) -> fmt::Result;
 }
 
-impl<const BASE: usize, T: Base<BASE>> Base<BASE> for &[T] {
-  fn format(&self, fmt: &mut fmt::Formatter) -> fmt::Result
-  {
-    write!(fmt,"[")?;
-    let mut xs = self.into_iter();
-    match xs.next() {
-      Some(fst) => Base::<BASE>::format(fst,fmt)?,
-      None      => { return write!(fmt,"]") }
-    }
-
-    for i in xs {
-      write!(fmt,", ")?;
-      Base::<BASE>::format(i,fmt)?;
-    }
-    write!(fmt, "]")
-  }
-}
-
 pub struct Displayable<'a,T: ?Sized>(pub &'a T);
 
 /// Used to display types using the Formatting trait above.
@@ -57,7 +39,36 @@ impl<'a, T: Base<16>> fmt::UpperHex for Displayable<'a,T> {
   }
 }
 
+#[macro_export]
+macro_rules! derive_display {
+  ($t:ty) =>  {
 
+    impl $crate::display::Base<2> for $t {
+      fn format(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        <$t as std::fmt::Binary>::fmt(self, fmt)
+      }
+    }
+
+    impl $crate::display::Base<8> for $t {
+      fn format(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        <$t as std::fmt::Octal>::fmt(self, fmt)
+      }
+    }
+
+    impl $crate::display::Base<10> for $t {
+      fn format(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        <$t as std::fmt::Display>::fmt(self, fmt)
+      }
+    }
+
+    impl $crate::display::Base<16> for $t {
+      fn format(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        <$t as std::fmt::UpperHex>::fmt(self, fmt)
+      }
+    }
+
+  };
+}
 
 
 

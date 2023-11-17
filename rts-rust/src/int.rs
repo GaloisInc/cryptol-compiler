@@ -46,3 +46,5 @@ impl Ring for num::BigInt {
   fn from_integer(_: Self::Length, x: &num::BigInt)    -> Self { x.clone() }
 }
 
+crate::derive_display!(num::BigUint);
+crate::derive_display!(num::BigInt);

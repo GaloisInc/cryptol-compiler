@@ -96,6 +96,26 @@ impl<const BASE: usize, T: Base<BASE>> Base<BASE> for Vec<T> {
   }
 }
 
+impl<const BASE: usize, T: Base<BASE>> Base<BASE> for &[T] {
+  fn format(&self, fmt: &mut fmt::Formatter) -> fmt::Result
+  {
+    write!(fmt,"[")?;
+    let mut xs = self.into_iter();
+    match xs.next() {
+      Some(fst) => Base::<BASE>::format(fst,fmt)?,
+      None      => { return write!(fmt,"]") }
+    }
+
+    for i in xs {
+      write!(fmt,", ")?;
+      Base::<BASE>::format(i,fmt)?;
+    }
+    write!(fmt, "]")
+  }
+}
+
+
+
 
 
 #[cfg(test)]

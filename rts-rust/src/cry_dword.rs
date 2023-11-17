@@ -50,3 +50,5 @@ impl Literal for DWord {
 }
 
 
+crate::derive_display!(DWordRef<'_>);
+crate::derive_display!(DWord);
