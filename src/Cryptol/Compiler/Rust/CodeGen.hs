@@ -142,7 +142,7 @@ genExpr how (IRExpr e0) =
            ( stmts
            , case how of
                OwnContext    -> rexpr
-               BorrowContext -> callMethod (addrOf rexpr) "as_arg" []
+               BorrowContext -> callMethod rexpr "as_arg" []
            )
 
     IRIf eTest eThen eElse ->
