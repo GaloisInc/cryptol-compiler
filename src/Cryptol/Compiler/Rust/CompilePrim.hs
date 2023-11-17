@@ -72,7 +72,7 @@ primIsConstructor prim =
     StreamToWord  -> pure True
     StreamToArray -> pure True
 
-    Head          -> pure False
+    Head          -> pure True  {- head needs to own its argument -}
     Hist          -> pure False
 
   where
@@ -100,9 +100,23 @@ compilePrim name args =
       arg1 \s -> pure (callMethod s "collect" [])
                 -- XXX: type? specify that we want owned?
 
+    ArrayToStream ->
+      arg1 \s ->
+        pure (callMethod s "into_iter" [])
+
+
     Tuple -> pure (tupleExpr (primArgs args))
     TupleSel n _all ->
       arg1 \x -> pure (tupleSelect x n)
+
+    Hist ->
+      size1 \i ->
+        pure (callMethod (pathExpr (simplePath "this")) "get_history" [i])
+
+    Head ->
+      arg1 \x ->
+        pure (rustTry (callMethod x "next" []))
+
 
     _ -> pure (todoExp (show (pp name))) -- unsupportedPrim (pp name) args
   where
@@ -188,7 +202,7 @@ compileCryptolPreludePrim name args =
   where
   inferMethod method =
     pure (mkRustCall (typeQualifiedExpr inferType (simplePath method))
-                     (map addrOf (primArgs args)))
+                     (primArgs args))
 
   tyTraitMethod method =
       case primTypeArgs args of
