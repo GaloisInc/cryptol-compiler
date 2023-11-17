@@ -16,60 +16,59 @@ pub trait Eq {
 pub trait Cmp {
 }
 
-pub trait Logic {
-  fn complement(x: &Self) -> Self;
-  fn xor(x: &Self, y: &Self) -> Self;
-  fn and(x: &Self, y: &Self) -> Self;
-  fn or(x: &Self, y: &Self) -> Self;
+pub trait Logic: Type {
+  fn complement(x: Self::Arg<'_>) -> Self;
+  fn xor(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self;
+  fn and(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self;
+  fn or (x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self;
 }
 
 
-pub trait Ring {
+pub trait Ring: Type {
 
   /// Negate a value
-  fn negate(x: &Self) -> Self;
+  fn negate(x: Self::Arg<'_>) -> Self;
 
   /// x * y
-  fn mul(x: &Self, y: &Self) -> Self;
+  fn mul(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self;
 
   /// x - y
-  fn sub(x: &Self, y: &Self) -> Self;
+  fn sub(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self;
 
   /// x + y
-  fn add(x: &Self, y: &Self) -> Self;
+  fn add(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self;
 
   /// Convert an integer to a value of the given type.
   /// Produces a result even if the type does not fit
   /// (e.g., wrap around for bit types)
-  fn from_integer(x: &num::BigInt) -> Self;
+  fn from_integer(n: Self::Length, x: &num::BigInt) -> Self;
 
   /// Raise `x` to the `y` power.
   /// Note that the Cryptol the power is polymorphic,
   /// but here we use `usize`, so we don't support raising
   /// things to value that do not fit in `usize`.
-  fn exp(x: &Self, y: u64) -> Self;
+  fn exp(x: Self::Arg<'_>, y: usize) -> Self;
 }
 
 
-pub trait Integral {
+pub trait Integral: Type {
 
   /// This is not a standard Cryptol primitives, but we use it
   /// in places where `Integral` is used for idexing into things or exponents.
-  /// Assert: `x` fits in `usize`
-  fn to_u64(x: &Self) -> u64;
+  fn to_usize(x: Self::Arg<'_>) -> usize;
 
   /// Convert something to an integer.
-  fn to_integer(x: &Self) -> num::BigInt;
+  fn to_integer(x: Self::Arg<'_>) -> num::BigInt;
 
   /// Integral division
-  fn div(x: &Self, y: &Self) -> Self;
+  fn div(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self;
 
   /// Modulo
-  fn modulo(x: &Self, y: &Self) -> Self;
+  fn modulo(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self;
 }
 
 
-pub trait Literal : Type {
+pub trait Literal: Type {
   fn number_usize(n: Self::Length, x: usize) -> Self;
   fn number_int(n: Self::Length, x: &num::BigUint) -> Self;
 }

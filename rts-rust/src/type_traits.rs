@@ -16,7 +16,7 @@ pub trait Type : Clone {
 }
 
 
-pub trait CloneArg : Copy {
+pub trait CloneArg : Clone {
   type Owned;
 
   /// Turn an argument form into an owned value, possibly by cloning.
@@ -24,6 +24,7 @@ pub trait CloneArg : Copy {
 }
 
 
+crate::PrimType!{u64}
 
 /// All finite sequence representations should support these operations.
 pub trait Sequence : CloneArg {
@@ -78,7 +79,7 @@ pub trait Word : Sequence<Item=bool> {
 
 
 // All stream representaitons should support these operations.
-pub trait Stream<T:Type> : Type + CloneArg<Owned=Self> + Iterator<Item=T> {
+pub trait Stream<T:Type> : Type + Iterator<Item=T> {
 }
 
 

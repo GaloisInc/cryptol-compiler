@@ -2,6 +2,7 @@ pub mod type_traits;
 pub mod traits;
 pub mod display;
 
+pub mod cry_dword;
 pub mod vec;
 pub mod stream;
 
@@ -45,13 +46,13 @@ macro_rules! PrimType {
 
   ($ty:ty) => {
 
-    impl crate::type_traits::Type for $ty {
+    impl $crate::type_traits::Type for $ty {
       type Length  = ();
       type Arg<'a> = Self;
-      fn as_arg(&self) -> Self::Arg<'_> { *self }
+      fn as_arg(&self) -> Self::Arg<'_> { self.clone() }
     }
 
-    impl crate::type_traits::CloneArg for $ty {
+    impl $crate::type_traits::CloneArg for $ty {
       type Owned = $ty;
       fn clone_arg(self) -> Self::Owned { self }
     }
@@ -67,13 +68,13 @@ macro_rules! RefType {
 
   ($ty:ty) => {
 
-    impl crate::type_traits::Type for $ty {
+    impl $crate::type_traits::Type for $ty {
       type Length = ();
       type Arg<'a> = &'a Self;
       fn as_arg(&self) -> Self::Arg<'_> { self }
     }
 
-    impl crate::type_traits::CloneArg for &'_ $ty {
+    impl $crate::type_traits::CloneArg for &'_ $ty {
       type Owned = $ty;
       fn clone_arg(self) -> Self::Owned { self.clone() }
     }

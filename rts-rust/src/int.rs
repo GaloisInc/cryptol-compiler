@@ -16,16 +16,16 @@ impl Literal for num::BigInt {
 
 impl Integral for num::BigInt {
 
-  fn to_u64(x: &Self)           -> u64 {
+  fn to_usize(x: &Self) -> usize {
     assert!(x.sign() != num::bigint::Sign::Minus);
     let mut it = x.iter_u64_digits();
-    let mut res = 0;
+    let mut res: u64 = 0;
     match it.next() {
-      None => return res,
+      None => return res as usize,
       Some(x) => res = x
     };
     if let Some(_) = it.next() { assert!(false) }
-    res
+    res as usize
   }
 
   fn to_integer(x: &Self)       -> num::BigInt { x.clone() }
@@ -39,10 +39,10 @@ impl Ring for num::BigInt {
   fn add         (x: &Self, y: &Self) -> Self { x + y }
   fn mul         (x: &Self, y: &Self) -> Self { x * y }
   fn sub         (x: &Self, y: &Self) -> Self { x - y }
-  fn exp         (x: &Self, y: u64)   -> Self {
-    assert!(y <= (u32::MAX as u64));
+  fn exp         (x: &Self, y: usize) -> Self {
+    assert!(y <= (u32::MAX as usize));
     Self::pow(x,y as u32)
   }
-  fn from_integer(x: &num::BigInt)    -> Self { x.clone() }
+  fn from_integer(_: Self::Length, x: &num::BigInt)    -> Self { x.clone() }
 }
 
