@@ -26,6 +26,7 @@ import Cryptol.Compiler.Cry2IR.Compile qualified as Cry2IR
 import Cryptol.Compiler.Rust.CodeGen qualified as Rust
 import Cryptol.Compiler.Rust.Crate qualified as Rust
 
+
 -- | Load some Cryptol specs and generate Rust for them.
 cry2rust :: [FilePath] -> CryC ()
 cry2rust files =
@@ -40,7 +41,7 @@ cry2rust files =
      dir   <- getOutputDir
      modInfo <- getRustInfo
      let mods = map Rust.extModuleName (Map.elems modInfo)
-     doIO (Rust.mkCrate crate dir mods)
+     doIO (Rust.mkCrate True crate dir mods)
 
 -- | Get public roots for this module, if any.
 cryModRoots :: Set Text -> Cry.Module -> [Cry.Name]

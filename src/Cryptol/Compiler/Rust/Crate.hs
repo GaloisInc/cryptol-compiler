@@ -1,18 +1,12 @@
-
 -- | Utilities for generating crates and including the generated runtime libraries
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE OverloadedStrings #-}
-module Cryptol.Compiler.Rust.Crate
-  ( writeExampleCrate
-  , mkCrate
-  ) where
+module Cryptol.Compiler.Rust.Crate (mkCrate) where
 
 import Data.FileEmbed qualified as Embed
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import System.FilePath ((</>), takeDirectory)
 import System.Directory (createDirectoryIfMissing)
-import Control.Monad(forM_,unless)
+import Control.Monad(forM_,unless,when)
 
 import Language.Rust.Pretty qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
@@ -49,6 +43,9 @@ crateToml crateName =
     , "name    = " <> q crateName
     , "version = \"0.1.0\""
     , "edition = \"2021\""
+    , "autobins = false"    -- Don't try to figure out which is a binary
+    , "[lib]"
+    , "path = \"src/lib.rs\""
     , "[dependencies]"
     , cryptolCrateString ++ " = { path = " <> q rtsPath <> "}"
     , "dword = { path = " <> q dwordPath <> "}"
@@ -71,13 +68,14 @@ writeDwordTo fp = forM_ dwordCrateDir (writeEmbedFile fp)
 
 -- | Make a barebones crate with the given name and the given directory.
 mkCrate ::
+  Bool          {- ^ Do we want an example driver -} ->
   String        {- ^ Name of the crate -} ->
   FilePath      {- ^ Directory to store the crate in -} ->
   [Rust.Ident]  {- ^ Crate `lib.rs` with these modules, if non-empty -} ->
   IO ()
-mkCrate crateName target mods =
+mkCrate withExe crateName target mods =
   do  createDirectoryIfMissing True target
-      writeFile (target </> "Cargo.toml") (crateToml crateName)
+      writeFile (target </> "Cargo.toml") toml
       writeRtsTo (target </> rtsPath)
       writeDwordTo (target </> dwordPath)
 
@@ -88,32 +86,31 @@ mkCrate crateName target mods =
         do let lib = sourceFile Nothing (map pubMod mods)
            writeFile (src </> "lib.rs") (show (Rust.pretty' lib))
 
+      when withExe sampleDriver
+
+  where
+  baseToml = crateToml crateName
+  toml
+    | withExe = unlines [ baseToml
+                        , "[[bin]]"
+                        , "name = \"cry_test\""
+                        , "path = \"exe/main.rs\""
+                        ]
+    | otherwise = baseToml
 
 
--- | `writeExampleCrate crateName targetDir sourceFile`  writes a single rust
---   source file to a new crate named `crateName` located at `targetDir` and adds a
---   `fn main` to invoke the `cry_main` function and print the result.
---
---   It also copies the cryptol-to-rust compiler RTS into `target` meaning that
---   the resulting crate should be ready to compile with `cargo`.
-writeExampleCrate :: String -> FilePath -> RustExpr -> IO ()
-writeExampleCrate crateName target expr =
-  do  createDirectoryIfMissing True target
-      writeFile (target </> "Cargo.toml") (crateToml crateName)
-      writeRtsTo (target </> rtsPath)
-      writeDwordTo (target </> dwordPath)
+  sampleDriver =
+    do let src = target </> "exe"
+       createDirectoryIfMissing True src
 
-      let src = target </> "src"
-      createDirectoryIfMissing True src
+       writeFile (src </> "main.rs") $
+         unlines
+           [ "pub fn main() {"
+           , "  println!(\"{}\\n\"," ++ crateName ++ "::main::main())"
+           , "}"
+           ]
 
-      let txt = show (Rust.pretty' expr)
 
-      writeFile (src </> "main.rs") $
-        unlines
-            -- show (RustPP.pretty' rust)
-          [ "pub fn main() {"
-          , "  print!(\"{}\\n\",(" ++ txt ++ "))"
-          , "}"
-          ]
+
 
 

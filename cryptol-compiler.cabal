@@ -44,7 +44,8 @@ common extensions
       TypeOperators,
       ViewPatterns,
       RankNTypes,
-      ScopedTypeVariables
+      ScopedTypeVariables,
+      TemplateHaskell
 
 common executable
     import: warnings, extensions

@@ -56,7 +56,7 @@ rustIdentAvoiding avoid names =
 
 modNameToRustModName :: Cry.ModName -> Rust.Name
 modNameToRustModName x
-  | y == "main" = "cry_main"
+  -- | y == "main" = "cry_main"
   | y == "lib"  = "cry_lib"
   | otherwise   = y
   where
