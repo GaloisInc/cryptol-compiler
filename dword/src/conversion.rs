@@ -35,6 +35,10 @@ impl DWord {
     result
   }
 
+  pub fn from_usize(bits: usize, value: usize) -> DWord {
+    Self::from_u64(bits, value as u64)
+  }
+
   /// Create a DWord of the given size, initialized with an unsigend integer
   pub fn from_uint(bits: usize, value: &num::BigUint) -> DWord {
     let limb_num = limbs_for_size(bits);
