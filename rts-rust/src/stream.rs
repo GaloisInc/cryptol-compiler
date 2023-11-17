@@ -36,7 +36,7 @@ macro_rules! stream {
             Some(self.history[self.index-1].clone())
           } else {
             let $self = &mut (*self);
-            let result = $next;
+            let result: $elT = $next;
             self.history[self.index % $history] = result.clone();
             self.index += 1;
             Some(result)
@@ -64,7 +64,8 @@ macro_rules! stream {
       { }
 
 
-      S { index: 0, history: $init, $($field: $field_value,)* }
+      S { index: 0, history: $init.try_into().unwrap()
+        , $($field: $field_value,)* }
     }
   };
 }
