@@ -3,6 +3,13 @@ name    = "cry_rts"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "cry_rts"
+path = "exe/main.rs"
+
+[lib]
+path = "src/lib.rs"
+
 [dependencies]
 apint = "0.2.0"
 num = "0.4.0"
