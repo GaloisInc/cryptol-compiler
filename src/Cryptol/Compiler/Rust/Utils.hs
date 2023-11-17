@@ -156,13 +156,15 @@ callMethod obj meth args =
   Rust.MethodCall [] obj meth Nothing args ()
 
 callMacro :: RustPath -> [RustExpr] -> RustExpr
-callMacro m es = Rust.MacExpr [] mac ()
+callMacro m es = callMacro' m args
   where
-  mac       = Rust.Mac m args ()
   args      = Rust.Stream (intersperse comma (map exprToken es))
   exprToken = Rust.Tree . Rust.Token dummySpan . Rust.Interpolated
             . Rust.NtExpr . fmap (const dummySpan)
   comma     = Rust.Tree (Rust.Token dummySpan Rust.Comma)
+
+callMacro' :: RustPath -> Rust.TokenStream -> RustExpr
+callMacro' m args = Rust.MacExpr [] (Rust.Mac m args ()) ()
 
 
 mkClosure :: [Rust.Ident] -> [RustStmt] -> RustExpr -> RustExpr
@@ -220,6 +222,8 @@ rustIf :: RustExpr -> RustBlock -> RustBlock -> RustExpr
 rustIf eTest eThen eElse =
   Rust.If [] eTest eThen (Just (Rust.BlockExpr [] eElse ())) ()
 
+rustTry :: RustExpr -> RustExpr
+rustTry e = Rust.Try [] e ()
 --------------------------------------------------------------------------------
 -- Top Delcarations
 
