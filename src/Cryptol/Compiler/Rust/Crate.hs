@@ -105,8 +105,9 @@ mkCrate withExe crateName target mods =
 
        writeFile (src </> "main.rs") $
          unlines
-           [ "pub fn main() {"
-           , "  println!(\"{}\\n\"," ++ crateName ++ "::main::main())"
+           [ "use " ++ cryptolCrateString ++ "::trait_methods::*;"
+           , "pub fn main() {"
+           , "  println!(\"{}\\n\"," ++ crateName ++ "::main::main().display())"
            , "}"
            ]
 
