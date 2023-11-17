@@ -88,19 +88,31 @@ impl DWord {
 // -----------------------------------------------------------------------------
 // Export
 
-// To u8
-/// Get the 8 least significant bits.
-impl From<DWordRef<'_>> for u8 {
-  fn from(x: DWordRef<'_>) -> Self {
-    let have  = x.not_padding();
-    let ws    = x.as_slice();
-    let mut w = ws[0] >> x.padding();
-    if x.bits() >= 8 && have < 8 {
-      w |= ws[1] << have;
+macro_rules! to_uprim{
+
+  ($t:ty) => {
+    impl From<DWordRef<'_>> for $t {
+      fn from(x: DWordRef<'_>) -> Self {
+        const N: usize = <$t>::BITS as usize;
+        let have  = x.not_padding();
+        let ws    = x.as_slice();
+        let mut w = ws[0] >> x.padding();
+        if x.bits() >= N && have < N {
+          w |= ws[1] << have;
+        }
+        w as $t
+      }
     }
-    w as u8
-  }
+  };
 }
+
+to_uprim!(u8);
+to_uprim!(u16);
+to_uprim!(u32);
+to_uprim!(u64);
+to_uprim!(usize);
+
+
 
 
 impl DWordRef<'_> {
