@@ -6,7 +6,7 @@ module Cryptol.Compiler.Rust.CodeGen
 
 import Data.Set qualified as Set
 import Data.Maybe (catMaybes)
-import Control.Monad(forM, mapAndUnzipM)
+import Control.Monad(forM, mapAndUnzipM, zipWithM)
 
 import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
@@ -60,9 +60,9 @@ genCallSizeArgs call =
     IRTopFun tf -> traverse (uncurry compileSize) (irtfSizeArgs tf)
 
 -- | Normal arguments for a call
-genCallArgs :: ExprContext -> Call -> Rust ([RustStmt], [RustExpr])
+genCallArgs :: [ExprContext] -> Call -> Rust ([RustStmt], [RustExpr])
 genCallArgs how call =
-  do (stmtss,es) <- mapAndUnzipM (genExpr how) (reverse (ircArgs call))
+  do (stmtss,es) <- unzip <$> zipWithM genExpr how (reverse (ircArgs call))
      pure (concat (reverse stmtss), reverse es)
 
 -- | Returns an owned result.
@@ -83,20 +83,23 @@ genCall call =
 -}
 
     IRTopFun tf ->
-      do typeArgs <- traverse (compileType TypeAsParam AsOwned) (irtfTypeArgs tf)
+      do typeArgs <- traverse (compileType TypeAsParam AsOwned)
+                              (irtfTypeArgs tf)
          lenArgs      <- genCallLenArgs call
          szArgs       <- genCallSizeArgs call
          name         <- lookupFunName (irtfName tf)
 
+         let argTs = ircArgTypes call
+         let resT  = ircResType call
+
          case name of
            Left prim ->
-              do isCon <- primIsConstructor prim
-                 let ctx = if isCon then OwnContext else BorrowContext
+              do let ctx = primArgOwnership prim argTs resT
                  (stmts,args) <- genCallArgs ctx call
                  rexpr <- compilePrim prim
                             PrimArgs
-                              { primTypesOfArgs  = ircArgTypes call
-                              , primTypeOfResult = ircResType call
+                              { primTypesOfArgs  = argTs
+                              , primTypeOfResult = resT
                               , primTypeArgs     = typeArgs
                               , primLenArgs      = lenArgs
                               , primSizeArgs     = szArgs
@@ -105,7 +108,7 @@ genCall call =
                  pure (stmts,rexpr)
 
            Right path ->
-             do (stmts,args) <- genCallArgs BorrowContext call
+             do (stmts,args) <- genCallArgs (map ownIfStream argTs) call
                 let fun = pathExpr (pathAddTypeSuffix path typeArgs)
                     allArgs = lenArgs ++ szArgs ++ args
                 pure (stmts, mkRustCall fun allArgs)

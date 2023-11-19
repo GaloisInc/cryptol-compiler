@@ -152,6 +152,14 @@ streamSizeToSize s =
     IRSize x -> x
     IRInfSize -> panic "streamSizeToSize" ["inf"]
 
+getTypeLen :: IRType tname -> IRStreamSize tname
+getTypeLen ty =
+  case ty of
+    TStream n _ -> n
+    TArray n _ -> IRSize n
+    TWord n    -> IRSize n
+    _ -> panic "getTypeLen" ["Not a type with a length"]
+
 
 matchStreamSize :: Eq tname => IRStreamSize tname -> IRStreamSize tname -> Bool
 matchStreamSize t1 t2 =

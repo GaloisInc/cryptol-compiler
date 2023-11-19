@@ -44,39 +44,53 @@ unsupportedPrim nm args =
   unsupported (vcat [ "primitive" <+> nm, pp args ])
 
 
--- | Is this a constructor primitive.
--- If so, it takes ownership of its arguments.
-primIsConstructor :: IRPrim -> Rust Bool
-primIsConstructor prim =
-  case prim of
-    CryPrim {}  -> pure False
-
-    ArrayLit    -> pure True
-    ArrayLookup -> pure False
-
-    Tuple       -> pure True
-    TupleSel {} -> pure False
-
-    EqSize      -> pure False
-    LtSize      -> pure False
-    LeqSize     -> pure False
-
-    -- XXX: are these OK?
-    Map         -> pure True
-    FlatMap     -> pure True 
-    Zip         -> pure True 
-
-    ArrayToStream -> pure True
-    ArrayToWord   -> pure True
-    WordToStream  -> pure True
-    StreamToWord  -> pure True
-    StreamToArray -> pure True
-
-    Head          -> pure True  {- head needs to own its argument -}
-    Hist          -> pure False
-
+cryPrimArgOwnership :: Cry.PrimIdent -> [Type] -> Type -> [ExprContext]
+cryPrimArgOwnership p@(Cry.PrimIdent mo name) argTs _resT
+  | mo == Cry.preludeName = prelPrim
+  | mo == Cry.floatName   = floatPrim
+  | otherwise =
+    panic "cryPrimArgOwnership" ["Unknown primitive", show (cryPP p)]
   where
-  notYet = unsupported ("primitive" <+> pp prim)
+  prelPrim =
+    case name of
+      "take" -> map ownIfStream argTs
+
+      --- XXX: Others need ownd arguments, especially stream constructors
+      _ -> map (const BorrowContext) argTs
+
+  floatPrim = map (const OwnContext) argTs
+
+
+primArgOwnership :: IRPrim -> [Type] -> Type -> [ExprContext]
+primArgOwnership prim argTs resT =
+  case prim of
+    CryPrim ide -> cryPrimArgOwnership ide argTs resT
+
+    ArrayLit    -> map (const OwnContext) argTs
+    ArrayLookup -> [BorrowContext]
+
+    WordLookup  -> [BorrowContext]
+
+    Tuple       -> map (const OwnContext) argTs
+    TupleSel {} -> [BorrowContext]
+
+    EqSize      -> [OwnContext,OwnContext]
+    LtSize      -> [OwnContext,OwnContext]
+    LeqSize     -> [OwnContext,OwnContext]
+
+    Map         -> [OwnContext, OwnContext] -- function is 2nd
+    FlatMap     -> [OwnContext, OwnContext] -- function is 2nd
+    Zip         -> [OwnContext, OwnContext] -- function is 2nd
+
+    ArrayToStream -> [OwnContext]
+    ArrayToWord   -> [OwnContext]
+    WordToStream  -> [OwnContext]
+    StreamToWord  -> [OwnContext]
+    StreamToArray -> [OwnContext]
+
+    Head          -> [OwnContext] -- head needs to own its argument
+    Hist          -> []
+
 
 -- | Emit code for a primitve.
 compilePrim :: IRPrim -> PrimArgs -> Rust RustExpr
@@ -170,6 +184,16 @@ compileCryptolPreludePrim name args =
     "*"       -> inferMethod "mul"
     "negate"  -> inferMethod "negate"
 
+    -- Sequence --
+    "take" ->
+      arg1 \x ->
+        case getTypeLen (primTypeOfResult args) of
+          IRInfSize -> pure x
+          IRSize sz ->
+            case sz of
+              IRFixedSize n -> pure (callMethod x "take"
+                                      [ litExpr (mkUSizeLit n) ])
+              _ -> size1 \n -> pure (callMethod x "take" [ n ])
 
 {-
     -- Integral --
@@ -208,6 +232,29 @@ compileCryptolPreludePrim name args =
       case primTypeArgs args of
         [ty] -> typeQualifiedExpr ty (simplePath method)
         _    -> panic "tyTraitMethod" ["Expected exactly 1 type argument"]
+
+
+  bad = panic "compilePreludePrim"
+          [ "Malformed primitive arguments:"
+          , show (pp args)
+          ]
+
+  arg1 f =
+    case primArgs args of
+      [a] -> f a
+      _ -> bad
+
+  size1 f =
+    case primSizeArgs args of
+      a : _ -> f a
+      _ -> bad
+
+  size2 f =
+    case primSizeArgs args of
+      a : b : _ -> f a b
+      _ -> bad
+
+
 
 
 -- | Primitives defined in `Float.cry`

@@ -69,5 +69,8 @@ primRepHints = Map.fromList
 
   , (Cry.prelPrim "zipWith",
         [ NoHint :-> AsStream NoHint :-> AsStream NoHint :-> AsStream NoHint ])
+
+  , (Cry.prelPrim "take", [ AsWord :-> AsWord
+                          , AsStream NoHint :-> AsStream NoHint ])
   ]
 
