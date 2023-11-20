@@ -3,7 +3,7 @@ module Cryptol.Compiler.Rust.CompileStream where
 import Data.Set qualified as Set
 import Data.List(intercalate)
 
-import Control.Monad(forM, zipWithM, forM_, foldM)
+import Control.Monad(forM, zipWithM, forM_, foldM,unless)
 import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
 
@@ -23,19 +23,15 @@ type CompExpr =
         (?genExpr :: ExprContext -> Expr -> Rust (PartialBlock RustExpr))
 
 
--- | The ExprContext parameter indicates if the closure should capture
--- external variables by reference or by value.
-genStream ::
-  CompExpr =>
-  ExprContext -> StreamExpr -> Rust (PartialBlock RustExpr)
-genStream rctxt sexpr =
+genStream :: CompExpr => StreamExpr -> Rust (PartialBlock RustExpr)
+genStream sexpr =
   do elTy <- case irsType sexpr of
                TStream _ elT -> compileType TypeAsStored AsOwned elT
                _ -> panic "genStream" ["Not a stream"]
 
-     let (histLen, histType) =
+     let histLen =
             case typeOf (irsInit sexpr) of
-              TArray (IRFixedSize i) _ -> (i, fixedArrayOfType elTy i)
+              TArray (IRFixedSize i) _ -> i
               _ -> panic "genStream" ["init fields is not a know fixed array"]
 
      -- Adds the locals corresponding to the captured streams.
@@ -43,15 +39,19 @@ genStream rctxt sexpr =
      gen           <- makeGenerics allTypeVars extStreamInfo
 
      -- Generate the step function
-     step <- uncurry blockExprIfNeeded <$> ?genExpr OwnContext (irsNext sexpr)
+     step <- inStreamClosure OwnContext
+               (uncurry blockExprIfNeeded
+                  <$> ?genExpr OwnContext (irsNext sexpr))
      forM_ (irsExterns sexpr) \(s,_) -> removeLocalLet (irNameName s)
 
      (initStmts,initE) <- ?genExpr OwnContext (irsInit sexpr)
      (extStrStmts, binds) <- foldM doExtStream ([],[]) (irsExterns sexpr)
      let stmts = concat (initStmts : reverse extStrStmts)
 
-     -- XXX: non-stream
+     extVars <- mapM doExtVar extNonStream
+
      let capture =
+          extVars ++
           [ (extStrLabel info, extStrType info, bind)
           | (info,bind) <- zip extStreamInfo (reverse binds)
           ]
@@ -63,18 +63,25 @@ genStream rctxt sexpr =
     do (xs,y) <- ?genExpr OwnContext e
        pure (xs : ss, y : binds)
 
+  doExtVar x =
+    do r <- lookupNameRustIdent (irNameName x)
+       t <- compileType TypeAsStored AsOwned (typeOf x)
+       (stmts,e) <- ?genExpr OwnContext (IRExpr (IRVar x))
+       unless (null stmts) (panic "doExtVar" ["Unexpected statements"])
+       pure (r,t,e)
+
   -- All type variables mentioned in the closure
   -- (XXX: also variables for the types of external functinos)
   allTypeVars  =
     Set.toList (
       Set.unions
        $ freeValTypeVars (irsType sexpr)
-       : [ freeValTypeVars (typeOf x) | x <- Set.toList extNonStream ]
+       : [ freeValTypeVars (typeOf x) | x <- extNonStream ]
       ++ [ freeValTypeVars (typeOf s) | (s,_) <- irsExterns sexpr ]
     )
 
-  -- Free variables that need to packed with the stream.
-  extNonStream = freeLocals (freeNames (irsNext sexpr))
+  -- Free variables that need to be packed with the stream.
+  extNonStream = Set.toList (freeLocals (freeNames (irsNext sexpr)))
 
 
 -- | Information about an external stream
@@ -96,7 +103,7 @@ streamTypeVar i (s,_) =
          let ident = Rust.mkIdent ("SI" ++ show (i::Int))
              ty    = pathType (simplePath ident)
              path  = streamTraitPath ruT
-         x <- bindLocal (addLocalVar True) (irNameName s)
+         x <- bindLocal (addLocalVar (Just LocalOrClosure)) (irNameName s)
          pure
            ExtStreamInfo
              { extStrLabel   = x

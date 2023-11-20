@@ -18,14 +18,12 @@ data TypeMode =
   -- and when the type is a field of another type
 
 -- | Type use
+-- XXX: A lot of these complications are because of streams and functions,
+-- which should probably be treated specially...
 data TypeUse =
     TypeInFunSig  -- ^ Argument or result of a functoin
   | TypeAsParam   -- ^ Type application in a function call
   | TypeAsStored  -- ^ Stored in another type (e.g., array/stream)
-
-
-data CloInfo = VarStream | VarFn | Normal
-
 
 
 -- | Compute the Rust type used to represent the given Cryptol type.

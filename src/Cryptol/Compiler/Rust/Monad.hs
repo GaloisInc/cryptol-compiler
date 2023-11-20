@@ -4,6 +4,7 @@ import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Maybe(isJust)
 import MonadLib
 
 import Language.Rust.Syntax qualified as Rust
@@ -94,12 +95,11 @@ data RO = RO
   , roLoc :: Loc
     -- ^ Location, for error reporting
 
-  , roInStreamClosure :: !(Maybe (ExprContext,Integer))
+  , roInStreamClosure :: !(Maybe ExprContext)
     -- ^ If this is `Just`, then we are compiling a stream.
     --  * Then we should access local variables through self.
     --  * The ExprContext indicates how variables are stored in the closure
     --    (i.e., are they borrowed or owned by the closure).
-    --  * The Integer is the size of the history
   }
 
 data RW = RW
@@ -131,7 +131,11 @@ bindLocal how x =
 -- | Bind a local for the duraiton of the given computation
 bindLocalLet :: NameId -> (Rust.Ident -> Rust a) -> Rust a
 bindLocalLet x k =
-  do i <- bindLocal (addLocalVar True) x
+  do inClo <- isInStreamClosure
+     let how = case inClo of
+                 Just _  -> KnownLocal
+                 Nothing -> LocalOrClosure
+     i <- bindLocal (addLocalVar (Just how)) x
      a <- k i
      Rust (sets_ \rw -> rw { rwLocalNames =
                                removeLocalVar x i (rwLocalNames rw)})
@@ -186,17 +190,13 @@ setUsed x = Rust $ sets_ \rw -> let ls = rwLocalNames rw
 
 -- | Do something without affecting the continuation, and variables
 -- are only accessed through Self.
-inStreamClosure :: ExprContext -> Integer -> Rust a -> Rust a
-inStreamClosure ctxt h (Rust m) =
-  Rust (mapReader (\ro -> ro { roInStreamClosure = Just (ctxt,h) }) m)
+inStreamClosure :: ExprContext -> Rust a -> Rust a
+inStreamClosure ctxt (Rust m) =
+  Rust (mapReader (\ro -> ro { roInStreamClosure = Just ctxt }) m)
 
-getStreamHistoryLength :: Rust Integer
-getStreamHistoryLength = Rust (getIt <$> ask)
-  where
-  getIt ro =
-    case roInStreamClosure ro of
-      Just (_,i) -> i
-      Nothing -> panic "getStreamHistoryLength" ["Not compiling a stream"]
+-- | Are we in a strem closure?
+isInStreamClosure :: Rust (Maybe ExprContext)
+isInStreamClosure = Rust (roInStreamClosure <$> ask)
 
 -- | Bind a function in this module
 bindFun :: FunName -> Rust Rust.Ident
@@ -232,21 +232,25 @@ lookupNameId x =
   do rw <- Rust get
      let locals     = rwLocalNames rw
      let rid        = lookupName x (lValNames (rwLocalNames rw))
-     let isLoc      = rid `Set.member` lLocalVars locals
-     inStreamClo <- Rust (roInStreamClosure <$> ask)
-     case inStreamClo of
-        Nothing ->
-          do let used       = lUsedVars locals
-             let isLastUse  = not (rid `Set.member` used)
-             Rust $ set $ rw { rwLocalNames =
-                                  locals { lUsedVars = Set.insert rid used }
-                             }
-             pure (isLoc, isLastUse, pathExpr (simplePath rid))
-
-        Just (mode,_) ->
-          pure ( mode == OwnContext, False
-               , fieldSelect (pathExpr (simplePath "self")) rid
-               )
+     let isLoc      = Map.lookup rid (lLocalVars locals)
+     inClo <-
+       do mb <- isInStreamClosure
+          pure case mb of
+                 Nothing -> Nothing
+                 Just _ | Just KnownLocal <- isLoc -> Nothing
+                 Just mode                         -> Just mode
+     case inClo of
+       Just mode ->
+         pure ( mode == OwnContext, False
+              , fieldSelect (pathExpr (simplePath "this")) rid
+              )
+       Nothing ->
+         do let used       = lUsedVars locals
+            let isLastUse  = not (rid `Set.member` used)
+            Rust $ set $ rw { rwLocalNames =
+                                   locals { lUsedVars = Set.insert rid used }
+                            }
+            pure (isJust isLoc, isLastUse, pathExpr (simplePath rid))
 
 -- | Get the identifier for to use for the given local names
 lookupNameRustIdent :: NameId -> Rust Rust.Ident
@@ -342,7 +346,7 @@ data LocalNames = LocalNames
     -- ^ Names for Length params.  When generating these we use the "used"
     -- set of `lValNames`, because they are values.
 
-  , lLocalVars     :: Set Rust.Ident
+  , lLocalVars     :: Map Rust.Ident LocVarLocation
     -- ^ Names of local variable (i.e., not arguments)
 
   , lUsedVars      :: Set Rust.Ident
@@ -350,12 +354,12 @@ data LocalNames = LocalNames
        We generate code "backwards" (continuation first),
        and this field tells us which variables were mentioned in the
        continuation. -}
-
-
   }
 
 -- | How to access a local variable
-data LocVarLocation = LocVarInScope | LocVarInClosure
+data LocVarLocation =
+    KnownLocal        -- ^ Always access as a local variable
+  | LocalOrClosure    -- ^ Acces through closure, if in a closure context.
 
 -- | Empty local names, useful when starting a new declaration.
 emptyLocalNames :: LocalNames
@@ -364,8 +368,8 @@ emptyLocalNames = LocalNames
   , lTypeBounds = mempty
   , lValNames   = emptyNameMap
   , lLenParams  = mempty
-  , lLocalVars  = Set.empty
-  , lUsedVars   = Set.empty
+  , lLocalVars  = mempty
+  , lUsedVars   = mempty
   }
 
 -- | Bind a type parameter.
@@ -376,11 +380,13 @@ addLocalType t ns = (i, ns { lTypeNames = mp })
 
 
 -- | Bind a local variable/paramter.
-addLocalVar :: Bool -> NameId -> LocalNames -> (Rust.Ident, LocalNames)
+addLocalVar ::
+  Maybe LocVarLocation -> NameId -> LocalNames -> (Rust.Ident, LocalNames)
 addLocalVar isLoc x ns = (i, ns { lValNames = mp
                                 , lLocalVars =
-                                      if isLoc then Set.insert i curLocs
-                                               else curLocs
+                                     case isLoc of
+                                       Nothing -> curLocs
+                                       Just b  -> Map.insert i b curLocs
                                 })
   where
   (i, mp) = addName x (lValNames ns)
@@ -389,7 +395,7 @@ addLocalVar isLoc x ns = (i, ns { lValNames = mp
 removeLocalVar :: NameId -> Rust.Ident -> LocalNames -> LocalNames
 removeLocalVar x r ns =
   ns { lValNames = removeName x r (lValNames ns)
-     , lLocalVars = Set.delete r (lLocalVars ns)
+     , lLocalVars = Map.delete r (lLocalVars ns)
      , lUsedVars  = Set.delete r (lUsedVars ns)
      }
 

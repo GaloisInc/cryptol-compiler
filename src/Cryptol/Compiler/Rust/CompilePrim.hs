@@ -2,15 +2,14 @@ module Cryptol.Compiler.Rust.CompilePrim where
 
 import Data.Text(Text)
 import Data.Text qualified as Text
-import qualified Language.Rust.Syntax as Rust
 import Cryptol.Utils.Ident qualified as Cry
 
 import Cryptol.Compiler.Error (panic)
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Cryptol
 
-import Cryptol.Compiler.Rust.Names
 import Cryptol.Compiler.Rust.Monad
+import Cryptol.Compiler.Rust.CompileType
 import Cryptol.Compiler.Rust.Utils
 
 data PrimArgs = PrimArgs
@@ -225,8 +224,9 @@ compileCryptolPreludePrim name args =
 -}
   where
   inferMethod method =
-    pure (mkRustCall (typeQualifiedExpr inferType (simplePath method))
-                     (primArgs args))
+    do ty <- compileType TypeInFunSig AsOwned (primTypeOfResult args)
+       pure (mkRustCall (typeQualifiedExpr ty (simplePath method))
+                        (primArgs args))
 
   tyTraitMethod method =
       case primTypeArgs args of

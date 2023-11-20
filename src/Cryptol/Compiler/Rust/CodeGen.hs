@@ -122,7 +122,7 @@ genCall call =
 genExpr :: ExprContext -> Expr -> Rust (PartialBlock RustExpr)
 genExpr how (IRExpr e0) =
   case e0 of
-    IRVar (IRName name ty) ->
+    IRVar (IRName name _ty) ->
       do (isLocal,isLastUse,rexpr) <- lookupNameId name
          justExpr <$>
            case how of
@@ -180,7 +180,7 @@ genExpr how (IRExpr e0) =
 
     IRStream streamExpr ->
       let ?genExpr = genExpr
-      in genStream how streamExpr
+      in genStream streamExpr
 
 
         -- | Generate a RustItem corresponding to a function declaration.
@@ -226,7 +226,7 @@ genFunDecl decl =
 
             -- Normal parameters
             nParams <- forM (argNames `zip` ftParams ft) \(arg,ty) ->
-              do i <- bindLocal (addLocalVar False) arg
+              do i <- bindLocal (addLocalVar Nothing) arg
                  t <- compileType TypeInFunSig (AsArg Nothing) ty
                  pure (i, t)
 
