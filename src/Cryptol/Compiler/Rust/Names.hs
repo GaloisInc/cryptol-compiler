@@ -2,6 +2,7 @@
 module Cryptol.Compiler.Rust.Names
   ( RustIdent(..)
   , TraitLengthName(..)
+  , SizeParamName(..)
   , rustIdentAvoiding
   , changeIdent
   , snakeCase
@@ -111,6 +112,16 @@ newtype TraitLengthName = TraitLengthName Cry.TParam
 instance RustIdent TraitLengthName where
   rustIdent (TraitLengthName tp) =
     map (changeIdent ((++ "_len") . snakeCase)) (rustIdent tp)
+
+
+-- | A name of a size parameter, don't use camel case.
+newtype SizeParamName = SizeParamName Cry.TParam
+
+instance RustIdent SizeParamName where
+  rustIdent (SizeParamName tp) =
+      map (changeIdent snakeCase)
+    $ maybe [ Rust.mkIdent "sz" ] rustIdent
+    $ Cry.tpName tp
 
 instance RustIdent Cry.TParam where
   rustIdent tp =

@@ -247,13 +247,20 @@ lookupTParam x = Rust (lookupName x . lTypeNames . rwLocalNames <$> get)
 -- | Get the expresssion for a size parameter.
 lookupSizeParam :: SizeName -> Rust RustExpr
 lookupSizeParam x =
-  do i <- Rust (lookupName (irsName x) . lTypeNames . rwLocalNames <$> get)
+  do i <- Rust (doLookup (irsName x) . lSizeParams . rwLocalNames <$> get)
      let sz = irsSize x
      yes <- mapStreamClosure \c ->
                        c { cloSizeIdents = Map.insert i sz (cloSizeIdents c) }
      pure (if yes
              then fieldSelect (pathExpr (simplePath "this")) i
              else pathExpr (simplePath i))
+
+  where
+  doLookup p mp =
+    case Map.lookup p mp of
+      Just a -> a
+      Nothing -> panic "lookupSizeParam" ["Unknown size parameter"]
+
 
 
 -- | Get the identfier for a name.
@@ -384,6 +391,10 @@ data LocalNames = LocalNames
     -- ^ Names for Length params.  When generating these we use the "used"
     -- set of `lValNames`, because they are values.
 
+  , lSizeParams :: Map Cry.TParam Rust.Ident
+    -- ^ Names for size parameters.  When generating these we use the "used"
+    -- set of `lValNames`, because they are values.
+
   , lLocalVars     :: Map Rust.Ident LocVarLocation
     -- ^ Names of local variable (i.e., not arguments)
 
@@ -423,6 +434,7 @@ emptyLocalNames = LocalNames
   , lTypeBounds = mempty
   , lValNames   = emptyNameMap
   , lLenParams  = mempty
+  , lSizeParams = mempty
   , lLocalVars  = mempty
   , lUsedVars   = mempty
   , lInStreamClosure = Nothing
@@ -467,6 +479,20 @@ addLocalLenghtParam t ns = (i, ns { lValNames  = newVals
   i       = rustIdentAvoiding used (rustIdent (TraitLengthName t))
   newVals = vals { lUsed = Set.insert i used }
   newPa   = Map.insert t i (lLenParams ns)
+
+
+-- | Bind a local parameter used for the Length trait.
+addLocalSizeParam :: Cry.TParam -> LocalNames -> (Rust.Ident, LocalNames)
+addLocalSizeParam t ns = (i, ns { lValNames  = newVals
+                                , lSizeParams = newPa
+                                })
+  where
+  vals    = lValNames ns
+  used    = lUsed vals
+  i       = rustIdentAvoiding used (rustIdent (SizeParamName t))
+  newVals = vals { lUsed = Set.insert i used }
+  newPa   = Map.insert t i (lSizeParams ns)
+
 
 
 

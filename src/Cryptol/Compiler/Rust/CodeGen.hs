@@ -222,7 +222,7 @@ genFunDecl decl =
 
             -- Size parameters
             sParams <- forM (ftSizeParams ft) \sp ->
-              do i <- bindLocal addLocalType (irsName sp)
+              do i <- bindLocal addLocalSizeParam (irsName sp)
                  pure (i, compileSizeType BorrowContext (irsSize sp))
 
             -- Normal parameters
