@@ -1,7 +1,6 @@
 
 
 
-
 #[macro_export]
 macro_rules! stream {
   ( forall  = [ $( $t:ident : [ $($trait:path),* ] ),* ]
@@ -15,7 +14,7 @@ macro_rules! stream {
       #[derive(Clone)]
       struct S<$($t,)*>
         where
-        $($t : $crate::type_traits::Type)*
+        $($t : $crate::type_traits::Type,)*
       {
         index:    usize,
         history:  [ $elT; $history ],
@@ -70,7 +69,8 @@ macro_rules! stream {
       { }
 
 
-      S { index: 0, history: $init.try_into().unwrap()
+      S { index: 0
+        , history: $init.try_into().ok().unwrap()
         , $($field: $field_value,)* }
     }
   };
