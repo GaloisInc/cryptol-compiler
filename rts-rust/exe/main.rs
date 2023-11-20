@@ -2,7 +2,7 @@
 
 // This is just for testing stuff out.
 fn main() {
-
+/*
   let nats = cry_rts::stream!
         { forall = []
         , element = u64
@@ -24,6 +24,6 @@ fn main() {
 
   for (i,x) in s.take(10).enumerate() {
     println!("fib({}) = {}",i,x)
-  }
+  } */
 
 }
