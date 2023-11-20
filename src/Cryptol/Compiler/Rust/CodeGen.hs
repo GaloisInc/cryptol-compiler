@@ -62,7 +62,8 @@ genCallSizeArgs call =
 -- | Normal arguments for a call
 genCallArgs :: [ExprContext] -> Call -> Rust ([RustStmt], [RustExpr])
 genCallArgs how call =
-  do (stmtss,es) <- unzip <$> zipWithM genExpr how (reverse (ircArgs call))
+  do (stmtss,es) <- unzip <$>
+                    zipWithM genExpr (reverse how) (reverse (ircArgs call))
      pure (concat (reverse stmtss), reverse es)
 
 -- | Returns an owned result.
@@ -222,7 +223,7 @@ genFunDecl decl =
             -- Size parameters
             sParams <- forM (ftSizeParams ft) \sp ->
               do i <- bindLocal addLocalType (irsName sp)
-                 pure (i, compileSizeType (irsSize sp))
+                 pure (i, compileSizeType BorrowContext (irsSize sp))
 
             -- Normal parameters
             nParams <- forM (argNames `zip` ftParams ft) \(arg,ty) ->

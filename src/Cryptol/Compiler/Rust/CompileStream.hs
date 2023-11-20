@@ -13,10 +13,12 @@ import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.IR.Free
 
+import Cryptol.Compiler.PP
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Names
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.CompileTrait
+import Cryptol.Compiler.Rust.CompileSize
 import Cryptol.Compiler.Rust.CompileType
 
 type CompExpr =
@@ -39,18 +41,31 @@ genStream sexpr =
      gen           <- makeGenerics allTypeVars extStreamInfo
 
      -- Generate the step function
-     step <- inStreamClosure OwnContext
-               (uncurry blockExprIfNeeded
-                  <$> ?genExpr OwnContext (irsNext sexpr))
+     (usedLens,usedSizes,step) <-
+        inStreamClosure OwnContext
+           (uncurry blockExprIfNeeded <$> ?genExpr OwnContext (irsNext sexpr))
      forM_ (irsExterns sexpr) \(s,_) -> removeLocalLet (irNameName s)
 
      (initStmts,initE) <- ?genExpr OwnContext (irsInit sexpr)
      (extStrStmts, binds) <- foldM doExtStream ([],[]) (irsExterns sexpr)
      let stmts = concat (initStmts : reverse extStrStmts)
 
-     extVars <- mapM doExtVar extNonStream
+     extVars  <- mapM doExtVar extNonStream
+     let extSizes = [ ( i, compileSizeType OwnContext sz
+                      , case sz of
+                          MemSize -> e
+                          LargeSize -> callMethod e "clone" []
+                      )
+                    | (i,sz) <- usedSizes
+                    , let e = pathExpr (simplePath i)
+                    ]
+     extLens <- forM usedLens \(i,tp) ->
+                 do t <- lenParamType tp
+                    pure (i,t, pathExpr (simplePath i))
 
      let capture =
+          extLens ++
+          extSizes ++
           extVars ++
           [ (extStrLabel info, extStrType info, bind)
           | (info,bind) <- zip extStreamInfo (reverse binds)
@@ -81,7 +96,9 @@ genStream sexpr =
     )
 
   -- Free variables that need to be packed with the stream.
-  extNonStream = Set.toList (freeLocals (freeNames (irsNext sexpr)))
+  extNonStream =
+    Set.toList (freeLocals (freeNames (irsNext sexpr))
+                  `Set.difference` Set.fromList (map fst (irsExterns sexpr)))
 
 
 -- | Information about an external stream

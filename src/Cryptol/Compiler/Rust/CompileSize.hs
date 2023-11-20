@@ -13,11 +13,17 @@ import Cryptol.Compiler.IR.EvalType
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
 
-compileSizeType :: SizeVarSize -> RustType
-compileSizeType szT =
+compileSizeType :: ExprContext -> SizeVarSize -> RustType
+compileSizeType ctxt szT =
   case szT of
     MemSize   -> simpleType "usize"
-    LargeSize -> refType Nothing (pathType (simplePath' ["num","BigUint"]))
+    LargeSize ->
+      case ctxt of
+        OwnContext -> own
+        BorrowContext -> refType Nothing own
+      where
+      own = pathType (simplePath' ["num","BigUint"])
+
 
 -- | Compile a size argument, using the specified type.
 -- For big nums, this produces a reference.
@@ -34,7 +40,7 @@ compileSize sz tgtSz =
           arg  = addrOf (rustArray (map byte (toLEBytes n)))
 
     IRPolySize x ->
-      do p <- lookupSizeParam (irsName x)
+      do p <- lookupSizeParam x
          pure (castSize (irsSize x) tgtSz p)
 
     IRComputedSize f as -> compileComputedSize f as tgtSz

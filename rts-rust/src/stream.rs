@@ -1,4 +1,7 @@
 
+
+
+
 #[macro_export]
 macro_rules! stream {
   ( forall  = [ $( $t:ident : [ $($trait:path),* ] ),* ]
@@ -10,7 +13,10 @@ macro_rules! stream {
   ) => {
     {
       #[derive(Clone)]
-      struct S<$($t,)*> {
+      struct S<$($t,)*>
+        where
+        $($t : $crate::type_traits::Type)*
+      {
         index:    usize,
         history:  [ $elT; $history ],
         $( $field: $type, )*
@@ -71,5 +77,18 @@ macro_rules! stream {
 }
 
 
+
+impl<T: crate::Type> crate::Stream<T> for std::vec::IntoIter<T> {}
+
+impl<T: crate::Type> crate::Type for std::vec::IntoIter<T> {
+  type Arg<'a> = Self where Self: 'a;
+  type Length  = ();    // XXX: ???
+  fn as_arg(&self) -> Self::Arg<'_> { self.clone() }
+}
+
+impl<T:crate::Type> crate::type_traits::CloneArg for std::vec::IntoIter<T> {
+  type Owned = Self;
+  fn clone_arg(self) -> Self::Owned { self }
+}
 
 

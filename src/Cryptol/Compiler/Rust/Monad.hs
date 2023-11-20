@@ -35,7 +35,6 @@ runRustM gi (Rust m) = fst <$> runStateT rw (runReaderT ro m)
       { roModName = genCurModule gi
       , roExternalNames = genExternalModules gi
       , roLoc = []
-      , roInStreamClosure = Nothing
       }
   rw =
     RW
@@ -95,11 +94,6 @@ data RO = RO
   , roLoc :: Loc
     -- ^ Location, for error reporting
 
-  , roInStreamClosure :: !(Maybe ExprContext)
-    -- ^ If this is `Just`, then we are compiling a stream.
-    --  * Then we should access local variables through self.
-    --  * The ExprContext indicates how variables are stored in the closure
-    --    (i.e., are they borrowed or owned by the closure).
   }
 
 data RW = RW
@@ -190,13 +184,45 @@ setUsed x = Rust $ sets_ \rw -> let ls = rwLocalNames rw
 
 -- | Do something without affecting the continuation, and variables
 -- are only accessed through Self.
-inStreamClosure :: ExprContext -> Rust a -> Rust a
+inStreamClosure :: ExprContext -> Rust a -> Rust ( [(Rust.Ident,Cry.TParam)]
+                                                 , [(Rust.Ident,SizeVarSize)]
+                                                 , a
+                                                 )
 inStreamClosure ctxt (Rust m) =
-  Rust (mapReader (\ro -> ro { roInStreamClosure = Just ctxt }) m)
+  Rust
+  do old <- sets $ \rw ->
+                let names = rwLocalNames rw
+                    start = StreamClosureInfo
+                              { cloContext = ctxt
+                              , cloSizeIdents = mempty
+                              , cloLenIdents = mempty
+                              }
+                    new = names { lInStreamClosure = Just start }
+                in (lInStreamClosure names, rw { rwLocalNames = new })
+     a <- m
+     sets \rw ->
+       let names = rwLocalNames rw
+       in
+       case lInStreamClosure names of
+         Just clo ->
+           let res = ( Map.toList (cloLenIdents clo)
+                     , Map.toList (cloSizeIdents clo)
+                     , a)
+           in (res, rw { rwLocalNames = names { lInStreamClosure = old } })
+         Nothing -> panic "inStreamClosure" ["Closure infor disappeared"]
 
 -- | Are we in a strem closure?
-isInStreamClosure :: Rust (Maybe ExprContext)
-isInStreamClosure = Rust (roInStreamClosure <$> ask)
+isInStreamClosure :: Rust (Maybe StreamClosureInfo)
+isInStreamClosure = Rust (lInStreamClosure . rwLocalNames <$> get)
+
+mapStreamClosure :: (StreamClosureInfo -> StreamClosureInfo) -> Rust Bool
+mapStreamClosure f =
+  Rust $ sets \rw ->
+    let names = rwLocalNames rw
+    in case lInStreamClosure names of
+         Nothing -> (False, rw)
+         Just yes -> (True, rw { rwLocalNames =
+                            names { lInStreamClosure = Just (f yes) }})
 
 -- | Bind a function in this module
 bindFun :: FunName -> Rust Rust.Ident
@@ -219,9 +245,16 @@ lookupTParam :: Cry.TParam -> Rust Rust.Ident
 lookupTParam x = Rust (lookupName x . lTypeNames . rwLocalNames <$> get)
 
 -- | Get the expresssion for a size parameter.
-lookupSizeParam :: Cry.TParam -> Rust RustExpr
+lookupSizeParam :: SizeName -> Rust RustExpr
 lookupSizeParam x =
-  Rust (pathExpr . simplePath . lookupName x . lTypeNames . rwLocalNames <$> get)
+  do i <- Rust (lookupName (irsName x) . lTypeNames . rwLocalNames <$> get)
+     let sz = irsSize x
+     yes <- mapStreamClosure \c ->
+                       c { cloSizeIdents = Map.insert i sz (cloSizeIdents c) }
+     pure (if yes
+             then fieldSelect (pathExpr (simplePath "this")) i
+             else pathExpr (simplePath i))
+
 
 -- | Get the identfier for a name.
 -- Returns (isThisLocal?, isThisLastUse?,Expr)
@@ -241,7 +274,7 @@ lookupNameId x =
                  Just mode                         -> Just mode
      case inClo of
        Just mode ->
-         pure ( mode == OwnContext, False
+         pure ( cloContext mode == OwnContext, False
               , fieldSelect (pathExpr (simplePath "this")) rid
               )
        Nothing ->
@@ -263,7 +296,12 @@ lookupNameRustIdent x =
 -- type parameter.
 lookupLenParam :: Cry.TParam -> Rust RustExpr
 lookupLenParam x =
-  Rust (pathExpr . simplePath . doLookup . lLenParams . rwLocalNames <$> get)
+  do i <- Rust (doLookup . lLenParams . rwLocalNames <$> get)
+     yes <- mapStreamClosure \c ->
+                        c { cloLenIdents = Map.insert i x (cloLenIdents c) }
+     pure (if yes
+             then fieldSelect (pathExpr (simplePath "this")) i
+             else pathExpr (simplePath i))
   where
   doLookup mp =
     case Map.lookup x mp of
@@ -354,6 +392,23 @@ data LocalNames = LocalNames
        We generate code "backwards" (continuation first),
        and this field tells us which variables were mentioned in the
        continuation. -}
+
+  , lInStreamClosure :: !(Maybe StreamClosureInfo)
+    -- ^ If this is `Just`, then we are compiling a stream.
+    --  * Then we should access local variables through self.
+    --  * The ExprContext indicates how variables are stored in the closure
+    --    (i.e., are they borrowed or owned by the closure).
+
+  }
+
+data StreamClosureInfo = StreamClosureInfo
+  { cloLenIdents  :: Map Rust.Ident Cry.TParam
+    -- ^ Lenght variables that need to be stored in the closure
+
+  , cloSizeIdents :: Map Rust.Ident SizeVarSize
+    -- ^ Size variables that need to be stored in the closure
+
+  , cloContext    :: ExprContext
   }
 
 -- | How to access a local variable
@@ -370,6 +425,7 @@ emptyLocalNames = LocalNames
   , lLenParams  = mempty
   , lLocalVars  = mempty
   , lUsedVars   = mempty
+  , lInStreamClosure = Nothing
   }
 
 -- | Bind a type parameter.
