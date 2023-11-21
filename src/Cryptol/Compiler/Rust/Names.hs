@@ -74,7 +74,7 @@ changeIdent f n = (Rust.mkIdent (f (Rust.name n))) { Rust.raw = Rust.raw n }
 
 -- | Use snake_case
 snakeCase :: String -> String
-snakeCase = lower
+snakeCase = dropWhile (== '_') . lower
   where
   lower xs =
     case xs of
