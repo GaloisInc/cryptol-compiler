@@ -74,9 +74,23 @@ changeIdent f n = (Rust.mkIdent (f (Rust.name n))) { Rust.raw = Rust.raw n }
 
 -- | Use snake_case
 snakeCase :: String -> String
-snakeCase s = dropWhile (== '_') (s >>= snake)
+snakeCase = lower
   where
-  snake c = if isUpper c then ['_', toLower c] else [c]
+  lower xs =
+    case xs of
+      x : more
+        | isUpper x -> upper (toLower x) [] more
+        | otherwise -> x : lower more
+      [] -> []
+
+  upper b buf xs =
+    case xs of
+      x : more
+        | isUpper x -> upper (toLower x) (b : buf) more
+      [] -> "_" ++ reverse (b:buf)
+      _ | null buf -> "_" ++ [b] ++ lower xs
+        | otherwise -> "_" ++ reverse buf ++ "_" ++ [b] ++ lower xs
+
 
 -- | Use SCREAMING_SNAKE_CASE
 screamingSnakeCase :: String -> String
