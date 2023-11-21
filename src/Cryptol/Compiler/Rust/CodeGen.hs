@@ -69,19 +69,17 @@ genCallArgs how call =
 -- | Returns an owned result.
 genCall :: Call -> Rust (PartialBlock RustExpr)
 genCall call =
-
+  let argTs = ircArgTypes call
+      resT  = ircResType call
+  in
   case ircFun call of
 
     -- Closures don't have polymorphic arguments, and so shouldn't have
     -- size or lenght arguments. Captured length arguments should be in scope.
-    IRFunVal fnIR -> pure ([], todoExp "Call closure")
-{-
-      do fnExpr       <- doGenExpr BorrowContext fnIR
-         -- XXX: is Borrow sufficient here?
-
-         (stmts,args) <- genCallArgs call
-         pure (stmts, mkRustCall fnExpr args)
--}
+    IRFunVal fnIR ->
+      do (astmts,args) <- genCallArgs (map ownIfStream argTs) call
+         (fstmts, fun) <- genExpr BorrowContext fnIR
+         pure (fstmts ++ astmts, mkRustCall fun args)
 
     IRTopFun tf ->
       do typeArgs <- traverse (compileType TypeAsParam AsOwned)
@@ -89,8 +87,6 @@ genCall call =
          lenArgs      <- genCallLenArgs call
          name         <- lookupFunName (irtfName tf)
 
-         let argTs    = ircArgTypes call
-         let resT     = ircResType call
          let szArgNum = length (irtfSizeArgs tf)
 
          case name of
@@ -127,12 +123,12 @@ genCall call =
 genExpr :: ExprContext -> Expr -> Rust (PartialBlock RustExpr)
 genExpr how (IRExpr e0) =
   case e0 of
-    IRVar (IRName name _ty) ->
+    IRVar (IRName name ty) ->
       do (isLocal,isLastUse,rexpr) <- lookupNameId name
          justExpr <$>
            case how of
              OwnContext
-               | isLocal ->
+               | isLocal || (ownIfStream ty == OwnContext) {-passed by value-} ->
                  pure
                  if isLastUse
                     then rexpr
@@ -172,14 +168,13 @@ genExpr how (IRExpr e0) =
 
     IRClosure {} -> unsupported "Closure" -- pure (justExpr (todoExp (show (pp call))))
 
-    IRLam {} -> pure ([], todoExp "Lambda Expression")
-  {-
-    justExpr <$>
-      do  let args' = irNameName <$> args
-        args'' <- bindLocal False addLocalVar `traverse` args'
-          (lamStmt, lamE) <- genExpr expr
-          pure $ mkClosure args'' lamStmt lamE
-          -}
+    IRLam args body ->
+      justExpr <$>
+        do let args' = irNameName <$> args
+           args'' <- bindLocal (addLocalVar Nothing) `traverse` args'
+           (lamStmt, lamE) <- genExpr OwnContext body
+           mapM_ removeLocalLet args'
+           pure (mkClosure args'' lamStmt lamE)
 
 
 

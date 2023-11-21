@@ -85,8 +85,8 @@ compileType use mode ty =
             AsOwned -> unsupported "Owned function"
             AsArg r ->
               implFnTraitType
-                  <$> traverse (compileType use (AsArg r)) args
-                  <*> compileType use AsOwned ret
+                 <$> traverse (compileType use (AsArg r)) args
+                 <*> compileType use AsOwned ret
 
 
 byRef :: TypeMode -> RustType -> RustType

@@ -47,11 +47,12 @@ data ExprContext =
   | BorrowContext -- ^ We are generating a borrowed expression
     deriving Eq
 
--- | Use Own for streams, and Borrow otherwise
+-- | Use Own for streams and functions, and Borrow otherwise
 ownIfStream :: Type -> ExprContext
 ownIfStream t =
   case t of
     TStream {} -> OwnContext
+    TFun {}    -> OwnContext
     _          -> BorrowContext
 
 type RustImpl =
