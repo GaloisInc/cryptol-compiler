@@ -11,8 +11,6 @@ path = "exe/main.rs"
 path = "src/lib.rs"
 
 [dependencies]
-apint = "0.2.0"
 num = "0.4.0"
-crypto-bigint = "0.5.2"
 dword = { path = "../dword" }
 
