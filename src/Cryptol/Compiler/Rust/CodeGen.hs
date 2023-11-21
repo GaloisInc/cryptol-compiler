@@ -99,7 +99,8 @@ genCall call =
                  (stmts,args) <- genCallArgs ctx call
                  rexpr <- compilePrim prim
                             PrimArgs
-                              { primTypesOfArgs  = argTs
+                              { primInstance     = irfnInstance (irtfName tf)
+                              , primTypesOfArgs  = argTs
                               , primTypeOfResult = resT
                               , primTypeArgs     = typeArgs
                               , primLenArgs      = lenArgs

@@ -2,6 +2,7 @@ module Cryptol.Compiler.Rust.CompilePrim where
 
 import Data.Text(Text)
 import Data.Text qualified as Text
+import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.Utils.Ident qualified as Cry
 
 import Cryptol.Compiler.Error (panic)
@@ -9,11 +10,13 @@ import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Cryptol
 
 import Cryptol.Compiler.Rust.Monad
+import Cryptol.Compiler.Rust.CompileSize
 import Cryptol.Compiler.Rust.CompileType
 import Cryptol.Compiler.Rust.Utils
 
 data PrimArgs = PrimArgs
-  { primTypesOfArgs   :: [Type]         -- ^ Types of arguments (primArgs)
+  { primInstance      :: FunInstance
+  , primTypesOfArgs   :: [Type]         -- ^ Types of arguments (primArgs)
   , primTypeOfResult  :: Type           -- ^ Type of result
   , primTypeArgs      :: [RustType]     -- ^ Compiled type arguemt
   , primLenArgs       :: [RustExpr]     -- ^ Compile length arguments
@@ -254,6 +257,47 @@ compileCryptolPreludePrim name args =
       a : b : _ -> f a b
       _ -> bad
 
+
+-- Get the n-th size argument.  Note that `n` here is in the Cryptol
+-- scheme, not the actual parameter for this particular instance.
+-- Returns `Nothing` if the size is `inf`
+getSizeArg :: PrimArgs -> Int -> Rust (Maybe (RustExpr, SizeVarSize))
+getSizeArg args = go ips (primSizeArgs args)
+  where
+  FunInstance ips = primInstance args
+  go inst sizeParams n =
+    case inst of
+      [] -> panic "getSizeArg" ["Missing arg"]
+      p : more ->
+       case p of
+         TyBool    -> go more sizeParams n
+         TyNotBool -> go more sizeParams n
+         TyAny     -> go more sizeParams n
+
+         NumVar sz ->
+           case sizeParams of
+             x : rest
+               | n > 0 -> go more rest (n-1)
+               | otherwise -> pure (Just (x,sz))
+
+             _ -> panic "getSizeArg" ["Missing size argument"]
+
+         _ | n > 0 -> go more sizeParams (n-1)
+
+         NumFixed fi ->
+           case fi of
+             Cry.Inf   -> pure Nothing
+             Cry.Nat nu ->
+               do let sz = if nu > maxSizeVal then LargeSize else MemSize
+                  e <- compileSize (IRFixedSize nu) sz
+                  pure (Just (e,sz))
+
+getFinSizeArg :: PrimArgs -> Int -> Rust (RustExpr, SizeVarSize)
+getFinSizeArg args n =
+  do mb <- getSizeArg args n
+     case mb of
+       Just a  -> pure a
+       Nothing -> panic "getFinSizeArg" ["Inf"]
 
 
 
