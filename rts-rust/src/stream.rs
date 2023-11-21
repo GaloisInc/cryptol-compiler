@@ -86,9 +86,27 @@ impl<T: crate::Type> crate::Type for std::vec::IntoIter<T> {
   fn as_arg(&self) -> Self::Arg<'_> { self.clone() }
 }
 
-impl<T:crate::Type> crate::type_traits::CloneArg for std::vec::IntoIter<T> {
+impl<T:Clone> crate::type_traits::CloneArg for std::vec::IntoIter<T> {
   type Owned = Self;
   fn clone_arg(self) -> Self::Owned { self }
 }
+
+impl<I,F,T:crate::Type> crate::Stream<T> for std::iter::Map<I,F>
+  where
+  I: Clone + Iterator,
+  F: Clone + FnMut(<I as Iterator>::Item) -> T
+  {}
+
+impl<I:Clone,F:Clone> crate::Type for std::iter::Map<I,F> {
+  type Arg<'a> = Self where Self: 'a;
+  type Length  = ();    // XXX: ???
+  fn as_arg(&self) -> Self::Arg<'_> { self.clone() }
+}
+
+impl<I:Clone,F:Clone> crate::type_traits::CloneArg for std::iter::Map<I,F> {
+  type Owned = Self;
+  fn clone_arg(self) -> Self::Owned { self }
+}
+
 
 

@@ -27,14 +27,17 @@ compileSizeType ctxt szT =
 
 -- | Compile a size argument, using the specified type.
 -- For big nums, this produces a reference.
-compileSize :: Size -> SizeVarSize -> Rust RustExpr
-compileSize sz tgtSz =
+compileSize :: ExprContext -> Size -> SizeVarSize -> Rust RustExpr
+compileSize ctxt sz tgtSz =
   case sz of
     IRFixedSize n ->
       case tgtSz of
         MemSize   -> pure (litExpr (mkUSizeLit n))
-        LargeSize -> pure (addrOf (mkRustCall fn [arg]))
+        LargeSize -> pure (case ctxt of
+                             OwnContext -> val
+                             BorrowContext -> addrOf val)
           where
+          val  =  mkRustCall fn [arg]
           fn   = pathExpr (simplePath' ["num","BigUint","from_bytes_le"])
           byte = litExpr . mkU8Lit . toInteger
           arg  = addrOf (rustArray (map byte (toLEBytes n)))
@@ -51,76 +54,76 @@ compileComputedSize fu args sz =
 
     Cry.TCAdd ->
       withBin \x y ->
-        do a <- compileSize x sz
-           b <- compileSize y sz
+        do a <- compileSize BorrowContext x sz
+           b <- compileSize BorrowContext y sz
            pure (op "add_size" [a,b])
 
     Cry.TCSub ->
       withBin \x y ->
         do let xsz = sizeTypeSize x
-           a <- compileSize x xsz
-           b <- compileSize y xsz
+           a <- compileSize BorrowContext x xsz
+           b <- compileSize BorrowContext y xsz
            pure (castSize xsz sz (op "sub_size" [a,b]))
 
     Cry.TCMul ->
       withBin \x y ->
-        do a <- compileSize x sz
-           b <- compileSize y sz
+        do a <- compileSize BorrowContext x sz
+           b <- compileSize BorrowContext y sz
            pure (op "mul_size" [a,b])
 
     Cry.TCDiv ->
       withBin \x y ->
       do let use = memIfBoth x y
-         a <- compileSize x use
-         b <- compileSize y use
+         a <- compileSize BorrowContext x use
+         b <- compileSize BorrowContext y use
          pure (castSize use sz (op "div_size" [a,b]))
 
     Cry.TCMod ->
       withBin \x y ->
       do let use = memIfBoth x y
-         a <- compileSize x use
-         b <- compileSize y use
+         a <- compileSize BorrowContext x use
+         b <- compileSize BorrowContext y use
          pure (castSize use sz (op "mod_size" [a,b]))
 
 
     -- Assumes exponent fits in MemSize
     Cry.TCExp ->
       withBin \x y ->
-      do a <- compileSize x sz
-         b <- compileSize y MemSize
+      do a <- compileSize BorrowContext x sz
+         b <- compileSize BorrowContext y MemSize
          pure (op "exp_size" [a,b])
 
     -- Assumes result fits in MemSize
     Cry.TCWidth ->
       withUn \x ->
-        do a <- compileSize x (sizeTypeSize x)
+        do a <- compileSize BorrowContext x (sizeTypeSize x)
            pure (castSize MemSize sz (op "width_size" [a]))
 
     Cry.TCMin ->
       withBin \x y ->
       do let use = memIfBoth x y
-         a <- compileSize x use
-         b <- compileSize y use
+         a <- compileSize BorrowContext x use
+         b <- compileSize BorrowContext y use
          pure (castSize use sz (op "min_size" [a,b]))
 
     Cry.TCMax ->
       withBin \x y ->
-        do a <- compileSize x sz
-           b <- compileSize y sz
+        do a <- compileSize BorrowContext x sz
+           b <- compileSize BorrowContext y sz
            pure (op "max_size" [a,b])
 
     Cry.TCCeilDiv ->
       withBin \x y ->
       do let use = memIfBoth x y
-         a <- compileSize x use
-         b <- compileSize y use
+         a <- compileSize BorrowContext x use
+         b <- compileSize BorrowContext y use
          pure (castSize use sz (op "ceil_div_size" [a,b]))
 
     Cry.TCCeilMod ->
       withBin \x y ->
       do let use = memIfBoth x y
-         a <- compileSize x use
-         b <- compileSize y use
+         a <- compileSize BorrowContext x use
+         b <- compileSize BorrowContext y use
          pure (castSize use sz (op "ceil_mod_size" [a,b]))
 
 
@@ -129,9 +132,9 @@ compileComputedSize fu args sz =
         do let use = case (sizeTypeSize x, sizeTypeSize y, sizeTypeSize z) of
                        (MemSize, MemSize, MemSize) -> MemSize
                        _ -> LargeSize
-           a <- compileSize x use
-           b <- compileSize x use
-           c <- compileSize x use
+           a <- compileSize BorrowContext x use
+           b <- compileSize BorrowContext x use
+           c <- compileSize BorrowContext x use
            pure (castSize use sz (op "from_then_to_size" [a,b,c]))
 
   where

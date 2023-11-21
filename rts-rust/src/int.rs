@@ -9,7 +9,7 @@ impl Zero for num::BigInt {
 
 impl Literal for num::BigInt {
   fn number_usize(_: (), x: usize)       -> Self { Self::from(x) }
-  fn number_int(_: (), x: &num::BigUint) -> Self {
+  fn number_uint(_: (), x: &num::BigUint) -> Self {
     Self::from(x.clone())
   }
 }

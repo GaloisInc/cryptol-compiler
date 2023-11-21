@@ -91,10 +91,10 @@ lenParamFor ty =
     TRational -> pure unitExpr
     TFloat    -> pure unitExpr
     TDouble   -> pure unitExpr
-    TWord sz  -> compileSize sz MemSize
+    TWord sz  -> compileSize OwnContext sz MemSize
 
     TArray sz elT ->
-      do vecLen  <- compileSize sz MemSize
+      do vecLen  <- compileSize OwnContext sz MemSize
          elemLen <- lenParamFor elT
          pure (tupleExpr [vecLen,elemLen])
 

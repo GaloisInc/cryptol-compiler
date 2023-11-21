@@ -53,11 +53,11 @@ genCallLenArgs call =
       IRTopFun tf -> irtfTypeArgs tf
 
 -- | Size arguments for a call
-genCallSizeArgs :: Call -> Rust [RustExpr]
-genCallSizeArgs call =
+genCallSizeArgs :: [ExprContext] -> Call -> Rust [RustExpr]
+genCallSizeArgs how call =
   case ircFun call of
     IRFunVal _ -> pure []
-    IRTopFun tf -> traverse (uncurry compileSize) (irtfSizeArgs tf)
+    IRTopFun tf -> zipWithM (\x (y,z) -> compileSize x y z) how (irtfSizeArgs tf)
 
 -- | Normal arguments for a call
 genCallArgs :: [ExprContext] -> Call -> Rust ([RustStmt], [RustExpr])
@@ -87,15 +87,16 @@ genCall call =
       do typeArgs <- traverse (compileType TypeAsParam AsOwned)
                               (irtfTypeArgs tf)
          lenArgs      <- genCallLenArgs call
-         szArgs       <- genCallSizeArgs call
          name         <- lookupFunName (irtfName tf)
 
-         let argTs = ircArgTypes call
-         let resT  = ircResType call
+         let argTs    = ircArgTypes call
+         let resT     = ircResType call
+         let szArgNum = length (irtfSizeArgs tf)
 
          case name of
            Left prim ->
-              do let ctx = primArgOwnership prim argTs resT
+              do let (szOwn, ctx) = primArgOwnership prim szArgNum argTs resT
+                 szArgs       <- genCallSizeArgs szOwn call
                  (stmts,args) <- genCallArgs ctx call
                  rexpr <- compilePrim prim
                             PrimArgs
@@ -110,7 +111,9 @@ genCall call =
                  pure (stmts,rexpr)
 
            Right path ->
-             do (stmts,args) <- genCallArgs (map ownIfStream argTs) call
+             do let szOwn = replicate szArgNum BorrowContext
+                szArgs       <- genCallSizeArgs szOwn call
+                (stmts,args) <- genCallArgs (map ownIfStream argTs) call
                 let fun = pathExpr (pathAddTypeSuffix path typeArgs)
                     allArgs = lenArgs ++ szArgs ++ args
                 pure (stmts, mkRustCall fun allArgs)

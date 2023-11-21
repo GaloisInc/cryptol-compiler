@@ -55,7 +55,7 @@ compileType use mode ty =
         TypeInFunSig -> stream <$> compileType TypeAsStored AsOwned t
           where stream el = implTraitType [streamTraitPath el]
         TypeAsParam  -> pure inferType
-        TypeAsStored -> unsupported "Streams stored in containers"
+        TypeAsStored -> pure (simpleType "STREAM") -- unsupported "Streams stored in containers"
 
     IR.TTuple ts ->
       case ts of
@@ -78,7 +78,7 @@ compileType use mode ty =
 
     IR.TFun args ret  ->
       case use of
-        TypeAsStored -> unsupported "function stored in a container"
+        TypeAsStored -> pure (simpleType "FUN")
         TypeAsParam -> pure inferType
         TypeInFunSig ->
           case mode of

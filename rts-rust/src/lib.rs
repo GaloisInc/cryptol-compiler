@@ -8,6 +8,7 @@ pub mod stream;
 
 pub mod bit;
 pub mod int;
+pub mod range;
 
 pub use type_traits::*;
 pub use traits::*;
@@ -15,6 +16,7 @@ pub use display::*;
 pub use dword::DWord;
 pub use dword::DWordRef;
 pub use stream::*;
+pub use range::*;
 
 pub mod trait_methods {
   pub use crate::display::Display as _;

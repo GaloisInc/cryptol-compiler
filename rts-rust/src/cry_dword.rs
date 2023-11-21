@@ -44,7 +44,7 @@ impl Integral for DWord {
 
 impl Literal for DWord {
   fn number_usize(n: Self::Length, x: usize) -> Self { Self::from_usize(n,x) }
-  fn number_int(n: Self::Length, x: &num::BigUint) -> Self {
+  fn number_uint(n: Self::Length, x: &num::BigUint) -> Self {
     Self::from_uint(n,x)
   }
 }

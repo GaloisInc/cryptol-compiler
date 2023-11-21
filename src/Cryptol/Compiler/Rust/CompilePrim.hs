@@ -5,11 +5,14 @@ import Data.Text qualified as Text
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.Utils.Ident qualified as Cry
 
+import Language.Rust.Data.Ident qualified as Rust
+
 import Cryptol.Compiler.Error (panic)
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Cryptol
 
 import Cryptol.Compiler.Rust.Monad
+import Cryptol.Compiler.Rust.Names
 import Cryptol.Compiler.Rust.CompileSize
 import Cryptol.Compiler.Rust.CompileType
 import Cryptol.Compiler.Rust.Utils
@@ -46,8 +49,9 @@ unsupportedPrim nm args =
   unsupported (vcat [ "primitive" <+> nm, pp args ])
 
 
-cryPrimArgOwnership :: Cry.PrimIdent -> [Type] -> Type -> [ExprContext]
-cryPrimArgOwnership p@(Cry.PrimIdent mo name) argTs _resT
+cryPrimArgOwnership ::
+  Cry.PrimIdent -> Int -> [Type] -> Type -> ([ExprContext], [ExprContext])
+cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs _resT
   | mo == Cry.preludeName = prelPrim
   | mo == Cry.floatName   = floatPrim
   | otherwise =
@@ -55,43 +59,45 @@ cryPrimArgOwnership p@(Cry.PrimIdent mo name) argTs _resT
   where
   prelPrim =
     case name of
-      "take" -> map ownIfStream argTs
+      "take"   -> (replicate szArgs OwnContext, map ownIfStream argTs)
+      "fromTo" -> (replicate szArgs OwnContext, [])
 
       --- XXX: Others need ownd arguments, especially stream constructors
-      _ -> map (const BorrowContext) argTs
+      _ -> dflt
 
-  floatPrim = map (const OwnContext) argTs
+  floatPrim = dflt
 
+  dflt = (replicate szArgs BorrowContext, map (const BorrowContext) argTs)
 
-primArgOwnership :: IRPrim -> [Type] -> Type -> [ExprContext]
-primArgOwnership prim argTs resT =
+primArgOwnership :: IRPrim -> Int -> [Type] -> Type -> ([ExprContext], [ExprContext])
+primArgOwnership prim szArgs argTs resT =
   case prim of
-    CryPrim ide -> cryPrimArgOwnership ide argTs resT
+    CryPrim ide   -> cryPrimArgOwnership ide szArgs argTs resT
 
-    ArrayLit    -> map (const OwnContext) argTs
-    ArrayLookup -> [BorrowContext]
+    ArrayLit      -> ([], map (const OwnContext) argTs)
+    ArrayLookup   -> ([OwnContext], [BorrowContext])
 
-    WordLookup  -> [BorrowContext]
+    WordLookup    -> ([OwnContext], [BorrowContext])
 
-    Tuple       -> map (const OwnContext) argTs
-    TupleSel {} -> [BorrowContext]
+    Tuple         -> ([], map (const OwnContext) argTs)
+    TupleSel {}   -> ([], [BorrowContext])
 
-    EqSize      -> [OwnContext,OwnContext]
-    LtSize      -> [OwnContext,OwnContext]
-    LeqSize     -> [OwnContext,OwnContext]
+    EqSize        -> ([BorrowContext,BorrowContext], [])
+    LtSize        -> ([BorrowContext,BorrowContext], [])
+    LeqSize       -> ([BorrowContext,BorrowContext], [])
 
-    Map         -> [OwnContext, OwnContext] -- function is 2nd
-    FlatMap     -> [OwnContext, OwnContext] -- function is 2nd
-    Zip         -> [OwnContext, OwnContext] -- function is 2nd
+    Map           -> ([], [OwnContext, OwnContext]) -- function is 2nd
+    FlatMap       -> ([], [OwnContext, OwnContext]) -- function is 2nd
+    Zip           -> ([], [OwnContext, OwnContext]) -- function is 2nd
 
-    ArrayToStream -> [OwnContext]
-    ArrayToWord   -> [OwnContext]
-    WordToStream  -> [OwnContext]
-    StreamToWord  -> [OwnContext]
-    StreamToArray -> [OwnContext]
+    ArrayToStream -> ([], [OwnContext])
+    ArrayToWord   -> ([], [OwnContext])
+    WordToStream  -> ([], [OwnContext])
+    StreamToWord  -> ([], [OwnContext])
+    StreamToArray -> ([], [OwnContext])
 
-    Head          -> [OwnContext] -- head needs to own its argument
-    Hist          -> []
+    Head          -> ([], [OwnContext]) -- head needs to own its argument
+    Hist          -> ([OwnContext], [])
 
 
 -- | Emit code for a primitve.
@@ -197,6 +203,22 @@ compileCryptolPreludePrim name args =
                                       [ litExpr (mkUSizeLit n) ])
               _ -> size1 \n -> pure (callMethod x "take" [ n ])
 
+    "fromTo" ->
+      do (from,fromSz) <- getSizeArg OwnContext args 0
+         (to,toSz)     <- getSizeArg OwnContext args 1
+         resT <- case primTypeOfResult args of
+                   TStream _ el -> compileType TypeInFunSig AsOwned el
+                   _ -> panic "fromTo" ["Expected a stream result"]
+         let fu = case toSz of
+                    MemSize   -> rtsName "from_to_usize"
+                    LargeSize -> rtsName "from_to_uint"
+             fuE = pathExpr (pathAddTypeSuffix fu [resT])
+
+         let from' = if fromSz == toSz
+                      then from
+                      else mkRustCall (pathExpr (simplePath "from")) [from]
+         pure (mkRustCall fuE (primLenArgs args ++ [from',to]))
+
 {-
     -- Integral --
     "!"       -> undefined
@@ -261,13 +283,14 @@ compileCryptolPreludePrim name args =
 -- Get the n-th size argument.  Note that `n` here is in the Cryptol
 -- scheme, not the actual parameter for this particular instance.
 -- Returns `Nothing` if the size is `inf`
-getSizeArg :: PrimArgs -> Int -> Rust (Maybe (RustExpr, SizeVarSize))
-getSizeArg args = go ips (primSizeArgs args)
+getStreamSizeArg ::
+  ExprContext -> PrimArgs -> Int -> Rust (Maybe (RustExpr, SizeVarSize))
+getStreamSizeArg ctxt args = go ips (primSizeArgs args)
   where
   FunInstance ips = primInstance args
   go inst sizeParams n =
     case inst of
-      [] -> panic "getSizeArg" ["Missing arg"]
+      [] -> panic "getStreamSizeArg" ["Missing arg"]
       p : more ->
        case p of
          TyBool    -> go more sizeParams n
@@ -280,7 +303,7 @@ getSizeArg args = go ips (primSizeArgs args)
                | n > 0 -> go more rest (n-1)
                | otherwise -> pure (Just (x,sz))
 
-             _ -> panic "getSizeArg" ["Missing size argument"]
+             _ -> panic "getStreamSizeArg" ["Missing size argument"]
 
          _ | n > 0 -> go more sizeParams (n-1)
 
@@ -289,15 +312,20 @@ getSizeArg args = go ips (primSizeArgs args)
              Cry.Inf   -> pure Nothing
              Cry.Nat nu ->
                do let sz = if nu > maxSizeVal then LargeSize else MemSize
-                  e <- compileSize (IRFixedSize nu) sz
+                  e <- compileSize ctxt (IRFixedSize nu) sz
                   pure (Just (e,sz))
 
-getFinSizeArg :: PrimArgs -> Int -> Rust (RustExpr, SizeVarSize)
-getFinSizeArg args n =
-  do mb <- getSizeArg args n
+getSizeArg :: ExprContext -> PrimArgs -> Int -> Rust (RustExpr, SizeVarSize)
+getSizeArg ctxt args n =
+  do mb <- getStreamSizeArg ctxt args n
      case mb of
        Just a  -> pure a
-       Nothing -> panic "getFinSizeArg" ["Inf"]
+       Nothing -> panic "getizeArg" ["Inf"]
+
+
+rtsName :: Rust.Ident -> RustPath
+rtsName x = simplePath' [ cryptolCrate, x ]
+
 
 
 

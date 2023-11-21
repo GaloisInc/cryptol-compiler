@@ -70,7 +70,7 @@ pub trait Integral: Type {
 
 pub trait Literal: Type {
   fn number_usize(n: Self::Length, x: usize) -> Self;
-  fn number_int(n: Self::Length, x: &num::BigUint) -> Self;
+  fn number_uint(n: Self::Length, x: &num::BigUint) -> Self;
 }
 
 pub trait LiteralNumber<T> : Literal {
@@ -82,6 +82,6 @@ impl<T : Literal> LiteralNumber<usize> for T {
 }
 
 impl<T : Literal> LiteralNumber<&num::BigUint> for T {
-  fn number(n: Self::Length, x:&num::BigUint) -> Self { Self::number_int(n,x) }
+  fn number(n: Self::Length, x:&num::BigUint) -> Self { Self::number_uint(n,x) }
 }
 

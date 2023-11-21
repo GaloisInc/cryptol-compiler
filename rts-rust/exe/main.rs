@@ -2,28 +2,15 @@
 
 // This is just for testing stuff out.
 fn main() {
-/*
-  let nats = cry_rts::stream!
-        { forall = []
-        , element = u64
-        , history = 1
-        , capture = []
-        , init = [0]
-        , step = |this| 1 + this.get_history(0)
-        };
+  //let x = dword::DWord::from_u64(8,1);
+  //let y = dword::DWord::from_u64(8,10);
+//  let x = num::BigUint::from(1_u64);
+//  let y = num::BigUint::from(1_u64);
+//  for i in x .. y {
+//    println!("{}",i)
+//  }
 
-  let s = cry_rts::stream!
-        { forall = [I : [cry_rts::Type, Iterator<Item=u64>, Clone]]
-        , element = u64
-        , history = 2
-        , capture = [ nats: I = nats.clone() ]
-        , init = [0,1]
-        , step = |this| this.get_history(0) + this.get_history(1)
-                                            + this.nats.next()?
-        };
-
-  for (i,x) in s.take(10).enumerate() {
-    println!("fib({}) = {}",i,x)
-  } */
-
+  for i in cry_rts::from_to_usize::<cry_rts::DWord>(8,1,5).map(|x| x + cry_rts::number::<cry_rts::DWord>(8,1)) {
+    println!("{}",i)
+  }
 }
