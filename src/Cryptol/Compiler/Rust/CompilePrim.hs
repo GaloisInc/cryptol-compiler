@@ -216,7 +216,7 @@ compileCryptolPreludePrim name args =
 
          let from' = if fromSz == toSz
                       then from
-                      else mkRustCall (pathExpr (simplePath "from")) [from]
+                      else callMethod from "into" []
          pure (mkRustCall fuE (primLenArgs args ++ [from',to]))
 
 {-
