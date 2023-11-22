@@ -60,5 +60,3 @@ impl Logic for DWord {
   fn or (x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self { x | y }
 }
 
-
-

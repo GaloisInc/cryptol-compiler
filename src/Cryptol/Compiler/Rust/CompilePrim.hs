@@ -5,6 +5,7 @@ import Data.Text qualified as Text
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.Utils.Ident qualified as Cry
 
+import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
 
 import Cryptol.Compiler.Error (panic)
@@ -63,6 +64,26 @@ cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs _resT
       "fromTo" -> (replicate szArgs OwnContext, [])
       "zip"    -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
       "map"    -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
+
+      -- Logic
+      "&&"         -> dflt
+      "||"         -> dflt
+      "^"          -> dflt
+      "complement" -> dflt
+
+      -- Comparisons
+      "==" -> dflt
+      "!=" -> dflt
+      "<"  -> dflt
+      ">"  -> dflt
+      "<=" -> dflt
+      ">=" -> dflt
+
+      -- Ring --
+      "+"       -> dflt
+      "-"       -> dflt
+      "*"       -> dflt
+      "negate"  -> dflt
 
       --- XXX: Others need ownd arguments, especially stream constructors
       _ -> dflt
@@ -261,6 +282,14 @@ compileCryptolPreludePrim name args =
     "^"          -> inferMethod "xor"
     "complement" -> inferMethod "complement"
 
+    -- Comparisons
+    "==" -> arg2 (\x y -> pure (binExpr Rust.EqOp x y))
+    "!=" -> arg2 (\x y -> pure (binExpr Rust.NeOp x y))
+    "<"  -> arg2 (\x y -> pure (binExpr Rust.LtOp x y))
+    ">"  -> arg2 (\x y -> pure (binExpr Rust.GtOp x y))
+    "<=" -> arg2 (\x y -> pure (binExpr Rust.LeOp x y))
+    ">=" -> arg2 (\x y -> pure (binExpr Rust.GeOp x y))
+
     _ -> pure (todoExp (Text.unpack name)) -- unsupportedPrim (pp name) args
   where
   -- XXX: special case if on streams
@@ -285,15 +314,18 @@ compileCryptolPreludePrim name args =
       [a] -> f a
       _ -> bad
 
+  arg2 f =
+    case primArgs args of
+      [a,b] -> f a b
+      _ -> bad
+
+
+
   size1 f =
     case primSizeArgs args of
       a : _ -> f a
       _ -> bad
 
-  size2 f =
-    case primSizeArgs args of
-      a : b : _ -> f a b
-      _ -> bad
 
 
 -- Get the n-th size argument.  Note that `n` here is in the Cryptol

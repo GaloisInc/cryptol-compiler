@@ -1,20 +1,12 @@
 use crate::type_traits::*;
 
-pub trait Zero : Type {
+pub trait Zero: Type {
 
   /// The value tha acts like 0.
   fn zero(n : Self::Length) -> Self;
 }
 
-// Not sure that we need this, but we are generating it at the moment
-// so this is a place-holder to make things compile
-pub trait Eq {
-}
-
-// Not sure that we need this, but we are generating it at the moment
-// so this is a place-holder to make things compile
-pub trait Cmp {
-}
+// We reuse Rust's Eq and Ord for equality
 
 pub trait Logic: Type {
   fn complement(x: Self::Arg<'_>) -> Self;

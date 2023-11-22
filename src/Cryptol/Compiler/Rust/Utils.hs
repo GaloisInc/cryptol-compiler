@@ -305,7 +305,7 @@ structField x t = Rust.StructField (Just x) Rust.InheritedV t [] ()
 
 
 --------------------------------------------------------------------------------
--- Literals and Constants
+-- Literal, Constants, Expressions
 
 mkIntLit :: Rust.Suffix -> Integer -> RustLit
 mkIntLit s i = Rust.Int Rust.Dec i s ()
@@ -348,6 +348,8 @@ arrayExpr es = Rust.Vec [] es ()
 indexExpr :: RustExpr-> RustExpr -> RustExpr
 indexExpr a i = Rust.Index [] a i ()
 
+binExpr :: Rust.BinOp -> RustExpr -> RustExpr -> RustExpr
+binExpr op x y = Rust.Binary [] op x y ()
 
 --------------------------------------------------------------------------------
 -- Types
