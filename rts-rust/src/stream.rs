@@ -78,6 +78,11 @@ macro_rules! stream {
 
 
 
+
+/* -----------------------------------------------------------------------------
+IntoIter
+----------------------------------------------------------------------------- */
+
 impl<T: Type> Stream<T> for std::vec::IntoIter<T> {}
 
 impl<T: Type> Type for std::vec::IntoIter<T> {
@@ -90,6 +95,13 @@ impl<T:Clone> CloneArg for std::vec::IntoIter<T> {
   type Owned = Self;
   fn clone_arg(self) -> Self::Owned { self }
 }
+
+
+
+/* -----------------------------------------------------------------------------
+Map
+----------------------------------------------------------------------------- */
+
 
 impl<T: Type, I, F> Stream<T> for std::iter::Map<I,F>
   where
@@ -108,6 +120,28 @@ impl<I:Clone,F:Clone> CloneArg for std::iter::Map<I,F> {
   fn clone_arg(self) -> Self::Owned { self }
 }
 
+pub
+fn cry_map<'a, A,B,F,I>(f: F, xs: I) -> impl Stream<B> + 'a
+  where
+  A: Type,
+  B: Type,
+  F: Fn(A::Arg<'_>) -> B,
+  F: Clone,
+  F: 'a,
+  I: Stream<A>,
+  I: 'a
+{
+  xs.map(move |v| { f(v.as_arg()) })
+}
+
+
+
+
+
+
+/* -----------------------------------------------------------------------------
+Zip
+----------------------------------------------------------------------------- */
 
 impl<I,J> Stream<(<I as Iterator>::Item,<J as Iterator>::Item)>
   for std::iter::Zip<I,J>
@@ -131,19 +165,53 @@ impl<I:Clone,J:Clone> CloneArg for std::iter::Zip<I,J> {
 
 
 
+/* -----------------------------------------------------------------------------
+FlatMap
+----------------------------------------------------------------------------- */
+
+
+impl<I, U, F> Stream<<U as Iterator>::Item> for std::iter::FlatMap<I,U,F>
+  where
+  I: Clone + Iterator,
+  U: Clone + Iterator,
+  <U as Iterator>::Item: Type,
+  F: Clone + FnMut(<I as Iterator>::Item) -> U,
+  {}
+
+impl<I,U,F> Type for std::iter::FlatMap<I,U,F>
+  where
+  I: Clone,
+  U: Clone + Iterator,
+  F: Clone
+{
+  type Arg<'a> = Self where Self: 'a;
+  type Length  = ();    // XXX: ???
+  fn as_arg(&self) -> Self::Arg<'_> { self.clone() }
+}
+
+impl<I,U,F> CloneArg for std::iter::FlatMap<I,U,F>
+  where
+  I: Clone,
+  U: Clone + Iterator,
+  F: Clone
+{
+  type Owned = Self;
+  fn clone_arg(self) -> Self::Owned { self }
+}
+
 pub
-fn cry_map<'a, A,B,F,I>(f: F, xs: I) -> impl Stream<B> + 'a
+fn cry_flat_map<'a, A,B,F,I,J>(f: F, xs: I) -> impl Stream<B> + 'a
   where
   A: Type,
-  B: Type,
-  F: Fn(A::Arg<'_>) -> B,
-  F: Clone,
-  F: 'a,
-  I: Stream<A>,
-  I: 'a
+  B: Type + 'a,
+  F: Fn(A) -> J,
+  F: Clone + 'a,
+  I: Stream<A> + 'a,
+  J: Stream<B> + 'a,
 {
-  xs.map(move |v| { f(v.as_arg()) })
+  xs.flat_map(move |v| { f(v) })
 }
+
 
 
 
