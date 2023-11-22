@@ -2,6 +2,10 @@ use crate::traits::*;
 use crate::type_traits::*;
 use dword::*;
 
+
+crate::derive_display!(DWordRef<'_>);
+crate::derive_display!(DWord);
+
 impl Type for DWord {
   type Arg<'a> = DWordRef<'a>;
   type Length = usize;
@@ -49,6 +53,12 @@ impl Literal for DWord {
   }
 }
 
+impl Logic for DWord {
+  fn complement(x: Self::Arg<'_>) -> Self { !x }
+  fn xor(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self { x ^ y }
+  fn and(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self { x & y }
+  fn or (x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self { x | y }
+}
 
-crate::derive_display!(DWordRef<'_>);
-crate::derive_display!(DWord);
+
+

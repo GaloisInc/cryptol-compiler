@@ -5,6 +5,7 @@ pub mod conversion;
 pub mod cmp;
 pub mod shift;
 pub mod arith;
+pub mod logic;
 pub mod join;
 
 #[cfg(test)]

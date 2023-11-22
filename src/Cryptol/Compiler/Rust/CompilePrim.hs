@@ -241,7 +241,6 @@ compileCryptolPreludePrim name args =
     "@"       -> undefined
 -}
 
-    _ -> pure (todoExp (Text.unpack name)) -- unsupportedPrim (pp name) args
 
 {-
     "fromInteger" -> ring "from_integer"
@@ -255,15 +254,16 @@ compileCryptolPreludePrim name args =
 
     -- Zero
     "zero" -> Nothing -- TODO
-
-    -- Logic
-    "&&" -> logic "and"
-    "||" -> logic "or"
-    "^" -> logic "xor"
-    "complement" -> logic "complement"
-    _ -> Nothing
 -}
+    -- Logic
+    "&&"         -> inferMethod "and"
+    "||"         -> inferMethod "or"
+    "^"          -> inferMethod "xor"
+    "complement" -> inferMethod "complement"
+
+    _ -> pure (todoExp (Text.unpack name)) -- unsupportedPrim (pp name) args
   where
+  -- XXX: special case if on streams
   inferMethod method =
     do ty <- compileType TypeInFunSig AsOwned (primTypeOfResult args)
        pure (mkRustCall (typeQualifiedExpr ty (simplePath method))

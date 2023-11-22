@@ -35,6 +35,7 @@ pub mod trait_methods {
   pub use crate::traits::LiteralNumber as _;
   pub use crate::traits::Integral as _;
   pub use crate::traits::Ring as _;
+  pub use crate::traits::Logic as _;
   /* XXX: Add other traits */
 }
 
