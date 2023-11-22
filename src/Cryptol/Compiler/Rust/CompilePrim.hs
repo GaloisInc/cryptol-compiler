@@ -61,6 +61,8 @@ cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs _resT
     case name of
       "take"   -> (replicate szArgs OwnContext, map ownIfStream argTs)
       "fromTo" -> (replicate szArgs OwnContext, [])
+      "zip"    -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
+      "map"    -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
 
       --- XXX: Others need ownd arguments, especially stream constructors
       _ -> dflt
@@ -129,7 +131,8 @@ compilePrim name args =
 
     Tuple -> pure (tupleExpr (primArgs args))
     TupleSel n _all ->
-      arg1 \x -> pure (tupleSelect x n)
+      arg1 \x -> pure (callMethod ((callMethod (tupleSelect x n) "as_arg" []))
+                                  "clone_arg" [])
 
     Hist ->
       size1 \i ->
@@ -138,6 +141,14 @@ compilePrim name args =
     Head ->
       arg1 \x ->
         pure (rustTry (callMethod x "next" []))
+
+    Map ->
+      arg2 \xs f ->
+        pure (mkRustCall (pathExpr (rtsName "cry_map")) [f,xs])
+
+    Zip ->
+      arg2 \xs ys ->
+        pure (callMethod xs "zip" [ys])
 
 
     _ -> pure (todoExp (show (pp name))) -- unsupportedPrim (pp name) args
@@ -149,6 +160,11 @@ compilePrim name args =
   arg1 f =
     case primArgs args of
       [a] -> f a
+      _ -> bad
+
+  arg2 f =
+    case primArgs args of
+      [a,b] -> f a b
       _ -> bad
 
   size1 f =

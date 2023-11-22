@@ -1,3 +1,4 @@
 dist-newstyle
 cry-rust
 cabal.project.local
+dword/target

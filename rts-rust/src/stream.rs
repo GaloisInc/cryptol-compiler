@@ -1,4 +1,4 @@
-
+use crate::type_traits::*;
 
 
 #[macro_export]
@@ -78,34 +78,71 @@ macro_rules! stream {
 
 
 
-impl<T: crate::Type> crate::Stream<T> for std::vec::IntoIter<T> {}
+impl<T: Type> Stream<T> for std::vec::IntoIter<T> {}
 
-impl<T: crate::Type> crate::Type for std::vec::IntoIter<T> {
+impl<T: Type> Type for std::vec::IntoIter<T> {
   type Arg<'a> = Self where Self: 'a;
   type Length  = ();    // XXX: ???
   fn as_arg(&self) -> Self::Arg<'_> { self.clone() }
 }
 
-impl<T:Clone> crate::type_traits::CloneArg for std::vec::IntoIter<T> {
+impl<T:Clone> CloneArg for std::vec::IntoIter<T> {
   type Owned = Self;
   fn clone_arg(self) -> Self::Owned { self }
 }
 
-impl<I,F,T:crate::Type> crate::Stream<T> for std::iter::Map<I,F>
+impl<T: Type, I, F> Stream<T> for std::iter::Map<I,F>
   where
   I: Clone + Iterator,
-  F: Clone + FnMut(<I as Iterator>::Item) -> T
+  F: Clone + FnMut(<I as Iterator>::Item) -> T,
   {}
 
-impl<I:Clone,F:Clone> crate::Type for std::iter::Map<I,F> {
+impl<I:Clone,F:Clone> Type for std::iter::Map<I,F> {
   type Arg<'a> = Self where Self: 'a;
   type Length  = ();    // XXX: ???
   fn as_arg(&self) -> Self::Arg<'_> { self.clone() }
 }
 
-impl<I:Clone,F:Clone> crate::type_traits::CloneArg for std::iter::Map<I,F> {
+impl<I:Clone,F:Clone> CloneArg for std::iter::Map<I,F> {
   type Owned = Self;
   fn clone_arg(self) -> Self::Owned { self }
+}
+
+
+impl<I,J> Stream<(<I as Iterator>::Item,<J as Iterator>::Item)>
+  for std::iter::Zip<I,J>
+  where
+  <I as Iterator>::Item : Type,
+  <J as Iterator>::Item : Type,
+  I: Clone + Iterator,
+  J: Clone + Iterator
+  {}
+
+impl<I:Clone,J:Clone> Type for std::iter::Zip<I,J> {
+  type Arg<'a> = Self where Self: 'a;
+  type Length  = ();    // XXX: ???
+  fn as_arg(&self) -> Self::Arg<'_> { self.clone() }
+}
+
+impl<I:Clone,J:Clone> CloneArg for std::iter::Zip<I,J> {
+  type Owned = Self;
+  fn clone_arg(self) -> Self::Owned { self }
+}
+
+
+
+pub
+fn cry_map<'a, A,B,F,I>(f: F, xs: I) -> impl Stream<B> + 'a
+  where
+  A: Type,
+  B: Type,
+  F: Fn(A::Arg<'_>) -> B,
+  F: Clone,
+  F: 'a,
+  I: Stream<A>,
+  I: 'a
+{
+  xs.map(move |v| { f(v.as_arg()) })
 }
 
 

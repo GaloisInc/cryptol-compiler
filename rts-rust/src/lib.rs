@@ -5,6 +5,7 @@ pub mod display;
 pub mod cry_dword;
 pub mod vec;
 pub mod stream;
+pub mod tuple;
 
 pub mod bit;
 pub mod int;
@@ -17,6 +18,7 @@ pub use dword::DWord;
 pub use dword::DWordRef;
 pub use stream::*;
 pub use range::*;
+pub use tuple::*;
 
 pub mod trait_methods {
   pub use crate::display::Display as _;

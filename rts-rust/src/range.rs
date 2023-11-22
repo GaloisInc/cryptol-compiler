@@ -1,6 +1,8 @@
+use crate::traits::*;
+use crate::type_traits::*;
 
-pub fn from_to_usize<T: crate::Literal>
-  (len: T::Length, from: usize, to: usize) -> impl crate::Stream<T> {
+pub fn from_to_usize<T: Literal>
+  (len: T::Length, from: usize, to: usize) -> impl Stream<T> {
   (from .. to+1).map(move |x| <T>::number_usize(len,x))
 }
 
@@ -20,9 +22,8 @@ impl Iterator for FromTo {
   }
 }
 
-pub fn from_to_uint<T: crate::Literal>
-  (len: T::Length, from: num::BigUint, to: num::BigUint) ->
-    impl crate::Stream<T> {
+pub fn from_to_uint<T: Literal>
+  (len: T::Length, from: num::BigUint, to: num::BigUint) -> impl Stream<T> {
   FromTo { current: from, last: to }.map(move |x| <T>::number_uint(len,&x))
 }
 
