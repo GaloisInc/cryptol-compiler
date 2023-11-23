@@ -336,6 +336,13 @@ impl DWord {
   pub fn assign_zero(&mut self) {
     for w in self.as_slice_mut() { *w = 0 }
   }
+
+  /// Assign all bits to max.
+  pub fn assign_max(&mut self) {
+    for w in self.as_slice_mut() { *w = LimbT::MAX }
+    self.fix_underflow()
+  }
+
 }
 
 

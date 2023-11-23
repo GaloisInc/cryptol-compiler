@@ -93,7 +93,7 @@ impl std::ops::Mul <DWordRef<'_>> for DWordRef<'_> {
     let r =
       if padding > 0 {
         clone = self.clone_word();
-        clone.shift_bits_right(padding);
+        clone.shift_bits_right(padding,false);
         clone.as_ref()
       } else {
         self

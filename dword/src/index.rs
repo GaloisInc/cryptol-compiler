@@ -46,6 +46,10 @@ impl<'a> DWordRef<'a> {
     w & (1 << (ix % DWord::LIMB_BITS)) != 0
   }
 
+  pub fn index_msb(self, i: usize) -> bool { self.index::<FromMSB>(i) }
+  pub fn index_lsb(self, i: usize) -> bool { self.index::<FromLSB>(i) }
+
+
   /// Iterate over the bits.
   pub fn iter<INDEX: IndexDir>(self) -> TraverseBits<'a, INDEX> {
     TraverseBits { dir: PhantomData, vec: self, ix: 0 }
