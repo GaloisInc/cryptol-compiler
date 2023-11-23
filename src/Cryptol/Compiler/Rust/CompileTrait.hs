@@ -18,7 +18,7 @@ traitNeedsLen (IRTrait name arg)  =
     PZero     -> Set.singleton arg
     PLiteral  -> Set.singleton arg
     PLogic    -> mempty
-    PRing     -> mempty
+    PRing     -> Set.singleton arg
     PIntegral -> mempty
     PField    -> mempty
     PRound    -> mempty
@@ -57,22 +57,22 @@ compileTrait t@(IRTrait name arg) =
 
   path = simplePath' pathSegments
   pathSegments =
-    [ cryptolCrate
-    , case name of
-        PZero         -> "Zero"
-        PLogic        -> "Logic"
-        PRing         -> "Ring"
-        PIntegral     -> "Integral"
-        PField        -> "Field"
-        PRound        -> "Round"
+    let cry x = [cryptolCrate, x ]
+    in
+    case name of
+        PZero      -> cry "Zero"
+        PLogic     -> cry "Logic"
+        PRing      -> cry "Ring"
+        PIntegral  -> cry "Integral"
+        PField     -> cry "Field"
+        PRound     -> cry "Round"
 
-        PEq           -> "Eq" -- Reuse Rust's?
-        PCmp          -> "Cmp"
-        PSignedCmp    -> "SignedCmp"
+        PEq        -> [ "Eq" ]
+        PCmp       -> [ "Ord" ]
+        PSignedCmp -> cry "SignedCmp"
 
-        PLiteral      -> "Literal"
-        PFLiteral     -> "FLiteral"
-    ]
+        PLiteral   -> cry "Literal"
+        PFLiteral  -> cry "FLiteral"
 
 -- | Given a type, compute the parameter for the `Length`
 --   trait in the Rust run-time system.

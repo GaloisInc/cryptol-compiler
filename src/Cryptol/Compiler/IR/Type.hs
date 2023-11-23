@@ -160,6 +160,14 @@ getTypeLen ty =
     TWord n    -> IRSize n
     _ -> panic "getTypeLen" ["Not a type with a length"]
 
+getTypeElement :: IRType tname -> IRType tname
+getTypeElement ty =
+  case ty of
+    TStream _ el -> el
+    TArray _ el  -> el
+    TWord {}     -> TBool
+    _ -> panic "getTypeElement" ["Not a container type"]
+
 
 matchStreamSize :: Eq tname => IRStreamSize tname -> IRStreamSize tname -> Bool
 matchStreamSize t1 t2 =

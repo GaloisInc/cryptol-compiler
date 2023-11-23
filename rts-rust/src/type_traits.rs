@@ -24,8 +24,6 @@ pub trait CloneArg : Clone {
 }
 
 
-crate::PrimType!{u64}
-
 /// All finite sequence representations should support these operations.
 pub trait Sequence : CloneArg {
   type Item : Type;

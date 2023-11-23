@@ -60,3 +60,30 @@ impl Logic for DWord {
   fn or (x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self { x | y }
 }
 
+
+impl Sequence for DWordRef<'_> {
+  type Item = bool;
+
+  fn length(self) -> usize { self.bits() }
+
+  fn shift_right(self, _: (), amt: usize) -> Self::Owned {
+    self >> amt
+  }
+
+  fn shift_right_signed(self, amt: usize) -> Self::Owned {
+    // Note that this is not recursive, we are calling the
+    // inherent method with the same name on DWordRef
+    self.shift_right_signed(amt)
+  }
+
+  fn shift_left(self, _: (), amt: usize) -> Self::Owned { self << amt }
+
+  fn rotate_right(self, amt: usize) -> Self::Owned { self.rotate_right(amt) }
+
+  fn rotate_left(self, amt: usize) -> Self::Owned { self.rotate_left(amt) }
+
+  fn index(self, i: usize) -> Self::Item { self.index_msb(i) }
+
+}
+
+

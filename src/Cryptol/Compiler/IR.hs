@@ -20,6 +20,7 @@ module Cryptol.Compiler.IR
   , IRCall(..)
   , IRCallable(..)
   , IRTopFunCall(..)
+  , topCallTypeArgs
   , callPrimG
   , callSizePrim
   , callPrim
@@ -56,6 +57,7 @@ module Cryptol.Compiler.IR
 
   ) where
 
+import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Common as Exported
 import Cryptol.Compiler.IR.Type   as Exported
@@ -267,6 +269,31 @@ callPrim prim = callPrimG prim []
 
 mkTuple :: [IRExpr tname name] -> IRExpr tname name
 mkTuple es = callPrim Tuple es (TTuple (map typeOf es))
+
+topCallTypeArgs :: IRTopFunCall tname name -> [IRType tname]
+topCallTypeArgs tf = go ps0 (irtfTypeArgs tf)
+  where
+  FunInstance ps0 = irfnInstance (irtfName tf)
+  go ps ts =
+    case ps of
+      [] ->
+        case ts of
+          [] -> []
+          _  -> panic "instanceTypeArgs" ["Extra type arguments"]
+      p : more ->
+        case p of
+          NumFixed {} -> go more ts
+          NumVar {}   -> go more ts
+          TyBool      -> TBool : go more ts
+          TyNotBool ->
+            case ts of
+              t : moreTs -> t : go more moreTs
+              [] -> panic "instanceTypeArgs" ["Missing type arg"]
+          TyAny ->
+            case ts of
+              t : moreTs -> t : go more moreTs
+              [] -> panic "instanceTypeArgs" ["Missing type arg"]
+
 
 
 --------------------------------------------------------------------------------

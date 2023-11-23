@@ -50,7 +50,7 @@ genCallLenArgs call =
   typeArgs =
     case ircFun call of
       IRFunVal _ -> []
-      IRTopFun tf -> irtfTypeArgs tf
+      IRTopFun tf -> topCallTypeArgs tf
 
 -- | Size arguments for a call
 genCallSizeArgs :: [ExprContext] -> Call -> Rust [RustExpr]

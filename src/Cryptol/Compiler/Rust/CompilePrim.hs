@@ -15,6 +15,7 @@ import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Monad
 import Cryptol.Compiler.Rust.Names
 import Cryptol.Compiler.Rust.CompileSize
+import Cryptol.Compiler.Rust.CompileTrait
 import Cryptol.Compiler.Rust.CompileType
 import Cryptol.Compiler.Rust.Utils
 
@@ -84,6 +85,10 @@ cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs _resT
       "-"       -> dflt
       "*"       -> dflt
       "negate"  -> dflt
+      "^^"      -> dflt
+
+      -- Shifts --
+      --XXX
 
       --- XXX: Others need ownd arguments, especially stream constructors
       _ -> dflt
@@ -214,20 +219,48 @@ compileCryptolPreludePrim name args =
     "#" -> compilePrimAppend args
 
     -- Literal
-    "number" ->
-       pure $ mkRustCall (tyTraitMethod "number")
-                         (primLenArgs args ++ primSizeArgs args)
+    "number" -> pure (callTyTraitMethod "number")
 
     -- Zero
-    "zero" ->
-       pure $ mkRustCall (tyTraitMethod "zero") (primLenArgs args)
+    "zero"   -> pure (callTyTraitMethod "zero")
 
 
     -- Ring --
-    "+"       -> inferMethod "add"
-    "-"       -> inferMethod "sub"
-    "*"       -> inferMethod "mul"
-    "negate"  -> inferMethod "negate"
+    "+"           -> pure (callTyTraitMethod "add")
+    "-"           -> pure (callTyTraitMethod "sub")
+    "*"           -> pure (callTyTraitMethod "mut")
+    "negate"      -> pure (callTyTraitMethod "negate")
+    "^^"          -> pure (callTyTraitMethod "exp")
+    "fromInteger" -> pure (callTyTraitMethod "from_integer")
+
+{-
+    "/" -> integral "div"
+    "%" -> integral "modulo"
+    "toInteger" -> integral "to_integer"
+-}
+
+    -- Shifts
+    ">>>" -> shiftOp False "rotate_right"
+    "<<<" -> shiftOp False "rotate_left"
+    ">>"  -> shiftOp True  "shift_right"
+    ">>$" -> shiftOp False "shift_right_signed"
+    "<<"  -> shiftOp True  "shift_left"
+
+    -- Logic
+    "&&"          -> arg2 \x y -> pure (callMethod x "and" [y])
+    "||"          -> arg2 \x y -> pure (callMethod x "or"  [y])
+    "^"           -> arg2 \x y -> pure (callMethod x "xor" [y])
+    "complement"  -> arg1 \x   -> pure (callMethod x "complement" [])
+
+    -- Comparisons
+    "=="          -> arg2 (\x y -> pure (binExpr Rust.EqOp x y))
+    "!="          -> arg2 (\x y -> pure (binExpr Rust.NeOp x y))
+    "<"           -> arg2 (\x y -> pure (binExpr Rust.LtOp x y))
+    ">"           -> arg2 (\x y -> pure (binExpr Rust.GtOp x y))
+    "<="          -> arg2 (\x y -> pure (binExpr Rust.LeOp x y))
+    ">="          -> arg2 (\x y -> pure (binExpr Rust.GeOp x y))
+
+
 
     -- Sequence --
     "take" ->
@@ -263,46 +296,31 @@ compileCryptolPreludePrim name args =
 -}
 
 
-{-
-    "fromInteger" -> ring "from_integer"
-    -- TODO: do we need to figure out if the exponent will fit in
-    --       a u32 before calling this? (or call `Integral::to_usize`?)
-    "^^" -> Nothing
-
-    "/" -> integral "div"
-    "%" -> integral "modulo"
-    "toInteger" -> integral "to_integer"
-
-    -- Zero
-    "zero" -> Nothing -- TODO
--}
-    -- Logic
-    "&&"         -> inferMethod "and"
-    "||"         -> inferMethod "or"
-    "^"          -> inferMethod "xor"
-    "complement" -> inferMethod "complement"
-
-    -- Comparisons
-    "==" -> arg2 (\x y -> pure (binExpr Rust.EqOp x y))
-    "!=" -> arg2 (\x y -> pure (binExpr Rust.NeOp x y))
-    "<"  -> arg2 (\x y -> pure (binExpr Rust.LtOp x y))
-    ">"  -> arg2 (\x y -> pure (binExpr Rust.GtOp x y))
-    "<=" -> arg2 (\x y -> pure (binExpr Rust.LeOp x y))
-    ">=" -> arg2 (\x y -> pure (binExpr Rust.GeOp x y))
 
     _ -> pure (todoExp (Text.unpack name)) -- unsupportedPrim (pp name) args
   where
-  -- XXX: special case if on streams
-  inferMethod method =
-    do ty <- compileType TypeInFunSig AsOwned (primTypeOfResult args)
-       pure (mkRustCall (typeQualifiedExpr ty (simplePath method))
-                        (primArgs args))
+  callTyTraitMethod method =
+    mkRustCall (tyTraitMethod method)
+               (primLenArgs args ++ primSizeArgs args ++ primArgs args)
 
   tyTraitMethod method =
       case primTypeArgs args of
         [ty] -> typeQualifiedExpr ty (simplePath method)
         _    -> panic "tyTraitMethod" ["Expected exactly 1 type argument"]
 
+  toUSize n =
+    do t <- compileType TypeAsParam AsOwned (primTypesOfArgs args !! n)
+       let e = primArgs args !! n
+       pure $ mkRustCall (typeQualifiedExpr t (simplePath "to_usize")) [e]
+
+
+  shiftOp withLen op = arg2 \x _y ->
+    do y <- toUSize 1
+       lenArgs <- if withLen
+                    then do let ty = head (primTypesOfArgs args)
+                            (:[]) <$> lenParamFor (getTypeElement ty)
+                    else pure []
+       pure (callMethod x op (lenArgs ++ [y]))
 
   bad = panic "compilePreludePrim"
           [ "Malformed primitive arguments:"
@@ -369,6 +387,10 @@ getSizeArg ctxt args n =
      case mb of
        Just a  -> pure a
        Nothing -> panic "getizeArg" ["Inf"]
+
+
+
+
 
 
 rtsName :: Rust.Ident -> RustPath
