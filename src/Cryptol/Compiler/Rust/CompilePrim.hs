@@ -154,6 +154,17 @@ compilePrim name args =
       arg1 \s ->
         pure (callMethod s "into_iter" [])
 
+    WordToStream ->
+      arg1 \s -> pure (callMethod s "iter_msb" [])
+
+    StreamToWord ->
+      case primTypesOfArgs args of
+        [ TStream (IRSize n) _ ] ->
+          do len <- compileSize OwnContext n MemSize
+             arg1 \s -> pure (mkRustCall (pathExpr (wordName "from_stream_msb"))
+                                         [ len, s ])
+        _ -> panic "StreamToWord" ["Input not a stream"]
+
 
     Tuple -> pure (tupleExpr (primArgs args))
     TupleSel n _all ->
@@ -233,11 +244,9 @@ compileCryptolPreludePrim name args =
     "^^"          -> pure (callTyTraitMethod "exp")
     "fromInteger" -> pure (callTyTraitMethod "from_integer")
 
-{-
-    "/" -> integral "div"
-    "%" -> integral "modulo"
-    "toInteger" -> integral "to_integer"
--}
+    "/"           -> pure (callTyTraitMethod "div")
+    "%"           -> pure (callTyTraitMethod "modulo")
+    "toInteger"   -> pure (callTyTraitMethod "to_integer")
 
     -- Shifts
     ">>>" -> shiftOp False "rotate_right"
@@ -247,10 +256,10 @@ compileCryptolPreludePrim name args =
     "<<"  -> shiftOp True  "shift_left"
 
     -- Logic
-    "&&"          -> arg2 \x y -> pure (callMethod x "and" [y])
-    "||"          -> arg2 \x y -> pure (callMethod x "or"  [y])
-    "^"           -> arg2 \x y -> pure (callMethod x "xor" [y])
-    "complement"  -> arg1 \x   -> pure (callMethod x "complement" [])
+    "&&"          -> pure (callTyTraitMethod "and")
+    "||"          -> pure (callTyTraitMethod "or")
+    "^"           -> pure (callTyTraitMethod "xor")
+    "complement"  -> pure (callTyTraitMethod "complement")
 
     -- Comparisons
     "=="          -> arg2 (\x y -> pure (binExpr Rust.EqOp x y))
@@ -395,6 +404,9 @@ getSizeArg ctxt args n =
 
 rtsName :: Rust.Ident -> RustPath
 rtsName x = simplePath' [ cryptolCrate, x ]
+
+wordName :: Rust.Ident -> RustPath
+wordName x = simplePath' [ cryptolCrate, "DWord", x ]
 
 
 

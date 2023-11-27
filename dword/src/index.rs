@@ -55,6 +55,12 @@ impl<'a> DWordRef<'a> {
     TraverseBits { dir: PhantomData, vec: self, ix: 0 }
   }
 
+  /// Iterate over the bits, starting at the most significant end.
+  pub fn iter_msb(self) -> TraverseBits<'a, FromMSB> { self.iter() }
+
+  /// Iterate over the bits, starting at the least significant end.
+  pub fn iter_lsb(self) -> TraverseBits<'a, FromLSB> { self.iter() }
+
   /// Iterate over the limbs, starting with the least signficant one.
   pub fn iter_limbs_lsb<'b>(&'b self) -> std::slice::Iter<'b,u64> {
     self.as_slice().iter()

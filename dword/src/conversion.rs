@@ -84,6 +84,23 @@ impl DWord {
     result
   }
 
+  /// Create a DWord from the given stream of bits.
+  /// The stream gives the bits from the most significatn end.
+  pub fn from_stream_msb(bits: usize, mut n: impl Iterator<Item=bool>) -> DWord {
+    let mut result = DWord::zero(bits);
+    let pad = result.padding();
+    for (i,x) in result.as_slice_mut().iter_mut().enumerate().rev() {
+      let start = if i == 0 { pad } else { 0 };
+      for shift_amt in (start .. (LimbT::BITS as usize)).rev() {
+        match n.next() {
+          Some(b) => if b { *x |= 1 << shift_amt },
+          None    => return result
+        }
+      }
+    }
+    result
+  }
+
 }
 
 
