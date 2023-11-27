@@ -68,6 +68,11 @@ cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs resT
       "zip"         -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
       "map"         -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
       "join"        -> (replicate szArgs OwnContext, [OwnContext])
+      "#"           -> ( replicate szArgs OwnContext
+                       , case resT of
+                           TWord {} -> [BorrowContext,BorrowContext]
+                           _        -> [OwnContext,OwnContext]
+                       )
 
       -- Logic
       "&&"         -> dflt
@@ -153,9 +158,14 @@ compilePrim name args =
       arg1 \s -> pure (callMethod s "collect" [])
                 -- XXX: type? specify that we want owned?
 
-    ArrayToStream ->
-      arg1 \s ->
-        pure (callMethod s "into_iter" [])
+    ArrayToStream -> arg1 \s -> pure (callMethod s "into_iter" [])
+    ArrayToWord   -> arg1 \s ->
+      case primTypesOfArgs args of
+        [TArray n TBool] ->
+          do len <- compileSize OwnContext n MemSize
+             pure (mkRustCall (pathExpr (wordName "from_stream_msb"))
+                  [ len, callMethod s "into_iter" []])
+        _ -> bad
 
     WordToStream ->
       arg1 \s -> pure (callMethod s "iter_msb" [])
@@ -230,7 +240,7 @@ compileCryptolPreludePrim name args =
     "False" -> pure (litExpr (boolLit False))
     "True"  -> pure (litExpr (boolLit True))
 
-    "#" -> compilePrimAppend args
+    "#"-> compileAppend args
 
     -- Literal
     "number" -> pure (callTyTraitMethodWithLen "number")
@@ -455,19 +465,14 @@ compileCryptolFloatPrim _ _ = unsupported "floating point primitve" -- XXX
 
 --------------------------------------------------------------------------------
 
-compilePrimAppend :: PrimArgs -> Rust RustExpr
-compilePrimAppend args = pure (todoExp "#")
-{-
-  case primTypesOfArgs args of
-    [ TWord (isKnownSize -> Just w1), TWord (isKnownSize -> Just w2) ] ->
-      pure (callMacro (simplePath' [cryptolCrate,"append"])
-                      (map (litExpr . mkIntLit Rust.Unsuffixed) [ w1, w2 ] ++ primArgs args))
-
-    -- XXX: array + array, array + stream, word + stream
-
+compileAppend :: PrimArgs -> Rust RustExpr
+compileAppend args =
+  case primArgs args of
+    [x,y] ->
+      case primTypeOfResult args of
+        TWord {} -> pure (callMethod x "append" [y])
+        _ -> pure (callMethod x "chain" [y])
     _ -> unsupportedPrim "#" args
--}
-
 
 
 compileJoin :: PrimArgs -> Rust RustExpr

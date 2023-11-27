@@ -561,6 +561,12 @@ coerceTo e tgtT =
     (TArray l1 t1, TStream (IRSize l2) t2)
       | (l1,t1) == (l2,t2) -> callPrim ArrayToStream [e] tgtT
 
+    (TArray l1 t1, TStream (IRSize l2) t2)
+      | (l1,t1) == (l2,t2) -> callPrim ArrayToStream [e] tgtT
+
+    (TArray l1 TBool, TWord l2)
+      | l1 == l2 -> callPrim ArrayToWord [e] tgtT
+
     (TWord l1, TStream (IRSize l2) TBool)
       | l1 == l2           -> callPrim WordToStream [e] tgtT
 
