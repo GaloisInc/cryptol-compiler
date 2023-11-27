@@ -1,5 +1,6 @@
 use crate::traits::*;
 use crate::type_traits::*;
+use crate::*;
 
 // -----------------------------------------------------------------------------
 // fromTo
@@ -67,3 +68,17 @@ pub fn inf_from<T:Integral>
   }.map(move |x| <T>::from_integer(len, &x))
 }
 
+
+
+
+
+// ------------------------------------------------------------------------------
+// Join helpers
+
+pub fn join_words(xs: impl Stream<DWord>) -> impl Stream<bool> {
+  xs.flat_map(move |w| w.into_iter_msb())
+}
+
+pub fn join_vecs<T: Type>(xs: impl Stream<Vec<T>>) -> impl Stream<T> {
+  xs.flat_map(move |w| w.into_iter())
+}

@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 use crate::{DWord,DWordRef};
 
 /// Specify from which side of a word are we indexing.
+#[derive(Clone,Copy)]
 pub enum IndexFrom {
   /// Index from the last signficatn side of the word.
   Lsb,
@@ -17,9 +18,11 @@ pub trait IndexDir {
 }
 
 /// Index from the last signficatn side of the word.
+#[derive(Clone,Copy)]
 pub struct FromLSB;
 
 /// Index from the most signficatn side of the word.
+#[derive(Clone,Copy)]
 pub struct FromMSB;
 
 impl IndexDir for FromLSB { const DIR: IndexFrom = IndexFrom::Lsb; }
@@ -51,15 +54,15 @@ impl<'a> DWordRef<'a> {
 
 
   /// Iterate over the bits.
-  pub fn iter<INDEX: IndexDir>(self) -> TraverseBits<'a, INDEX> {
-    TraverseBits { dir: PhantomData, vec: self, ix: 0 }
+  pub fn iter<INDEX: IndexDir>(self) -> TraverseBitsWordRef<'a, INDEX> {
+    TraverseBitsWordRef { dir: PhantomData, vec: self, ix: 0 }
   }
 
   /// Iterate over the bits, starting at the most significant end.
-  pub fn iter_msb(self) -> TraverseBits<'a, FromMSB> { self.iter() }
+  pub fn iter_msb(self) -> TraverseBitsWordRef<'a, FromMSB> { self.iter() }
 
   /// Iterate over the bits, starting at the least significant end.
-  pub fn iter_lsb(self) -> TraverseBits<'a, FromLSB> { self.iter() }
+  pub fn iter_lsb(self) -> TraverseBitsWordRef<'a, FromLSB> { self.iter() }
 
   /// Iterate over the limbs, starting with the least signficant one.
   pub fn iter_limbs_lsb<'b>(&'b self) -> std::slice::Iter<'b,u64> {
@@ -124,16 +127,54 @@ impl<'a> DWordRef<'a> {
 
 }
 
+/// Traverse DWord as bits, starting from most significant.
+#[derive(Clone)]
+pub struct TraverseBitsWord<INDEX: IndexDir> {
+  dir : PhantomData<INDEX>,
+  vec: DWord,
+  ix:  usize
+}
+
+
+impl<INDEX: IndexDir> Iterator for TraverseBitsWord<INDEX> {
+  type Item = bool;
+  fn next(&mut self) -> Option<Self::Item> {
+    if self.ix >= self.vec.bits() {
+      None
+    } else {
+      let i = self.ix;
+      self.ix += 1;
+      Some(self.vec.as_ref().index::<INDEX>(i))
+    }
+  }
+}
+
+
+impl DWord {
+
+  /// Iterate over the bits.
+  pub fn into_iter<INDEX: IndexDir>(self) -> TraverseBitsWord<INDEX> {
+    TraverseBitsWord { dir: PhantomData, vec: self, ix: 0 }
+  }
+
+  /// Iterate over the bits, starting at the most significant end.
+  pub fn into_iter_msb(self) -> TraverseBitsWord<FromMSB> { self.into_iter() }
+
+  /// Iterate over the bits, starting at the least significant end.
+  pub fn into_iter_lsb(self) -> TraverseBitsWord<FromLSB> { self.into_iter() }
+}
+
 
 /// Traverse DWord as bits, starting from most significant.
-pub struct TraverseBits<'a, INDEX: IndexDir> {
+#[derive(Clone)]
+pub struct TraverseBitsWordRef<'a, INDEX: IndexDir> {
   dir : PhantomData<INDEX>,
   vec: DWordRef<'a>,
   ix:  usize
 }
 
 
-impl<'a, INDEX: IndexDir> Iterator for TraverseBits<'a, INDEX> {
+impl<'a, INDEX: IndexDir> Iterator for TraverseBitsWordRef<'a, INDEX> {
   type Item = bool;
   fn next(&mut self) -> Option<Self::Item> {
     if self.ix >= self.vec.bits() {

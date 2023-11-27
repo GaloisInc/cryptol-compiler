@@ -53,7 +53,7 @@ unsupportedPrim nm args =
 
 cryPrimArgOwnership ::
   Cry.PrimIdent -> Int -> [Type] -> Type -> ([ExprContext], [ExprContext])
-cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs _resT
+cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs resT
   | mo == Cry.preludeName = prelPrim
   | mo == Cry.floatName   = floatPrim
   | otherwise =
@@ -67,6 +67,7 @@ cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs _resT
       "infFromThen" -> ([], [BorrowContext,BorrowContext])
       "zip"         -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
       "map"         -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
+      "join"        -> (replicate szArgs OwnContext, [OwnContext])
 
       -- Logic
       "&&"         -> dflt
@@ -287,6 +288,8 @@ compileCryptolPreludePrim name args =
                                       [ litExpr (mkUSizeLit n) ])
               _ -> size1 \n -> pure (callMethod x "take" [ n ])
 
+    "join" -> compileJoin args
+
     "fromTo" ->
       do (from,fromSz) <- getSizeArg OwnContext args 0
          (to,toSz)     <- getSizeArg OwnContext args 1
@@ -464,3 +467,48 @@ compilePrimAppend args = pure (todoExp "#")
 
     _ -> unsupportedPrim "#" args
 -}
+
+
+
+compileJoin :: PrimArgs -> Rust RustExpr
+compileJoin args =
+  case primTypeOfResult args of
+    TWord sz -> stream_to_word sz
+
+    TArray _ elTy ->
+      do e <- stream_to_stream elTy
+         pure (callMethod e "collect" [])
+
+    TStream _ elTy -> stream_to_stream elTy
+
+    _ -> bad
+  where
+  bad = unsupportedPrim "join" args
+
+  theArgRaw = head (primArgs args)
+  theArg =
+    case primTypesOfArgs args of
+       [TStream {}] -> theArgRaw
+       [TArray {}]  -> callMethod theArgRaw "into_iter" []
+       _            -> panic "compileJoin" ["Unexpected type of input"]
+
+  stream_to_word sz =
+    case sz of
+
+      IRFixedSize 0 ->
+        pure
+          (mkRustCall (pathExpr (wordName "zero")) [ litExpr (mkUSizeLit 0) ])
+
+      _ ->
+        do (parts,_) <- getSizeArg OwnContext args 0
+           (each,_)  <- getSizeArg OwnContext args 1
+           let fun = wordName "join"
+           pure (mkRustCall (pathExpr fun) [parts, each, theArg])
+
+  stream_to_stream elTy = pure (mkRustCall (pathExpr (rtsName fun)) [theArg])
+    where
+    fun =
+      case elTy of
+        TBool -> "join_words"
+        _     -> "join_vecs"
+
