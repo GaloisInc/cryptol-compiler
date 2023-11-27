@@ -28,6 +28,11 @@ impl Integral for num::BigInt {
     res as usize
   }
 
+  fn to_usize_maybe(x: &Self) -> Option<usize> {
+    let max = usize::MAX.into();
+    if x <= &max { Some(Self::to_usize(x)) } else { None }
+  }
+
   fn to_integer(x: &Self)       -> num::BigInt { x.clone() }
 
   fn div   (x: &Self, y: &Self) -> Self        { x / y }
@@ -39,7 +44,7 @@ impl Ring for num::BigInt {
   fn add         (x: &Self, y: &Self) -> Self { x + y }
   fn mul         (x: &Self, y: &Self) -> Self { x * y }
   fn sub         (x: &Self, y: &Self) -> Self { x - y }
-  fn exp         (x: &Self, y: usize) -> Self {
+  fn exp_usize   (x: &Self, y: usize) -> Self {
     assert!(y <= (u32::MAX as usize));
     Self::pow(x,y as u32)
   }

@@ -30,7 +30,7 @@ impl Ring for DWord {
     DWord::from_int(bits, x)
   }
 
-  fn exp(x: Self::Arg<'_>, y: usize) -> Self {
+  fn exp_usize(x: Self::Arg<'_>, y: usize) -> Self {
     assert!(y <= (u32::MAX as usize));
     x.pow(y as u32)
   }
@@ -40,6 +40,7 @@ impl Ring for DWord {
 impl Integral for DWord {
 
   fn to_usize(x: Self::Arg<'_>) -> usize { x.into() }
+  fn to_usize_maybe(x: Self::Arg<'_>) -> Option<usize> { x.into() }
   fn to_integer(x: Self::Arg<'_>) -> num::BigInt { x.into() }
   fn div(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self { x / y }
   fn modulo(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self { x % y }

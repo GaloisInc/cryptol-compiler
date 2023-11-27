@@ -61,10 +61,12 @@ cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs _resT
   where
   prelPrim =
     case name of
-      "take"   -> (replicate szArgs OwnContext, map ownIfStream argTs)
-      "fromTo" -> (replicate szArgs OwnContext, [])
-      "zip"    -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
-      "map"    -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
+      "take"        -> (replicate szArgs OwnContext, map ownIfStream argTs)
+      "fromTo"      -> (replicate szArgs OwnContext, [])
+      "infFrom"     -> ([], [BorrowContext])
+      "infFromThen" -> ([], [BorrowContext,BorrowContext])
+      "zip"         -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
+      "map"         -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
 
       -- Logic
       "&&"         -> dflt
@@ -230,10 +232,10 @@ compileCryptolPreludePrim name args =
     "#" -> compilePrimAppend args
 
     -- Literal
-    "number" -> pure (callTyTraitMethod "number")
+    "number" -> pure (callTyTraitMethodWithLen "number")
 
     -- Zero
-    "zero"   -> pure (callTyTraitMethod "zero")
+    "zero"   -> pure (callTyTraitMethodWithLen "zero")
 
 
     -- Ring --
@@ -241,8 +243,11 @@ compileCryptolPreludePrim name args =
     "-"           -> pure (callTyTraitMethod "sub")
     "*"           -> pure (callTyTraitMethod "mut")
     "negate"      -> pure (callTyTraitMethod "negate")
-    "^^"          -> pure (callTyTraitMethod "exp")
-    "fromInteger" -> pure (callTyTraitMethod "from_integer")
+    "^^" ->
+      do let fu = pathAddTypeSuffix (rtsName "exp") (primTypeArgs args)
+         pure (mkRustCall (pathExpr fu) (primArgs args))
+
+    "fromInteger" -> pure (callTyTraitMethodWithLen "from_integer")
 
     "/"           -> pure (callTyTraitMethod "div")
     "%"           -> pure (callTyTraitMethod "modulo")
@@ -298,6 +303,18 @@ compileCryptolPreludePrim name args =
                       else callMethod from "into" []
          pure (mkRustCall fuE (primLenArgs args ++ [from',to]))
 
+    "infFrom" ->
+       tyArg1 \t ->
+         let fu = pathAddTypeSuffix (rtsName "inf_from") [t]
+         in pure (mkRustCall (pathExpr fu) (primLenArgs args ++ primArgs args))
+
+    "infFromThen" ->
+       tyArg1 \t ->
+         let fu = pathAddTypeSuffix (rtsName "inf_from_then") [t]
+         in pure (mkRustCall (pathExpr fu) (primLenArgs args ++ primArgs args))
+
+
+
 {-
     -- Integral --
     "!"       -> undefined
@@ -310,12 +327,18 @@ compileCryptolPreludePrim name args =
   where
   callTyTraitMethod method =
     mkRustCall (tyTraitMethod method)
+               (primSizeArgs args ++ primArgs args)
+
+  callTyTraitMethodWithLen method =
+    mkRustCall (tyTraitMethod method)
                (primLenArgs args ++ primSizeArgs args ++ primArgs args)
 
   tyTraitMethod method =
       case primTypeArgs args of
-        [ty] -> typeQualifiedExpr ty (simplePath method)
-        _    -> panic "tyTraitMethod" ["Expected exactly 1 type argument"]
+        ty : _ -> typeQualifiedExpr ty (simplePath method)
+        [] -> panic "tyTraitMethod" ["Expected at least 1 type argument"
+                                    , "Method: " ++ show method
+                                    ]
 
   toUSize n =
     do t <- compileType TypeAsParam AsOwned (primTypesOfArgs args !! n)
@@ -336,6 +359,11 @@ compileCryptolPreludePrim name args =
           , show (pp args)
           ]
 
+  targ2 f =
+    case primTypeArgs args of
+      x : y : _ -> f x y
+      _ -> bad
+
   arg1 f =
     case primArgs args of
       [a] -> f a
@@ -347,6 +375,10 @@ compileCryptolPreludePrim name args =
       _ -> bad
 
 
+  tyArg1 f =
+    case primTypeArgs args of
+      t : _ -> f t
+      [] -> panic "tyArg1" ["Expected 1 type arguments"]
 
   size1 f =
     case primSizeArgs args of

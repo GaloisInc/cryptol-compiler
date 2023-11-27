@@ -1,6 +1,9 @@
 use crate::traits::*;
 use crate::type_traits::*;
 
+// -----------------------------------------------------------------------------
+// fromTo
+
 pub fn from_to_usize<T: Literal>
   (len: T::Length, from: usize, to: usize) -> impl Stream<T> {
   (from .. to+1).map(move |x| <T>::number_usize(len,x))
@@ -27,4 +30,40 @@ pub fn from_to_uint<T: Literal>
   FromTo { current: from, last: to }.map(move |x| <T>::number_uint(len,&x))
 }
 
+
+// -----------------------------------------------------------------------------
+// infFrom and infFromThen
+
+
+#[derive(Clone)]
+struct InfFromThen {
+  current: num::BigInt,
+  step:    num::BigInt
+}
+
+impl Iterator for InfFromThen {
+  type Item = num::BigInt;
+  fn next(&mut self) -> Option<num::BigInt> {
+    let result = self.current.clone();
+    self.current += &self.step;
+    Some(result)
+  }
+}
+
+pub fn inf_from_then<T:Integral>
+  (len: T::Length, start: T::Arg<'_>, next: T::Arg<'_>) -> impl Stream<T> {
+  let start_i = T::to_integer(start);
+  let step   = T::to_integer(next) - &start_i;
+  InfFromThen { current: start_i, step: step }
+    .map(move |x| <T>::from_integer(len, &x))
+}
+
+pub fn inf_from<T:Integral>
+  (len: T::Length, start: T::Arg<'_>) -> impl Stream<T> {
+
+  InfFromThen {
+    current: T::to_integer(start),
+    step: 1u8.into()
+  }.map(move |x| <T>::from_integer(len, &x))
+}
 

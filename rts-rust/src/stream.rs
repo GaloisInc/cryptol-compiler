@@ -97,6 +97,28 @@ impl<T:Clone> CloneArg for std::vec::IntoIter<T> {
 }
 
 
+/* -----------------------------------------------------------------------------
+Chain
+----------------------------------------------------------------------------- */
+impl<I:Clone,J:Clone> CloneArg for std::iter::Chain<I,J> {
+  type Owned = Self;
+  fn clone_arg(self) -> Self::Owned { self }
+}
+
+impl<I:Clone,J:Clone> Type for std::iter::Chain<I,J> {
+  type Arg<'a> = Self where Self: 'a;
+  type Length  = ();    // XXX: ???
+  fn as_arg(&self) -> Self::Arg<'_> { self.clone() }
+}
+
+impl<T: Type, I, J> Stream<T> for std::iter::Chain<I,J>
+  where
+    I: Clone + Iterator<Item=T>,
+    J: Clone + Iterator<Item=T>
+    {}
+
+
+
 
 /* -----------------------------------------------------------------------------
 Map

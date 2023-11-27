@@ -124,6 +124,13 @@ macro_rules! to_uprim{
         w as $t
       }
     }
+
+    impl From<DWordRef<'_>> for Option<$t> {
+      fn from(x: DWordRef<'_>) -> Self {
+        let max = DWord::from_u64(x.bits(), <$t>::MAX as u64);
+        if x <= max.as_ref() { Some(x.into()) } else { None }
+      }
+    }
   };
 }
 

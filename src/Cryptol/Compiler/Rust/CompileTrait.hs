@@ -19,7 +19,7 @@ traitNeedsLen (IRTrait name arg)  =
     PLiteral  -> Set.singleton arg
     PLogic    -> mempty
     PRing     -> Set.singleton arg
-    PIntegral -> mempty
+    PIntegral -> Set.singleton arg
     PField    -> mempty
     PRound    -> mempty
     PEq       -> mempty

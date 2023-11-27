@@ -39,15 +39,21 @@ pub trait Ring: Type {
   /// Note that the Cryptol the power is polymorphic,
   /// but here we use `usize`, so we don't support raising
   /// things to value that do not fit in `usize`.
-  fn exp(x: Self::Arg<'_>, y: usize) -> Self;
+  fn exp_usize(x: Self::Arg<'_>, y: usize) -> Self;
+}
+
+pub fn exp<T: Ring, I: Integral>(x: T::Arg<'_>, y: I::Arg<'_>) -> T {
+  T::exp_usize(x, I::to_usize(y))
 }
 
 
-pub trait Integral: Type {
+pub trait Integral: Ring {
 
   /// This is not a standard Cryptol primitives, but we use it
   /// in places where `Integral` is used for idexing into things or exponents.
   fn to_usize(x: Self::Arg<'_>) -> usize;
+
+  fn to_usize_maybe(x: Self::Arg<'_>) -> Option<usize>;
 
   /// Convert something to an integer.
   fn to_integer(x: Self::Arg<'_>) -> num::BigInt;
