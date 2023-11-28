@@ -62,6 +62,7 @@ cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs resT
   prelPrim =
     case name of
       "take"        -> (replicate szArgs OwnContext, map ownIfStream argTs)
+      "drop"        -> (replicate szArgs OwnContext, map ownIfStream argTs)
       "fromTo"      -> (replicate szArgs OwnContext, [])
       "infFrom"     -> ([], [BorrowContext])
       "infFromThen" -> ([], [BorrowContext,BorrowContext])
@@ -155,7 +156,7 @@ compilePrim name args =
     WordLookup ->
       size1 \i ->
       arg1  \a ->
-        pure (indexExpr a i)
+        pure (callMethod a "index_msb" [i])
 
     StreamToArray ->
       arg1 \s -> pure (callMethod s "to_vec" [])
@@ -287,18 +288,24 @@ compileCryptolPreludePrim name args =
     "<="          -> arg2 (\x y -> pure (binExpr Rust.LeOp x y))
     ">="          -> arg2 (\x y -> pure (binExpr Rust.GeOp x y))
 
-
+{-
+    "!"       -> undefined
+    "@"       -> undefined
+-}
 
     -- Sequence --
     "take" ->
       arg1 \x ->
-        case getTypeLen (primTypeOfResult args) of
-          IRInfSize -> pure x
-          IRSize sz ->
-            case sz of
-              IRFixedSize n -> pure (callMethod x "take"
-                                      [ litExpr (mkUSizeLit n) ])
-              _ -> size1 \n -> pure (callMethod x "take" [ n ])
+        do mb <- getStreamSizeArg OwnContext args 0
+           pure
+             case mb of
+                Nothing        -> x
+                Just (front,_) -> callMethod x "take" [front]
+
+    "drop" ->
+      arg1 \x ->
+        do (front,_) <- getSizeArg OwnContext args 0
+           pure (callMethod x "skip" [ front ])
 
     "join"      -> compileJoin args
     "split"     -> compileSplit args
@@ -337,11 +344,6 @@ compileCryptolPreludePrim name args =
 
 
 
-{-
-    -- Integral --
-    "!"       -> undefined
-    "@"       -> undefined
--}
 
 
 
@@ -532,9 +534,7 @@ compileSplit args =
   do theArg <- case primArgs args of
                  [a] -> pure a
                  _   -> bad
-     each   <- case primSizeArgs args of
-                 [_parts,e] -> pure e
-                 _ -> bad
+     (each,_) <- getSizeArg OwnContext args 1
      case primTypesOfArgs args of
        [TWord {}] -> fixOut (callMethod theArg "into_iter_words_msb" [each])
        [TArray {}]  -> fromStream each (callMethod theArg "into_iter" [])

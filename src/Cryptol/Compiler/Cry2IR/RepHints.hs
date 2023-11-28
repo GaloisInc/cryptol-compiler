@@ -84,5 +84,8 @@ primRepHints = Map.fromList
 
   , (Cry.prelPrim "take", [ AsWord :-> AsWord
                           , AsStream NoHint :-> AsStream NoHint ])
+
+  , (Cry.prelPrim "drop", [ AsWord :-> AsWord
+                          , AsStream NoHint :-> AsStream NoHint ])
   ]
 

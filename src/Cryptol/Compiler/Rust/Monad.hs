@@ -355,7 +355,7 @@ lookupFunName fu =
                                ] ++ map (show.cryPP)
                                    (Map.keys (roExternalNames ro))
                   case Map.lookup fu (extModuleNames ext) of
-                    Just it -> pure (simplePath' [ extModuleName ext, it ])
+                    Just it -> pure (simplePath' [ "crate", extModuleName ext, it ])
                     Nothing -> panic "lookupFunName"
                                  [ "Missing function"
                                  , "Module: " ++ show (cryPP mo)

@@ -28,6 +28,15 @@ impl DWord {
 
 impl<'a> DWordRef<'a> {
 
+  /// Keep only the given number of bist from the MSB side
+  pub fn take(self, amt: usize) -> DWord { self.sub_word_msb(amt, 0) }
+
+
+  /// Skip the given number of most significatn bits.
+  pub fn skip(self, amt: usize) -> DWord {
+    self.sub_word_msb(self.bits() - amt, amt)
+  }
+
   /// Split the words into sub-words of the given size.
   /// Generates only full words, so if the sub size does not divide the word
   /// exactly, the left over bits at the end will be ignored.

@@ -157,6 +157,45 @@ fn cry_map<'a, A,B,F,I>(f: F, xs: I) -> impl Stream<B> + 'a
 }
 
 
+// -----------------------------------------------------------------------------
+// Take
+// -----------------------------------------------------------------------------
+
+impl <T,I> Stream<T> for std::iter::Take<I>
+  where T: Type, I: Clone + Iterator<Item=T>
+  {}
+
+impl <I:Clone> Type for std::iter::Take<I> {
+  type Arg<'a> = Self where Self: 'a;
+  type Length = ();
+  fn as_arg(&self) -> Self::Arg<'_> { self.clone() }
+}
+
+impl <I:Clone> CloneArg for std::iter::Take<I> {
+  type Owned = Self;
+  fn clone_arg(self) -> Self::Owned { self }
+}
+
+
+// -----------------------------------------------------------------------------
+// Skip
+// -----------------------------------------------------------------------------
+
+impl <T,I> Stream<T> for std::iter::Skip<I>
+  where T: Type, I: Clone + Iterator<Item=T>
+  {}
+
+impl <I:Clone> Type for std::iter::Skip<I> {
+  type Arg<'a> = Self where Self: 'a;
+  type Length = ();
+  fn as_arg(&self) -> Self::Arg<'_> { self.clone() }
+}
+
+impl <I:Clone> CloneArg for std::iter::Skip<I> {
+  type Owned = Self;
+  fn clone_arg(self) -> Self::Owned { self }
+}
+
 
 
 
