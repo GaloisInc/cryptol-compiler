@@ -11,6 +11,7 @@ pub mod bit;
 pub mod int;
 pub mod range;
 pub mod transpose;
+pub mod split;
 
 pub use type_traits::*;
 pub use traits::*;
@@ -22,6 +23,7 @@ pub use vec::*;
 pub use range::*;
 pub use transpose::*;
 pub use tuple::*;
+pub use split::*;
 
 pub mod trait_methods {
   pub use crate::display::Display as _;
@@ -31,6 +33,7 @@ pub mod trait_methods {
   pub use crate::type_traits::CloneArg as _;
   pub use crate::type_traits::Sequence as _;
   pub use crate::type_traits::Word as _;
+  pub use crate::type_traits::ToVec as _;
   pub use crate::type_traits::Stream as _;
 
   pub use crate::traits::Zero as _;

@@ -76,7 +76,7 @@ pub fn inf_from<T:Integral>
 // Join helpers
 
 pub fn join_words(xs: impl Stream<DWord>) -> impl Stream<bool> {
-  xs.flat_map(move |w| w.into_iter_msb())
+  xs.flat_map(move |w| w.into_iter_bits_msb())
 }
 
 pub fn join_vecs<T: Type>(xs: impl Stream<Vec<T>>) -> impl Stream<T> {

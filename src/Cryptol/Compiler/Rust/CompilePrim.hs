@@ -68,6 +68,7 @@ cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs resT
       "zip"         -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
       "map"         -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
       "join"        -> (replicate szArgs OwnContext, [OwnContext])
+      "split"       -> (replicate szArgs OwnContext, [OwnContext])
       "#"           -> ( replicate szArgs OwnContext
                        , case resT of
                            TWord {} -> [BorrowContext,BorrowContext]
@@ -157,8 +158,7 @@ compilePrim name args =
         pure (indexExpr a i)
 
     StreamToArray ->
-      arg1 \s -> pure (callMethod s "collect" [])
-                -- XXX: type? specify that we want owned?
+      arg1 \s -> pure (callMethod s "to_vec" [])
 
     ArrayToStream -> arg1 \s -> pure (callMethod s "into_iter" [])
     ArrayToWord   -> arg1 \s ->
@@ -301,6 +301,7 @@ compileCryptolPreludePrim name args =
               _ -> size1 \n -> pure (callMethod x "take" [ n ])
 
     "join"      -> compileJoin args
+    "split"     -> compileSplit args
     "transpose" -> compileTranspose args
     "reverse"   -> arg1 \x ->
         case primTypeOfResult args of
@@ -490,7 +491,7 @@ compileJoin args =
 
     TArray _ elTy ->
       do e <- stream_to_stream elTy
-         pure (callMethod e "collect" [])
+         pure (callMethod e "to_vec" [])
 
     TStream _ elTy -> stream_to_stream elTy
 
@@ -525,6 +526,34 @@ compileJoin args =
         TBool -> "join_words"
         _     -> "join_vecs"
 
+
+compileSplit :: PrimArgs -> Rust RustExpr
+compileSplit args =
+  do theArg <- case primArgs args of
+                 [a] -> pure a
+                 _   -> bad
+     each   <- case primSizeArgs args of
+                 [_parts,e] -> pure e
+                 _ -> bad
+     case primTypesOfArgs args of
+       [TWord {}] -> fixOut (callMethod theArg "into_iter_words_msb" [each])
+       [TArray {}]  -> fromStream each (callMethod theArg "into_iter" [])
+       [TStream {}] -> fromStream each theArg
+       _ -> bad
+  where
+  fromStream each theArg =
+    case getTypeElement (primTypeOfResult args) of
+      TWord {} -> fixOut (mkRustCall (pathExpr (rtsName "split_bits"))
+                                                        [ each, theArg ])
+      _ -> fixOut (mkRustCall (pathExpr (rtsName "split")) [ each, theArg ])
+
+  fixOut o =
+    case primTypeOfResult args of
+      TStream {} -> pure o
+      TArray {}  -> pure (callMethod o "to_vec" [])
+      _          -> bad
+
+  bad  = unsupportedPrim "split" args
 
 
 compileTranspose :: PrimArgs -> Rust RustExpr

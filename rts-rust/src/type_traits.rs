@@ -76,8 +76,18 @@ pub trait Word : Sequence<Item=bool> {
 }
 
 
+pub trait ToVec<T> : Iterator<Item=T> {
+  fn to_vec(self) -> Vec<T>;
+}
+
+impl<T, I: Iterator<Item=T>> ToVec<T> for I {
+  fn to_vec(self) -> Vec<T> { self.collect() }
+}
+
+
+// XXX: These should probably not be "Type"
 // All stream representaitons should support these operations.
-pub trait Stream<T:Type> : Type + CloneArg<Owned=Self> + Iterator<Item=T> {
+pub trait Stream<T:Type> : Type + CloneArg<Owned=Self> + ToVec<T> {
 }
 
 

@@ -7,6 +7,10 @@ pub mod shift;
 pub mod arith;
 pub mod logic;
 pub mod join;
+pub mod split;
+pub mod iter_bits;
+pub mod iter_limbs;
+pub mod reverse;
 
 #[cfg(test)]
 pub mod proptest;
