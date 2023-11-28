@@ -18,6 +18,7 @@ pub use display::*;
 pub use dword::DWord;
 pub use dword::DWordRef;
 pub use stream::*;
+pub use vec::*;
 pub use range::*;
 pub use transpose::*;
 pub use tuple::*;

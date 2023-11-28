@@ -71,6 +71,11 @@ primRepHints = Map.fromList
         , AsArray (AsArray NoHint) :-> AsArray (AsArray NoHint)
         ])
 
+  , (Cry.prelPrim "reverse",
+      [ AsWord :-> AsWord
+      , AsArray NoHint :-> AsArray NoHint
+      ])
+
   , (Cry.prelPrim "zip",
         [ AsStream NoHint :-> AsStream NoHint :-> AsStream NoHint ])
 

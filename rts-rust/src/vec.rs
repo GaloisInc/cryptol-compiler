@@ -114,7 +114,10 @@ impl<const BASE: usize, T: Base<BASE>> Base<BASE> for &[T] {
   }
 }
 
-
+pub fn reverse<T:Type>(mut xs: Vec<T>) -> Vec<T> {
+  xs.reverse();
+  xs
+}
 
 
 

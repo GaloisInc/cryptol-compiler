@@ -73,6 +73,8 @@ cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs resT
                            TWord {} -> [BorrowContext,BorrowContext]
                            _        -> [OwnContext,OwnContext]
                        )
+      "transpose"   -> (replicate szArgs OwnContext, [BorrowContext])
+      "reverse"     -> (replicate szArgs OwnContext, [OwnContext])
 
       -- Logic
       "&&"         -> dflt
@@ -300,6 +302,11 @@ compileCryptolPreludePrim name args =
 
     "join"      -> compileJoin args
     "transpose" -> compileTranspose args
+    "reverse"   -> arg1 \x ->
+        case primTypeOfResult args of
+          TWord {}  -> pure (callMethod x "reverse" [])
+          TArray {} -> pure (mkRustCall (pathExpr (rtsName "reverse")) [x])
+          _ -> unsupportedPrim "reverse" args
 
     "fromTo" ->
       do (from,fromSz) <- getSizeArg OwnContext args 0
@@ -522,11 +529,11 @@ compileJoin args =
 
 compileTranspose :: PrimArgs -> Rust RustExpr
 compileTranspose args =
-  do (a,_) <- getSizeArg OwnContext args 0
-     (b,_) <- getSizeArg OwnContext args 1
-     fun <- case primTypeOfResult args of
+  do fun <- case primTypeOfResult args of
               TArray _ (TWord {})  -> pure "transpose_word"
               TArray _ (TArray {}) -> pure "transpose_vec"
               _ -> unsupportedPrim "transpose" args
-     pure (mkRustCall (pathExpr (rtsName fun)) (a : b : primArgs args))
+     pure (mkRustCall (pathExpr (rtsName fun))
+                      (primSizeArgs args ++ primArgs args))
+
 

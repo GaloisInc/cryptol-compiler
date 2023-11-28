@@ -165,6 +165,12 @@ impl DWord {
 }
 
 
+impl DWord {
+  pub fn reverse(self) -> DWord {
+    DWord::from_stream_msb(self.bits(), self.into_iter_lsb())
+  }
+}
+
 /// Traverse DWord as bits, starting from most significant.
 #[derive(Clone)]
 pub struct TraverseBitsWordRef<'a, INDEX: IndexDir> {
