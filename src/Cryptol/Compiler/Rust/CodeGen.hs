@@ -254,13 +254,18 @@ genSourceFile m decls =
       let imports = [ mkUseGlob [ cryptolCrate, "trait_methods"]
                     ]
           modName = modNameToRustModName m
-          file = Rust.SourceFile (Just modName) [] (imports ++ fnItems)
+          file = Rust.SourceFile (Just modName) attribs (imports ++ fnItems)
       names <- getFunNames
       let extMod =
             ExtModule { extModuleName  = Rust.mkIdent modName
                       , extModuleNames = names
                       }
       pure (extMod, file)
+  where
+  attribs =
+    [ disableWarning "unused_variables"
+    , disableWarning "unused_imports"
+    ]
 
 genModule ::
   GenInfo ->

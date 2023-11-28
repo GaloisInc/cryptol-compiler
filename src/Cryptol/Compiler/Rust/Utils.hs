@@ -14,6 +14,7 @@ import Language.Rust.Data.Position qualified as Rust
 import Cryptol.Compiler.Error (panic)
 
 type RustSourceFile = Rust.SourceFile ()
+type RustAttribute = Rust.Attribute ()
 type RustPath     = Rust.Path ()
 type RustType     = Rust.Ty ()
 type RustExpr     = Rust.Expr ()
@@ -227,8 +228,17 @@ rustTry e = Rust.Try [] e ()
 --------------------------------------------------------------------------------
 -- Top Delcarations
 
-sourceFile :: Maybe Rust.Name -> [RustItem] -> RustSourceFile
-sourceFile nm = Rust.SourceFile nm []
+sourceFile :: Maybe Rust.Name -> [RustAttribute] -> [RustItem] -> RustSourceFile
+sourceFile = Rust.SourceFile
+
+disableWarning :: Rust.Ident -> RustAttribute
+disableWarning i =
+  Rust.Attribute Rust.Inner (simplePath "allow") toks ()
+  where
+  toks = Rust.Tree
+       $ Rust.Delimited dummySpan Rust.Paren
+       $ Rust.Tree (Rust.Token dummySpan (Rust.IdentTok i))
+
 
 mkFnItem ::
   Rust.Ident -> RustGenerics -> [(Rust.Ident, RustType)] -> RustType ->

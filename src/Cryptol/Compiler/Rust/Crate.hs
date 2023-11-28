@@ -83,7 +83,8 @@ mkCrate withExe crateName target mods =
       createDirectoryIfMissing True src
 
       unless (null mods)
-        do let lib = sourceFile Nothing (map pubMod mods)
+        do let lib = sourceFile Nothing [disableWarning "special_module_name"]
+                                        (map pubMod mods)
            writeFile (src </> "lib.rs") (show (Rust.pretty' lib))
 
       when withExe sampleDriver
