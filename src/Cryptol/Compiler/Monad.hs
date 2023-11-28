@@ -483,7 +483,7 @@ enterLoc loc (CryC m) =
 unsupported :: Doc -> CryC a
 unsupported x =
   do loc <- roLoc <$> CryC ask
-     Err.unsupported (reverse loc) x
+     throwError (Unsupported (reverse loc) x)
 
 
 --------------------------------------------------------------------------------

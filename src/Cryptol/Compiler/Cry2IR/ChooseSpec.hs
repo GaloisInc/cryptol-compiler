@@ -45,14 +45,12 @@ selectInstance f tyArgs tgtT =
       [] ->
         case candidate of
           Nothing ->
-            panic "selectInstance" $
-              [ "No matching instance"
-              , "Function: " ++ show (pp f)
-              , "Type arguments: " ++ show (commaSep (map (either pp cryPP) targs))
-              , "Target type: " ++ show (pp tgtT)
-              , "Instances:"
-              ] ++
-              [ show $ nest 2 $ vcat $ map (("*" <+>) . pp . snd) is0 ]
+            unsupported $ vcat
+               [ "Unsupported function instance:"
+               , "Function:" <+> pp f
+               , "Type arguments:" <+> commaSep (map (either pp cryPP) targs)
+               , "Target type:" <+> pp tgtT
+               ]
           Just (c,_)  -> pure c
       i : more ->
         do mbYes <- matchFun i targs tgtT

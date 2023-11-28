@@ -27,7 +27,8 @@ type Loc = [Doc]
 
 -- | Compiler warnings.
 data CompilerWarning =
-  LoadWarning Cry.ModuleWarning   -- ^ Warnings when loading Cryptol modules
+    LoadWarning Cry.ModuleWarning   -- ^ Warnings when loading Cryptol modules
+  | WarnError CompilerError
 
 instance Exception CompilerError
 
@@ -52,6 +53,7 @@ instance PP CompilerWarning where
   pp warn =
     case warn of
       LoadWarning w -> pp (Cry.pp w)
+      WarnError e -> "[WARNING] Ignoring error:" $$ nest 2 (pp e)
 
 unsupported :: [Doc] -> Doc -> a
 unsupported loc what = throw (Unsupported loc what)

@@ -183,8 +183,8 @@ genExpr how (IRExpr e0) =
       in genStream streamExpr
 
 
-        -- | Generate a RustItem corresponding to a function declaration.
-  --   Returns `Nothing` if the declaration is for an IR primitive.
+-- | Generate a RustItem corresponding to a function declaration.
+--   Returns `Nothing` if the declaration is for an IR primitive.
 genFunDecl :: FunDecl -> Rust (Maybe RustItem)
 genFunDecl decl =
   case irfDef decl of

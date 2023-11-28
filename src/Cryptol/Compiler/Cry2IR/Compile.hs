@@ -4,6 +4,7 @@ module Cryptol.Compiler.Cry2IR.Compile where
 import Data.Set qualified as Set
 import Data.List(elemIndex)
 import Data.Text(Text)
+import Data.Either(partitionEithers)
 import Control.Monad(zipWithM,forM,guard,when)
 
 import Cryptol.TypeCheck.AST qualified as Cry
@@ -13,7 +14,7 @@ import Cryptol.IR.FreeVars qualified as Cry
 import Cryptol.Utils.RecordMap qualified as Cry
 import Cryptol.Utils.Ident qualified as Cry
 
-import Cryptol.Compiler.Error(panic)
+import Cryptol.Compiler.Error(panic, CompilerWarning(..))
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.IR.Common
 import Cryptol.Compiler.IR.Cryptol
@@ -41,7 +42,7 @@ compileTopDecl d =
   M.enterLoc [cryPP cname] $
   debugWrap $
 
-  do insts <-
+  do mb_insts <-
        case Cry.dDefinition d of
 
          Cry.DForeign {} ->
@@ -49,13 +50,14 @@ compileTopDecl d =
 
          Cry.DPrim       ->
            do insts <- Spec.compileSchema cname (Cry.dSignature d)
-              pure [ (i,ty,IRFunPrim) | (i,ty) <- insts ]
+              pure [ Right (i,ty,IRFunPrim) | (i,ty) <- insts ]
 
          Cry.DExpr e ->
            do insts <- Spec.compileSchema cname (Cry.dSignature d)
               let (as,xs,body) = prepExprDecl e
               forM insts \(inst@(FunInstance pis),fty) ->
-                C.runConvertM
+                M.catchError $
+                C.runConvertM $
                 do let is = map (NameId . fst) xs
                    let (sizePs, knownTs) = knownPs as pis
                        su = Cry.listParamSubst knownTs
@@ -66,6 +68,9 @@ compileTopDecl d =
                      C.withLocals xsTs
                        do def <- compileExpr ibody (ftResult fty)
                           pure (inst, fty, IRFunDef is def)
+
+     let (errs,insts) = partitionEithers mb_insts
+     mapM_ (M.addWarning . WarnError) errs
 
      let isPrim def = case def of
                         IRFunPrim -> True
