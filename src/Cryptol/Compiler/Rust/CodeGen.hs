@@ -83,7 +83,7 @@ genCall call =
 
     IRTopFun tf ->
       do typeArgs <- traverse (compileType TypeAsParam AsOwned)
-                              (irtfTypeArgs tf)
+                              (topCallTypeArgs tf)
          lenArgs      <- genCallLenArgs call
          name         <- lookupFunName (irtfName tf)
 

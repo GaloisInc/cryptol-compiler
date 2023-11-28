@@ -12,6 +12,7 @@ pub mod int;
 pub mod range;
 pub mod transpose;
 pub mod split;
+pub mod index;
 
 pub use type_traits::*;
 pub use traits::*;
@@ -24,6 +25,7 @@ pub use range::*;
 pub use transpose::*;
 pub use tuple::*;
 pub use split::*;
+pub use index::*;
 
 pub mod trait_methods {
   pub use crate::display::Display as _;

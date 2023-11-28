@@ -61,22 +61,24 @@ cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs resT
   where
   prelPrim =
     case name of
-      "take"        -> (replicate szArgs OwnContext, map ownIfStream argTs)
-      "drop"        -> (replicate szArgs OwnContext, map ownIfStream argTs)
-      "fromTo"      -> (replicate szArgs OwnContext, [])
+      "take"        -> (ownSizes, map ownIfStream argTs)
+      "drop"        -> (ownSizes, map ownIfStream argTs)
+      "fromTo"      -> (ownSizes, [])
       "infFrom"     -> ([], [BorrowContext])
       "infFromThen" -> ([], [BorrowContext,BorrowContext])
-      "zip"         -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
-      "map"         -> (replicate szArgs OwnContext, [OwnContext,OwnContext])
-      "join"        -> (replicate szArgs OwnContext, [OwnContext])
-      "split"       -> (replicate szArgs OwnContext, [OwnContext])
-      "#"           -> ( replicate szArgs OwnContext
+      "zip"         -> (ownSizes, [OwnContext,OwnContext])
+      "map"         -> (ownSizes, [OwnContext,OwnContext])
+      "join"        -> (ownSizes, [OwnContext])
+      "split"       -> (ownSizes, [OwnContext])
+      "#"           -> (ownSizes
                        , case resT of
                            TWord {} -> [BorrowContext,BorrowContext]
                            _        -> [OwnContext,OwnContext]
                        )
-      "transpose"   -> (replicate szArgs OwnContext, [BorrowContext])
-      "reverse"     -> (replicate szArgs OwnContext, [OwnContext])
+      "transpose"   -> (ownSizes, [BorrowContext])
+      "reverse"     -> (ownSizes, [OwnContext])
+      "!"           -> (ownSizes, map ownIfStream argTs)
+      "@"           -> (ownSizes, map ownIfStream argTs)
 
       -- Logic
       "&&"         -> dflt
@@ -107,6 +109,7 @@ cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs resT
 
   floatPrim = dflt
 
+  ownSizes = replicate szArgs OwnContext
   dflt = (replicate szArgs BorrowContext, map (const BorrowContext) argTs)
 
 primArgOwnership :: IRPrim -> Int -> [Type] -> Type -> ([ExprContext], [ExprContext])
@@ -150,7 +153,7 @@ compilePrim name args =
 
     ArrayLookup ->
       case (primArgs args, primSizeArgs args) of
-        ([a],[i]) -> pure (indexExpr a i)
+        ([a],[i]) -> pure (callMethod (indexExpr a i) "clone" [])
         _ -> bad
 
     WordLookup ->
@@ -288,12 +291,11 @@ compileCryptolPreludePrim name args =
     "<="          -> arg2 (\x y -> pure (binExpr Rust.LeOp x y))
     ">="          -> arg2 (\x y -> pure (binExpr Rust.GeOp x y))
 
-{-
-    "!"       -> undefined
-    "@"       -> undefined
--}
 
     -- Sequence --
+    "!"  -> compileIndexBack args
+    "@" -> compileIndexFront args
+
     "take" ->
       arg1 \x ->
         do mb <- getStreamSizeArg OwnContext args 0
@@ -564,5 +566,48 @@ compileTranspose args =
               _ -> unsupportedPrim "transpose" args
      pure (mkRustCall (pathExpr (rtsName fun))
                       (primSizeArgs args ++ primArgs args))
+
+
+compileIndexFront :: PrimArgs -> Rust RustExpr
+compileIndexFront args =
+  case primTypeArgs args of
+    [elT,ixT] ->
+      do fu <- case primTypesOfArgs args of
+                 [TStream {},_] ->
+                    pure (pathAddTypeSuffix (rtsName "index_stream") [elT,ixT])
+                 [TArray {},_] ->
+                    pure (pathAddTypeSuffix (rtsName "index_vec") [elT,ixT])
+                 [TWord {},_] ->
+                    pure (pathAddTypeSuffix (rtsName "index_word") [ixT])
+                 _ -> bad
+         pure (mkRustCall (pathExpr fu) (primArgs args))
+    _ -> bad
+  where
+  bad :: Rust a
+  bad = unsupportedPrim "@" args
+
+compileIndexBack :: PrimArgs -> Rust RustExpr
+compileIndexBack args =
+  case primTypeArgs args of
+    [elT,ixT] ->
+      do (mbLen, fu) <-
+          case primTypesOfArgs args of
+            [TStream {},_] ->
+               do (len,_) <- getSizeArg OwnContext args 0
+                  pure ( [len]
+                       , pathAddTypeSuffix (rtsName "index_stream_back")
+                                                                    [elT,ixT])
+
+            [TArray {},_] ->
+               pure ([], pathAddTypeSuffix (rtsName "index_vec_back") [elT,ixT])
+
+            [TWord {},_] ->
+               pure ([], pathAddTypeSuffix (rtsName "index_word") [ixT])
+            _ -> bad
+         pure (mkRustCall (pathExpr fu) (mbLen ++ primArgs args))
+    _ -> bad
+  where
+  bad :: Rust a
+  bad = unsupportedPrim "!" args
 
 
