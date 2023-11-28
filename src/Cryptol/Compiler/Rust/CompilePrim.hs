@@ -298,7 +298,8 @@ compileCryptolPreludePrim name args =
                                       [ litExpr (mkUSizeLit n) ])
               _ -> size1 \n -> pure (callMethod x "take" [ n ])
 
-    "join" -> compileJoin args
+    "join"      -> compileJoin args
+    "transpose" -> compileTranspose args
 
     "fromTo" ->
       do (from,fromSz) <- getSizeArg OwnContext args 0
@@ -516,4 +517,16 @@ compileJoin args =
       case elTy of
         TBool -> "join_words"
         _     -> "join_vecs"
+
+
+
+compileTranspose :: PrimArgs -> Rust RustExpr
+compileTranspose args =
+  do (a,_) <- getSizeArg OwnContext args 0
+     (b,_) <- getSizeArg OwnContext args 1
+     fun <- case primTypeOfResult args of
+              TArray _ (TWord {})  -> pure "transpose_word"
+              TArray _ (TArray {}) -> pure "transpose_vec"
+              _ -> unsupportedPrim "transpose" args
+     pure (mkRustCall (pathExpr (rtsName fun)) (a : b : primArgs args))
 

@@ -64,6 +64,13 @@ primRepHints = Map.fromList
                        , AsStream NoHint :-> AsStream NoHint :-> AsStream NoHint
                        ])
 
+    -- We don't support infinte cases here, because we dont' have
+    -- stored infinite streams.
+  , (Cry.prelPrim "transpose",
+        [ AsArray AsWord :-> AsArray AsWord
+        , AsArray (AsArray NoHint) :-> AsArray (AsArray NoHint)
+        ])
+
   , (Cry.prelPrim "zip",
         [ AsStream NoHint :-> AsStream NoHint :-> AsStream NoHint ])
 

@@ -10,6 +10,7 @@ pub mod tuple;
 pub mod bit;
 pub mod int;
 pub mod range;
+pub mod transpose;
 
 pub use type_traits::*;
 pub use traits::*;
@@ -18,6 +19,7 @@ pub use dword::DWord;
 pub use dword::DWordRef;
 pub use stream::*;
 pub use range::*;
+pub use transpose::*;
 pub use tuple::*;
 
 pub mod trait_methods {
