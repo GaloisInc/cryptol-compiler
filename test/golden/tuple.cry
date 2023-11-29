@@ -1,0 +1,2 @@
+second (_, y, _) = y
+main = second (1,2,3)
