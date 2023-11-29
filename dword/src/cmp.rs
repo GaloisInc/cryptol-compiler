@@ -79,14 +79,5 @@ mod test {
 
   #[test]
   fn test_eq() {
-    let x_7_100 = DWord::from_u64(7, 100);
-    let x_7_101 = DWord::from_u64(7, 101);
-
-    let x_64_100 = DWord::from_u64(64, 100);
-    let x_64_101 = DWord::from_u64(64, 101);
-
-    let x_67_100 = DWord::from_u64(67, 100);
-    let x_67_101 = DWord::from_u64(67, 101);
-
   }
 }

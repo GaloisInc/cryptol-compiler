@@ -109,6 +109,7 @@ impl DWord {
 // -----------------------------------------------------------------------------
 // Export
 
+// This also adds constructor instances for the primitives
 macro_rules! to_uprim{
 
   ($t:ty) => {
@@ -130,6 +131,10 @@ macro_rules! to_uprim{
         let max = DWord::from_u64(x.bits(), <$t>::MAX as u64);
         if x <= max.as_ref() { Some(x.into()) } else { None }
       }
+    }
+
+    impl From<$t> for DWord {
+      fn from(x: $t) -> Self { DWord::from_u64(<$t>::BITS as usize, x as u64) }
     }
   };
 }

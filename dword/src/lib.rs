@@ -11,6 +11,7 @@ pub mod split;
 pub mod iter_bits;
 pub mod iter_limbs;
 pub mod reverse;
+pub mod poly;
 
 #[cfg(test)]
 pub mod proptest;
