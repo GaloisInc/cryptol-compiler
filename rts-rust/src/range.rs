@@ -2,39 +2,141 @@ use crate::traits::*;
 use crate::type_traits::*;
 use crate::*;
 
-// -----------------------------------------------------------------------------
-// fromTo
-
-pub fn from_to_usize<T: Literal>
-  (len: T::Length, from: usize, to: usize) -> impl Stream<T> {
-  (from .. to+1).map(move |x| <T>::number_usize(len,x))
-}
-
+// Iterator for going up
 #[derive(Clone)]
-struct FromTo {
+struct FromTo<const CLO: bool> {
   current: num::BigUint,
+  step:    num::BigUint,
   last:    num::BigUint
 }
 
-impl Iterator for FromTo {
+impl<const CLO: bool> Iterator for FromTo<CLO> {
   type Item = num::BigUint;
   fn next(&mut self) -> Option<Self::Item> {
-    if self.current > self.last { return None }
+    let end = if CLO { self.current > self.last } else
+                     { self.current >= self.last };
+    if end { return None }
     let result = self.current.clone();
-    self.current += 1u64;
+    self.current += &self.step;
     Some(result)
   }
 }
 
+
+// Iterator for going down
+#[derive(Clone)]
+struct FromDownTo<const CLO: bool> {
+  current: num::BigUint,
+  step:    num::BigUint,
+  last:    num::BigUint
+}
+
+// We assume that both `current` and `last` start off incremented by a `step` 
+impl<const CLO: bool> Iterator for FromDownTo<CLO> {
+  type Item = num::BigUint;
+  fn next(&mut self) -> Option<Self::Item> {
+    let end = if CLO { self.current < self.last }
+                else { self.current <= self.last };
+    if end { return None }
+    self.current -= &self.step;
+    Some(self.current.clone())
+  }
+}
+
+
+
+// -----------------------------------------------------------------------------
+// fromTo and friends (usize versions)
+//
+pub fn from_to_usize<T: Literal>
+  (len: T::Length, from: usize, to: usize) -> impl Stream<T> {
+  (from ..= to).map(move |x| <T>::number_usize(len,x))
+}
+
+pub fn from_to_less_than_usize<T: Literal>
+  (len: T::Length, from: usize, to: usize) -> impl Stream<T> {
+  (from .. to).map(move |x| <T>::number_usize(len,x))
+}
+
+pub fn from_to_by_usize<T: Literal>
+  (len: T::Length, from: usize, to: usize, step: usize) -> impl Stream<T> {
+  (from ..= to).step_by(step).map(move |x| <T>::number_usize(len,x))
+}
+
+pub fn from_to_by_less_than_usize<T: Literal>
+  (len: T::Length, from: usize, to: usize, step: usize) -> impl Stream<T> {
+  (from .. to).step_by(step).map(move |x| <T>::number_usize(len,x))
+}
+
+// XXX: functions for going down?
+
+
+
+
+
+// -----------------------------------------------------------------------------
+// fromTo and friends (big num versions)
+
 pub fn from_to_uint<T: Literal>
   (len: T::Length, from: num::BigUint, to: num::BigUint) -> impl Stream<T> {
-  FromTo { current: from, last: to }.map(move |x| <T>::number_uint(len,&x))
+  FromTo::<true> { current: from, step: 1u8.into(), last: to }
+  .map(move |x| <T>::number_uint(len,&x))
 }
+
+pub fn from_to_less_than_uint<T: Literal>
+  (len: T::Length, from: num::BigUint, to: num::BigUint) -> impl Stream<T> {
+  FromTo::<false> { current: from, step: 1u8.into(), last: to }
+  .map(move |x| <T>::number_uint(len,&x))
+}
+
+pub fn from_to_by_uint<T: Literal>
+  (len: T::Length, from: num::BigUint, to: num::BigUint, step: num::BigUint) ->
+                                                              impl Stream<T> {
+  FromTo::<true> { current: from, step: step, last: to }
+  .map(move |x| <T>::number_uint(len,&x))
+}
+
+pub fn from_to_by_less_than_uint<T: Literal>
+  (len: T::Length, from: num::BigUint, to: num::BigUint, step: num::BigUint) ->
+                                                              impl Stream<T> {
+  FromTo::<false> { current: from, step: step, last: to }
+  .map(move |x| <T>::number_uint(len,&x))
+}
+
+pub fn from_to_down_by_uint<T: Literal>
+  (len: T::Length, from: num::BigUint, to: num::BigUint, step: num::BigUint) ->
+                                                              impl Stream<T> {
+  let start = from + &step;
+  let end   = to   + &step;
+  FromDownTo::<true> { current: start, step: step, last: end }
+  .map(move |x| <T>::number_uint(len,&x))
+}
+
+pub fn from_to_down_by_greater_than_uint<T: Literal>
+  (len: T::Length, from: num::BigUint, to: num::BigUint, step: num::BigUint) ->
+                                                              impl Stream<T> {
+  let start = from + &step;
+  let end   = to   + &step;
+  FromDownTo::<false> { current: start, step: step, last: end }
+  .map(move |x| <T>::number_uint(len,&x))
+}
+
+
+// XXX: from_then_to
+// This one is tricky, as above we use different types of iterator for
+// incrementing or decrementing, but this one needs to make the decision
+// based on a dynamic value.
+
+
+
+
+
+
 
 
 // -----------------------------------------------------------------------------
 // infFrom and infFromThen
-
+// Note that these are ont Integers (signed)
 
 #[derive(Clone)]
 struct InfFromThen {
