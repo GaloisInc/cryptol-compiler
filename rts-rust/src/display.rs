@@ -1,6 +1,6 @@
 use std::fmt;
 
-pub trait Base<const BASE: usize> {
+pub trait Base<const BASE: usize, const UPPER: bool = true> {
   fn format(&self, fmt: &mut fmt::Formatter) -> fmt::Result;
 }
 
@@ -39,6 +39,13 @@ impl<'a, T: Base<16>> fmt::UpperHex for Displayable<'a,T> {
   }
 }
 
+impl<'a, T: Base<16, false>> fmt::LowerHex for Displayable<'a,T> {
+  fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    Base::<16, false>::format(self.0,fmt)
+  }
+}
+
+
 #[macro_export]
 macro_rules! derive_display {
   ($t:ty) =>  {
@@ -67,6 +74,11 @@ macro_rules! derive_display {
       }
     }
 
+    impl $crate::display::Base<16, false> for $t {
+      fn format(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        <$t as std::fmt::LowerHex>::fmt(self, fmt)
+      }
+    }
   };
 }
 

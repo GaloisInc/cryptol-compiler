@@ -5,7 +5,7 @@ use crate::PrimType;
 
 PrimType!(bool);
 
-impl<const BASE: usize> Base<BASE> for bool {
+impl<const BASE: usize, const UPPER: bool> Base<BASE, UPPER> for bool {
   fn format(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
     write!(fmt, "{}", if *self { "True" } else { "False" })
   }

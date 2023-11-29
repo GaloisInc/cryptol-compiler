@@ -14,13 +14,13 @@ impl<A: Type, B: Type> CloneArg for &(A,B) {
 }
 
 
-impl<const BASE: usize, A,B> Base<BASE> for (A,B)
-  where A: Base<BASE>, B: Base<BASE> {
+impl<const BASE: usize, const UPPER: bool, A,B> Base<BASE, UPPER> for (A,B)
+  where A: Base<BASE, UPPER>, B: Base<BASE, UPPER> {
   fn format(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
     write!(fmt,"(")?;
-    Base::<BASE>::format(&self.0,fmt)?;
+    Base::<BASE, UPPER>::format(&self.0,fmt)?;
     write!(fmt,",")?;
-    Base::<BASE>::format(&self.1,fmt)?;
+    Base::<BASE, UPPER>::format(&self.1,fmt)?;
     write!(fmt,")")
   }
 }

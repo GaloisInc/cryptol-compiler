@@ -108,7 +108,7 @@ mkCrate withExe crateName target mods =
          unlines
            [ "use " ++ cryptolCrateString ++ "::trait_methods::*;"
            , "pub fn main() {"
-           , "  println!(\"{}\\n\"," ++ crateName ++ "::main::main().display())"
+           , "  println!(\"{:#x}\\n\"," ++ crateName ++ "::main::main().display())"
            , "}"
            ]
 
