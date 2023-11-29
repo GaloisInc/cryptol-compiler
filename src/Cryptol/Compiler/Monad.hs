@@ -88,7 +88,6 @@ import qualified Cryptol.Eval.Value as Cry
 
 import Cryptol.Compiler.PP(pp,Doc)
 import Cryptol.Compiler.Error hiding (unsupported)
-import Cryptol.Compiler.Error qualified as Err
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Cry2IR.InstanceMap
 import Cryptol.Compiler.Rust.Monad qualified as Rust

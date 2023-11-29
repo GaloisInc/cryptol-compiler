@@ -94,6 +94,11 @@ cryPrimArgOwnership p@(Cry.PrimIdent mo name) szArgs argTs resT
       "<=" -> dflt
       ">=" -> dflt
 
+      -- Polynomial Arithmetic
+      "pmult" -> (replicate szArgs OwnContext, [BorrowContext,BorrowContext])
+      "pmod"  -> (replicate szArgs OwnContext, [BorrowContext,BorrowContext])
+
+
       -- Ring --
       "+"       -> dflt
       "-"       -> dflt
@@ -318,21 +323,7 @@ compileCryptolPreludePrim name args =
           TArray {} -> pure (mkRustCall (pathExpr (rtsName "reverse")) [x])
           _ -> unsupportedPrim "reverse" args
 
-    "fromTo" ->
-      do (from,fromSz) <- getSizeArg OwnContext args 0
-         (to,toSz)     <- getSizeArg OwnContext args 1
-         resT <- case primTypeOfResult args of
-                   TStream _ el -> compileType TypeInFunSig AsOwned el
-                   _ -> panic "fromTo" ["Expected a stream result"]
-         let fu = case toSz of
-                    MemSize   -> rtsName "from_to_usize"
-                    LargeSize -> rtsName "from_to_uint"
-             fuE = pathExpr (pathAddTypeSuffix fu [resT])
-
-         let from' = if fromSz == toSz
-                      then from
-                      else callMethod from "into" []
-         pure (mkRustCall fuE (primLenArgs args ++ [from',to]))
+    "fromTo" -> compileFromTo args
 
     "infFrom" ->
        tyArg1 \t ->
@@ -345,9 +336,9 @@ compileCryptolPreludePrim name args =
          in pure (mkRustCall (pathExpr fu) (primLenArgs args ++ primArgs args))
 
 
-
-
-
+    -- Polynomial Arithmetic
+    "pmult" -> arg2 \x y -> pure (callMethod x "pmult" [y])
+    "pmod"  -> arg2 \x y -> pure (callMethod x "pmod" [y])
 
     _ -> pure (todoExp (Text.unpack name)) -- unsupportedPrim (pp name) args
   where

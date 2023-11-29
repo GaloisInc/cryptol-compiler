@@ -2,6 +2,26 @@ use crate::{DWordRef,DWord};
 
 // [u] -> [1+v] -> [v]
 impl DWordRef<'_> {
+
+  // [1 + u] -> [1 + v] -> [1 + u + v]
+  pub fn pmult(self, y: DWordRef<'_>) -> DWord {
+    let xw = self.bits();
+    assert!(xw > 0);
+    let yw = y.bits();
+    assert!(yw > 0);
+    let zw = xw + yw - 1;
+
+    let y1 = DWord::zero(xw - 1).as_ref().append(y);
+
+    let mut result = DWord::zero(zw);
+    for i in (0 .. xw).rev() {
+      result <<= 1;
+      if self.index_lsb(i) { result ^= y1.as_ref() }
+    }
+    result
+  }
+
+
   pub fn pmod(self, m: DWordRef<'_>) -> DWord {
 
     let u  = self.bits();            // width of 1st argument
@@ -32,7 +52,7 @@ impl DWordRef<'_> {
       if p.as_ref().index_lsb(degree) {
         //print!("reducing {} ~>",p);
         p ^= m1.as_ref();
-        println!("{}",p);
+        // println!("{}",p);
       }
     }
     result
@@ -51,13 +71,31 @@ mod test {
     assert_eq!(x.as_ref().pmod(y.as_ref()), z);
 
     let mut n = num::BigUint::parse_bytes(b"1092312983128903910831",10).unwrap();
-    x = DWord::from_uint(128, &n);
+    x = DWord::from_uint(129, &n);
     n = num::BigUint::parse_bytes(b"203947283734879",10).unwrap();
     y = DWord::from_uint(76, &n);
     n = num::BigUint::parse_bytes(b"0000000076c35d397a8",16).unwrap();
     z = DWord::from_uint(75, &n);
     assert_eq!(x.as_ref().pmod(y.as_ref()), z);
   }
+
+  #[test]
+   fn test_pmult() {
+     let mut x: DWord = 12345678_u32.into();
+     let mut y: DWord = 123_u8.into();
+     let mut z: DWord = DWord::from_u64(39, 0x003775c702);
+     assert_eq!(x.as_ref().pmult(y.as_ref()), z);
+
+     let mut n = num::BigUint::parse_bytes(b"1092312983128903910831",10).unwrap();
+     x = DWord::from_uint(129, &n);
+     n = num::BigUint::parse_bytes(b"203947283734879",10).unwrap();
+     y = DWord::from_uint(76, &n);
+
+     n = num::BigUint::parse_bytes(
+        b"00000000000000000000018a75237ea0f110117fb254ed68b05",16).unwrap();
+     z = DWord::from_uint(204, &n);
+     assert_eq!(x.as_ref().pmult(y.as_ref()), z);
+   }
 
 
 }
