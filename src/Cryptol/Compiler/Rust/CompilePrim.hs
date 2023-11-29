@@ -611,3 +611,22 @@ compileIndexBack args =
   bad = unsupportedPrim "!" args
 
 
+
+compileFromTo :: PrimArgs -> Rust RustExpr
+compileFromTo args =
+  do (from,fromSz) <- getSizeArg OwnContext args 0
+     (to,toSz)     <- getSizeArg OwnContext args 1
+     resT <- case primTypeOfResult args of
+               TStream _ el -> compileType TypeInFunSig AsOwned el
+               _ -> panic "fromTo" ["Expected a stream result"]
+     let fu = case toSz of
+                MemSize   -> rtsName "from_to_usize"
+                LargeSize -> rtsName "from_to_uint"
+         fuE = pathExpr (pathAddTypeSuffix fu [resT])
+
+     let from' = if fromSz == toSz
+                  then from
+                  else callMethod from "into" []
+     pure (mkRustCall fuE (primLenArgs args ++ [from',to]))
+
+
