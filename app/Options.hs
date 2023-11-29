@@ -19,6 +19,7 @@ data Options = Options
   , optCrateName  :: String
   , optOutputPath :: FilePath
   , optEntryModules :: [String]
+  , optEnableWarnings :: Bool
   } deriving Show
 
 defaultOptions :: Options
@@ -28,6 +29,7 @@ defaultOptions = Options
   , optCrateName  = "cryptol_gen"
   , optOutputPath = "cry-rust"
   , optEntryModules = []
+  , optEnableWarnings = False
   }
 
 options :: OptSpec Options
@@ -55,6 +57,10 @@ options = optSpec
         "Generate code for public definitions from this module"
         $ ReqArg "MODULE" \s o -> Right o { optEntryModules =
                                                   s : optEntryModules o }
+
+      , Option ['w'] ["enable-warnings"]
+        "Write cryptol compilation warnings to stderr during compilation"
+        $ NoArg \o -> Right o { optEnableWarnings = True }
       ]
 
   , progParamDocs =

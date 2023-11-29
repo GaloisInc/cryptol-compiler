@@ -27,6 +27,7 @@ module Cryptol.Compiler.Monad
   , unsupported
   , panic
   , catchablePanic
+  , enableWarningOutput
 
     -- * IO
   , doIO
@@ -183,7 +184,7 @@ runCryC outDir crateName ents (CryC m) =
              }
          initialState =
            CompilerState
-              { rwWarnings = Cry.stderrLogger
+              { rwWarnings = Cry.quietLogger
               , rwTypes = Nothing
               , rwPrims = Nothing
               , rwNameGen = 0
@@ -211,18 +212,10 @@ runCryC outDir crateName ents (CryC m) =
                            , Cry.evalPPOpts  = Cry.defaultPPOpts
                            }
 
--- newtype CryCExec = CryCExec { runCryC' :: forall a. CryC a -> IO a }
-
--- runCryCWithInit :: CryC () -> IO CryCExec
--- runCryCWithInit i =
---   do  compilerState <- runCryC (i >> CryC get)
---       pure $ CryCExec (\cc -> runCryC (loadState compilerState >> cc))
---   where
---     loadState oldState =
---       CryC $ sets_ $ \newState ->
---         newState { rwNameGen = rwNameGen oldState
---                  , rwCompiled = rwCompiled oldState
---                  }
+-- | Enable writing compilation warnings to stderr
+enableWarningOutput :: CryC ()
+enableWarningOutput =
+  CryC $ sets_ \s -> s { rwWarnings = Cry.stderrLogger }
 
 -- | Do some IO stuff.
 doIO :: IO a ->  CryC a

@@ -1,7 +1,7 @@
 module Main where
 
 import Control.Exception
-import Control.Monad(forM)
+import Control.Monad(forM, when)
 import System.IO(hPrint,stderr)
 import System.Exit
 import Data.Map qualified as Map
@@ -32,20 +32,22 @@ main =
                   [] -> ["Main"]
                   xs -> xs
      runCryC (optOutputPath opts) (optCrateName opts) ents
-       case optCommand opts of
 
+       case optCommand opts of
          ShowHelp ->
            doIO showHelp
 
          DefaultCommand ->
-            cry2rust (optFiles opts)
+            do  when (optEnableWarnings opts) enableWarningOutput
+                cry2rust (optFiles opts)
 {-
            do Compiler.loadInputs (optFiles opts)
               void $ Compiler.doSimpleCompile (optCrateName opts) (optOutputPath opts)
 -}
 
          ListPrimitives ->
-           do loadInputs (optFiles opts)
+           do when (optEnableWarnings opts) enableWarningOutput
+              loadInputs (optFiles opts)
               listPrimitives
 
   `catch` \e ->

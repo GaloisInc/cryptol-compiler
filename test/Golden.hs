@@ -42,3 +42,4 @@ runCompiledSimple path =
 
 findTestFiles :: IO [FilePath]
 findTestFiles = Golden.findByExtension [".cry"] "test/golden"
+

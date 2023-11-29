@@ -103,12 +103,9 @@ loadInputs files =
 cry2IR :: Cry.Module -> CryC [FunDecl]
 cry2IR m =
   do let nm = show (cryPP (Cry.mName m))
-     doIO (putStrLn ("Compiling module: " ++ nm))
-     doIO (putStrLn "Eta Expansion")
      tys <- getTypes
      m' <- doNameGen (\s -> etaModule tys s m)
      -- doIO (print (cryPP m'))
-     doIO (putStrLn "Converting to IR")
      -- doIO (print (cryPP m'))
      Cry2IR.compileModule m'
      ds <- getCompiled
@@ -120,8 +117,7 @@ cry2IR m =
 -- Modifies the state to track information about compiled modules.
 ir2Rust :: Cry.ModName -> [FunDecl] -> CryC ()
 ir2Rust m ds =
-  do doIO (putStrLn "Generating Rust")
-     extMods <- getRustInfo
+  do extMods <- getRustInfo
      let gi =
           Rust.GenInfo
             { Rust.genCurModule       = m
