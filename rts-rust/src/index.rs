@@ -18,16 +18,16 @@ pub fn index_word_back<I>(xs: DWordRef<'_>, i: I::Arg<'_>) -> bool
   xs.index_msb(back_index::<I>(xs.bits(),i))
 }
 
-pub fn index_vec<T,I>(xs: Vec<T>, i: I::Arg<'_>) -> T
+pub fn index_vec<T,I>(xs: &[T], i: I::Arg<'_>) -> T
   where T: Type, I: Integral
 {
-  xs.index(front_index::<I>(i))
+  xs[front_index::<I>(i)].clone()
 }
 
-pub fn index_vec_back<T,I>(xs: Vec<T>, i: I::Arg<'_>) -> T
+pub fn index_vec_back<T,I>(xs: &[T], i: I::Arg<'_>) -> T
   where T: Type, I: Integral
 {
-  xs.index(back_index::<I>(xs.len(),i))
+  xs[back_index::<I>(xs.len(),i)].clone()
 }
 
 fn stream_index<T: Type>(xs: impl Stream<T>, i: usize) -> T {
