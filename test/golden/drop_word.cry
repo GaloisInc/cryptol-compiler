@@ -1,1 +1,1 @@
-main = drop'{2} 0b1101
+main = drop`{2} 0b1101

@@ -1,0 +1,2 @@
+main =
+  [ True < False, 0x01 < 0x01, [0x1a] < [0x1b], (5:Integer) < 6]

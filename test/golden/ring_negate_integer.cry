@@ -1,0 +1,1 @@
+main =  negate (5: Integer)
