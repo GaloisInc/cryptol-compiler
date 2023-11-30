@@ -593,7 +593,7 @@ compileIndexBack args =
                pure ([], pathAddTypeSuffix (rtsName "index_vec_back") [elT,ixT])
 
             [TWord {},_] ->
-               pure ([], pathAddTypeSuffix (rtsName "index_word") [ixT])
+               pure ([], pathAddTypeSuffix (rtsName "index_word_back") [ixT])
             _ -> bad
          pure (mkRustCall (pathExpr fu) (mbLen ++ primArgs args))
     _ -> bad

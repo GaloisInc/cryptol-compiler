@@ -27,7 +27,7 @@ f xs  ~>   f @freeTs @propConstraints (freeVars ++ xs)
 
 
 -}
-module Cryptol.Compiler.LambdaLift where
+module Cryptol.IR.LambdaLift where
 
 import Cryptol.IR.FreeVars
 
