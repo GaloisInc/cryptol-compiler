@@ -58,6 +58,7 @@ library
     import: warnings, extensions
     exposed-modules:
       Cryptol.IR.Eta
+      Cryptol.IR.LambdaLift
 
       Cryptol.Compiler.IR
       Cryptol.Compiler.IR.Prims
