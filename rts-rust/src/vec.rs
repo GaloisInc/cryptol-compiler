@@ -24,7 +24,7 @@ impl<T> FromFn<T> for Vec<T>{
 
 /* Crytpol type */
 impl<T: Type> Type for Vec<T> {
-  type Length = (u64, T::Length);
+  type Length = (usize, T::Length);
   type Arg<'a> = &'a [T] where T: 'a;
   fn as_arg(&self) -> Self::Arg<'_> { &self[..] }
 }
@@ -118,6 +118,54 @@ pub fn reverse<T:Type>(mut xs: Vec<T>) -> Vec<T> {
   xs.reverse();
   xs
 }
+
+
+impl<T: Logic> Logic for Vec<T> {
+  fn complement(x: Self::Arg<'_>) -> Self {
+    x.iter().map(|a| T::complement(a.as_arg())).collect()
+  }
+  fn xor(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self {
+    x.iter().zip(y.iter()).map(|(a,b)| T::xor(a.as_arg(),b.as_arg())).collect()
+  }
+  fn and(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self {
+    x.iter().zip(y.iter()).map(|(a,b)| T::and(a.as_arg(),b.as_arg())).collect()
+  }
+  fn or (x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self {
+    x.iter().zip(y.iter()).map(|(a,b)| T::or(a.as_arg(),b.as_arg())).collect()
+  }
+}
+
+
+impl<T: Ring> Ring for Vec<T> {
+
+  fn negate(x: Self::Arg<'_>) -> Self {
+    x.iter().map(|a| T::negate(a.as_arg())).collect()
+  }
+
+  fn mul(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self {
+    x.iter().zip(y.iter()).map(|(a,b)| T::mul(a.as_arg(),b.as_arg())).collect()
+  }
+
+  fn sub(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self {
+    x.iter().zip(y.iter()).map(|(a,b)| T::sub(a.as_arg(),b.as_arg())).collect()
+  }
+
+  fn add(x: Self::Arg<'_>, y: Self::Arg<'_>) -> Self {
+    x.iter().zip(y.iter()).map(|(a,b)| T::add(a.as_arg(),b.as_arg())).collect()
+  }
+
+  fn from_integer(n: Self::Length, x: &num::BigInt) -> Self {
+    let r = T::from_integer(n.1, x);
+    Self::from_fn(n.0, |_i| r.clone())
+  }
+
+  fn exp_usize(x: Self::Arg<'_>, y: usize) -> Self {
+    x.iter().map(|a| T::exp_usize(a.as_arg(), y)).collect()
+  }
+
+}
+
+
 
 
 
