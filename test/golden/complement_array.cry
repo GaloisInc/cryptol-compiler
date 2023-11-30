@@ -1,0 +1,1 @@
+main = complement [0x01, 0xFF]
