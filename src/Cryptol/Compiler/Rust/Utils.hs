@@ -168,12 +168,12 @@ callMacro' :: RustPath -> Rust.TokenStream -> RustExpr
 callMacro' m args = Rust.MacExpr [] (Rust.Mac m args ()) ()
 
 
-mkClosure :: [Rust.Ident] -> [RustStmt] -> RustExpr -> RustExpr
+mkClosure :: [(Rust.Ident, RustType)] -> [RustStmt] -> RustExpr -> RustExpr
 mkClosure args stmts expr = Rust.Closure [] move captureBy fnDecl fnExpr ()
   where
     move = Rust.Movable
-    captureBy = Rust.Value
-    mkArg a = Rust.Arg (Just $ identPat a) (Rust.Infer ()) ()
+    captureBy = Rust.Ref -- Rust.Value
+    mkArg (a,t) = Rust.Arg (Just $ identPat a) t ()
     args' = mkArg <$> args
     variadic = False
     fnDecl = Rust.FnDecl args' Nothing variadic ()

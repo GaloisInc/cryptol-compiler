@@ -174,7 +174,9 @@ genExpr how (IRExpr e0) =
            args'' <- bindLocal (addLocalVar Nothing) `traverse` args'
            (lamStmt, lamE) <- genExpr OwnContext body
            mapM_ removeLocalLet args'
-           pure (mkClosure args'' lamStmt lamE)
+           argTs <- mapM (compileType TypeInFunSig (AsArg Nothing))
+                      (map irNameType args)
+           pure (mkClosure (zip args'' argTs) lamStmt lamE)
 
 
 
