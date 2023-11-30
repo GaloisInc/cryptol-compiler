@@ -179,7 +179,7 @@ compilePrim name args =
         _ -> bad
 
     WordToStream ->
-      arg1 \s -> pure (callMethod s "iter_msb" [])
+      arg1 \s -> pure (callMethod s "into_iter_bits_msb" [])
 
     StreamToWord ->
       case primTypesOfArgs args of
