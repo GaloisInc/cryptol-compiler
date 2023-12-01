@@ -46,6 +46,7 @@ import qualified Data.Text as Text
 import MonadLib
 
 import Cryptol.Utils.Panic(panic)
+import Cryptol.Utils.PP
 import Cryptol.Utils.RecordMap
 import Cryptol.Utils.Ident(mkIdent,identText)
 import Cryptol.Parser.Position(emptyRange)
@@ -60,22 +61,35 @@ import Cryptol.ModuleSystem.Name(mkDeclared
                                 )
 import Cryptol.IR.FreeVars(freeVars,Deps(..))
 
+{-
+import Debug.Trace
+-}
 
-llModule :: Map Name Schema -> Supply -> ModuleG mname -> (ModuleG mname, Supply)
-llModule topTypes su mo = (mo { mDecls = concat newDss }, newSu)
+llModule ::
+  Map Name Schema ->
+  Supply ->
+  ModuleG mname ->
+  ((ModuleG mname, Map Name Schema), Supply)
+llModule topTypes su mo = ((mo { mDecls = concat dgs }, mconcat tys), newSu)
   where
-  (newDss, newSu) = runSupply su (mapM (llTopDeclGroup topTypes) (mDecls mo))
+  (results, newSu) = runSupply su (mapM (llTopDeclGroup topTypes) (mDecls mo))
+  (dgs,tys) = unzip results
 
 
-llTopDeclGroup :: FreshM m => Map Name Schema -> DeclGroup -> m [DeclGroup]
+llTopDeclGroup ::
+  FreshM m => Map Name Schema -> DeclGroup -> m ([DeclGroup], Map Name Schema)
 llTopDeclGroup topTypes dg =
   case dg of
     NonRecursive d ->
-      do (d', ds) <- llTopDecl topTypes d
-         pure (reverse (NonRecursive d' : ds))
+      do (d', newDs) <- llTopDecl topTypes d
+         let newTys = Map.fromList [ (dName de, dSignature de)
+                                   | g <- newDs, de <- groupDecls g ]
+         pure (reverse (NonRecursive d' : newDs), newTys)
     Recursive ds ->
       do (ds',dds) <- mapAndUnzipM (llTopDecl topTypes) ds
-         pure [ Recursive (ds' ++ concatMap groupDecls (concat dds)) ]
+         let newDs = concatMap groupDecls (concat dds)
+         let newTys = Map.fromList [ (dName de, dSignature de) | de <- newDs ]
+         pure ([ Recursive (ds' ++ newDs) ], newTys)
 
 -- | Returns declarations in reversed order
 llTopDecl :: FreshM m => Map Name Schema -> Decl -> m (Decl, [DeclGroup])
@@ -85,18 +99,24 @@ llTopDecl topTypes decl =
       runLiftM (nameModPath (dName decl)) topTypes $
       pushName (Just (dName decl))
       do let (tps, pps, ps, body) = exprToFun e
-         body' <- ll body
+         body' <- withTParams (Set.fromList tps)
+                $ withLocals (Map.fromList [ (x,tMono t) | (x,t) <- ps ])
+                $ ll body
          rw <- get
          unless (Set.null (extraTParams rw))
                 (panic "llTopDecl" ["Unexpected extra type parameters"])
          unless (Map.null (extraParams rw))
-                (panic "llTopDecl" ["Unexpected extra parameters"])
+                (panic "llTopDecl" ["Unexpected extra parameters"
+                                   , show ("Function: " <+> pp (dName decl))
+                                   , show ("Extra: " <+> commaSep (map pp (Map.keys (extraParams rw))))
+                                   ])
 
          let newD = decl { dDefinition = DExpr (mkLam tps pps ps body') }
          pure (newD, newDecls rw)
 
     DForeign {} -> pure (decl, [])
     DPrim {} -> pure (decl, [])
+
 
 --------------------------------------------------------------------------------
 
@@ -217,6 +237,10 @@ withLocals :: Map Name Schema -> M a -> M a
 withLocals xs =
   mapReader \ro -> ro { localVars = Map.union xs (localVars ro) }
 
+withTParams :: Set TParam -> M a -> M a
+withTParams xs =
+  mapReader \ro -> ro { localTParams = Set.union xs (localTParams ro) }
+
 getNewProps ::
   [Prop]      {- ^ Constraints from outer scope -} ->
   Set TParam  {- ^ Type variables to the functions -} ->
@@ -278,18 +302,22 @@ enterFun tps props params m =
                                             [ (x,tMono t) | (x,t) <- params ]
                                }) m
 
-     outCts <- outerConstraints <$> ask
+     ro <- ask
+     let outCts = outerConstraints ro
      sets \rw ->
        let (newTPs,newProps) = getNewProps outCts (extraTParams rw) props
-           newPs              = extraParams rw
+           newPs             = extraParams rw
        in ( ( Set.toList newTPs
             , newProps
             , Map.toList  newPs
             , a
             )
 
-          , rw { extraTParams = newTPs <> outTPs
-               , extraParams  = newPs  <> outPs
+          , let newToUsTPs = newTPs `Set.difference` localTParams ro
+                newToUsParams = newPs `Map.difference` localVars ro
+            in
+            rw { extraTParams = newToUsTPs <> outTPs
+               , extraParams  = newToUsParams <> outPs
                }
           )
 
@@ -320,8 +348,28 @@ getExprType :: Expr -> M Type
 getExprType e =
   do ro <- ask
      let env = localVars ro <> outerVars ro <> topVars ro
+{-
+     traceM $ show
+            $ debugShowUniques
+            $ vcat [ "=== getExprType ================"
+                   , "OUTER"
+                   , ppMap (outerVars ro)
+                   , "LOCAL"
+                   , ppMap (localVars ro)
+                   , "EXPR"
+                   , pp e
+                   ]
+     traceM $ show $ vcat
+                   [ "TYPE"
+                   , pp (fastTypeOf env e)
+                   , "================================"
+                   ]
+-}
      pure $! fastTypeOf env e
-
+{-
+  where
+  ppMap mp = vcat [ pp x <.> ":" <+> pp t | (x,t) <- Map.toList mp ]
+-}
 
 --------------------------------------------------------------------------------
 
@@ -400,7 +448,7 @@ instance LL Expr where
            mbWhere newDs <$> withLocals (defs ds) (ll e)
         where
         mbWhere newDs x =
-          case ds of
+          case newDs of
             [] -> x
             _  -> EWhere x newDs
 
@@ -524,7 +572,8 @@ doLiftFun mbStore expr =
      (newTPs,newProps,newXs,(newBody,bodyT)) <-
           pushName mbStore $
           enterFun tps pps xs
-          do newB <- ll body
+          do -- traceM ("ENTER: " ++ maybe "?" (show . pp) mbStore)
+             newB <- ll body
              t <- getExprType newB
              pure (newB,t)
      let allTPs   = newTPs   ++ tps

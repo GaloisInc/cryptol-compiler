@@ -19,7 +19,7 @@ import Cryptol.IR.FreeVars qualified as Cry
 import Cryptol.IR.LambdaLift(llModule)
 import Cryptol.IR.Eta(etaModule)
 
-import Cryptol.Compiler.PP
+-- import Cryptol.Compiler.PP
 import Cryptol.Compiler.Monad
 import Cryptol.Compiler.IR.Cryptol
 
@@ -103,12 +103,14 @@ loadInputs files =
 -- generated.
 cry2IR :: Cry.Module -> CryC [FunDecl]
 cry2IR m =
-  do let nm = show (cryPP (Cry.mName m))
+  do -- let nm = show (cryPP (Cry.mName m))
      tys <- getTypes
-     m1 <- doNameGen (\s -> llModule tys s m)
-     m2 <- doNameGen (\s -> etaModule tys s m1)
-     -- doIO (print (cryPP m'))
-     -- doIO (print (cryPP m'))
+     (m1,newTys) <- doNameGen (\s -> llModule tys s m)
+     let tys1 = newTys <> tys
+
+     m2 <- doNameGen (\s -> etaModule tys1 s m1)
+     -- doIO (print (cryPP m1))
+     -- doIO (print (cryPP m2))
      Cry2IR.compileModule m2
      ds <- getCompiled
      clearCompiled
