@@ -16,6 +16,7 @@ import Cryptol.Utils.Ident qualified as Cry
 import Cryptol.ModuleSystem.Exports qualified as Cry
 import Cryptol.TypeCheck.AST qualified as Cry
 import Cryptol.IR.FreeVars qualified as Cry
+import Cryptol.IR.LambdaLift(llModule)
 import Cryptol.IR.Eta(etaModule)
 
 import Cryptol.Compiler.PP
@@ -104,10 +105,11 @@ cry2IR :: Cry.Module -> CryC [FunDecl]
 cry2IR m =
   do let nm = show (cryPP (Cry.mName m))
      tys <- getTypes
-     m' <- doNameGen (\s -> etaModule tys s m)
+     m1 <- doNameGen (\s -> llModule tys s m)
+     m2 <- doNameGen (\s -> etaModule tys s m1)
      -- doIO (print (cryPP m'))
      -- doIO (print (cryPP m'))
-     Cry2IR.compileModule m'
+     Cry2IR.compileModule m2
      ds <- getCompiled
      clearCompiled
      pure (reverse ds)

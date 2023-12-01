@@ -34,31 +34,94 @@ correct number of PAbs.
 Note that we also lambda lift local polymorphic values, which hopefully
 should not be very common as we have local mono binds on by default.
 -}
-module Cryptol.IR.LambdaLift where
+module Cryptol.IR.LambdaLift (llModule) where
 
 import Data.Set(Set)
 import qualified Data.Set as Set
 import Data.Map(Map)
 import qualified Data.Map as Map
 import Data.Maybe(isJust,catMaybes)
+import qualified Data.Text as Text
 
 import MonadLib
 
 import Cryptol.Utils.Panic(panic)
 import Cryptol.Utils.RecordMap
-import Cryptol.Utils.Ident(packIdent)
+import Cryptol.Utils.Ident(mkIdent,identText)
 import Cryptol.Parser.Position(emptyRange)
 import Cryptol.TypeCheck.AST
 import Cryptol.TypeCheck.TypeOf(fastTypeOf)
-import Cryptol.ModuleSystem.Name(mkDeclared,Supply,nameInfo,NameInfo(..)
+import Cryptol.ModuleSystem.Name(mkDeclared
+                                , Supply, FreshM(..), runSupply
+                                , nameInfo,NameInfo(..)
                                 , NameSource(SystemName)
-                                , ModPath, Namespace(NSValue))
+                                , ModPath, Namespace(NSValue)
+                                , nameModPath, nameIdent
+                                )
 import Cryptol.IR.FreeVars(freeVars,Deps(..))
 
 
-type M    = ReaderT RO (StateT RW (ExceptionT Err Id))
+llModule :: Map Name Schema -> Supply -> ModuleG mname -> (ModuleG mname, Supply)
+llModule topTypes su mo = (mo { mDecls = concat newDss }, newSu)
+  where
+  (newDss, newSu) = runSupply su (mapM (llTopDeclGroup topTypes) (mDecls mo))
 
-type Err  = String
+
+llTopDeclGroup :: FreshM m => Map Name Schema -> DeclGroup -> m [DeclGroup]
+llTopDeclGroup topTypes dg =
+  case dg of
+    NonRecursive d ->
+      do (d', ds) <- llTopDecl topTypes d
+         pure (reverse (NonRecursive d' : ds))
+    Recursive ds ->
+      do (ds',dds) <- mapAndUnzipM (llTopDecl topTypes) ds
+         pure [ Recursive (ds' ++ concatMap groupDecls (concat dds)) ]
+
+-- | Returns declarations in reversed order
+llTopDecl :: FreshM m => Map Name Schema -> Decl -> m (Decl, [DeclGroup])
+llTopDecl topTypes decl =
+  case dDefinition decl of
+    DExpr e ->
+      runLiftM (nameModPath (dName decl)) topTypes $
+      pushName (Just (dName decl))
+      do let (tps, pps, ps, body) = exprToFun e
+         body' <- ll body
+         rw <- get
+         unless (Set.null (extraTParams rw))
+                (panic "llTopDecl" ["Unexpected extra type parameters"])
+         unless (Map.null (extraParams rw))
+                (panic "llTopDecl" ["Unexpected extra parameters"])
+
+         let newD = decl { dDefinition = DExpr (mkLam tps pps ps body') }
+         pure (newD, newDecls rw)
+
+    DForeign {} -> pure (decl, [])
+    DPrim {} -> pure (decl, [])
+
+--------------------------------------------------------------------------------
+
+runLiftM :: FreshM m => ModPath -> Map Name Schema -> M a -> m a
+runLiftM mp topTypes m =
+  liftSupply \sup ->
+    let (a,rw) = runId
+               $ runStateT (initRW sup)
+               $ runReaderT (initRO mp topTypes) m
+    in (a, nameSupply rw)
+
+initRO :: ModPath -> Map Name Schema -> RO
+initRO mp topTypes =
+  RO
+    { modPath          = mp
+    , topVars          = topTypes
+    , outerVars        = mempty
+    , outerConstraints = mempty
+    , outerFuns        = mempty
+    , localTParams     = mempty
+    , localConstraints = mempty
+    , localVars        = mempty
+    }
+
+type M = ReaderT RO (StateT RW Id)
 
 data RO = RO
   { modPath         :: ModPath
@@ -72,6 +135,10 @@ data RO = RO
 
   , outerConstraints :: [Prop]
     -- ^ Constraints in outer functions.
+
+  , outerFuns :: [Maybe Name]
+    -- ^ Names of enclosing functions.  We use this to pick a name for
+    -- the lambda-lifted things.
 
   , localTParams  :: Set TParam
     -- ^ Type parameters for the current function.
@@ -87,6 +154,17 @@ data RO = RO
 
   }
 
+
+
+initRW :: Supply -> RW
+initRW sup =
+  RW
+    { nameSupply   = sup
+    , liftedVars   = mempty
+    , extraTParams = mempty
+    , extraParams  = mempty
+    , newDecls     = mempty
+    }
 
 data RW = RW
   { nameSupply    :: Supply
@@ -110,14 +188,21 @@ data RW = RW
 
   }
 
-newName :: M Name
-newName =
-  do mp <- modPath <$> ask
+newName :: Maybe Name -> M Name
+newName mbNm =
+  do mp   <- modPath <$> ask
+     os <- outerFuns <$> ask
      sets \rw ->
-       case mkDeclared NSValue mp SystemName i Nothing r (nameSupply rw) of
+       case mkDeclared NSValue mp SystemName (i os) Nothing r (nameSupply rw) of
          (x, newSup) -> (x, rw { nameSupply = newSup })
   where
-  i = packIdent "lambda_lift"
+  maybeName m =
+    case m of
+      Nothing -> "lam"
+      Just x  -> identText (nameIdent x)
+
+  i outer =mkIdent (Text.intercalate "_"
+                        ("ll" : map maybeName (outer ++ [mbNm])))
   r = emptyRange
 
 
@@ -131,6 +216,45 @@ addDecl d = sets_ \rw -> rw { newDecls = NonRecursive d : newDecls rw }
 withLocals :: Map Name Schema -> M a -> M a
 withLocals xs =
   mapReader \ro -> ro { localVars = Map.union xs (localVars ro) }
+
+getNewProps ::
+  [Prop]      {- ^ Constraints from outer scope -} ->
+  Set TParam  {- ^ Type variables to the functions -} ->
+  [Prop]      {- ^ Known constraints on function -} ->
+  (Set TParam, [Prop]) -- ^ Additional type parameters and constratints
+getNewProps outProps knownTVars knownProps =
+  go False [] knownTVars knownProps
+                            [ (p, tyParams (freeVars p)) | p <- outProps ]
+  where
+  isKnownProp :: [Prop] -> Prop -> Bool
+  isKnownProp new p = p `elem` new || p `elem` knownProps
+
+  haveCommon xs ys = not (Set.null (Set.intersection xs ys))
+
+  keepProp newVars newProps (p,vs) =
+    not (isKnownProp newProps p) &&
+      (haveCommon vs knownTVars || haveCommon vs newVars)
+
+
+  go changes doneProps !vs ps todo =
+    case todo of
+      [] | changes    -> go False [] vs ps doneProps
+         | otherwise  -> (vs,ps)
+
+      prop@(p,pvs) : more
+        | keepProp vs ps prop ->
+          let new    = Set.difference pvs vs
+              hasNew = not (Set.null new)
+          in if hasNew
+               then go True doneProps (new <> vs) (p : ps) more
+               else go changes doneProps vs (p : ps) more
+        | otherwise -> go changes (prop : doneProps) vs ps todo
+
+
+
+pushName :: Maybe Name -> M a -> M a
+pushName mb = mapReader \ro -> ro { outerFuns = mb : outerFuns ro }
+
 
 enterFun ::
   [TParam] ->
@@ -153,10 +277,11 @@ enterFun tps props params m =
                                , localVars = Map.fromList
                                             [ (x,tMono t) | (x,t) <- params ]
                                }) m
+
+     outCts <- outerConstraints <$> ask
      sets \rw ->
-       let newTPs = extraTParams rw
-           newProps = [] -- XXX:!!!!
-           newPs  = extraParams rw
+       let (newTPs,newProps) = getNewProps outCts (extraTParams rw) props
+           newPs              = extraParams rw
        in ( ( Set.toList newTPs
             , newProps
             , Map.toList  newPs
@@ -176,10 +301,13 @@ useTParams xs =
      sets_ \rw -> rw { extraTParams = (xs `Set.difference` known) `Set.union`
                                       extraTParams rw }
 
+
+
 -- | Record a dependency on a variable.
 useVar :: Name -> Type -> M ()
-useVar x t =
-  do outer   <- outerVars <$> ask
+useVar x t0 =
+  do t       <- ll t0
+     outer   <- outerVars <$> ask
      liftMap <- liftedVars <$> get
      case nameInfo x of
        LocalName {}
@@ -192,7 +320,7 @@ getExprType :: Expr -> M Type
 getExprType e =
   do ro <- ask
      let env = localVars ro <> outerVars ro <> topVars ro
-     pure (fastTypeOf env e)
+     pure $! fastTypeOf env e
 
 
 --------------------------------------------------------------------------------
@@ -221,6 +349,11 @@ class LL a where
 
 instance LL Type where
   ll t = useTParams (tyParams (freeVars t)) >> pure t
+  -- XXX: currently we are reusing the names of the outer capture type,
+  -- which I think is OK.   If this leads to a problem, we can change this
+  -- function to traverse the type and generate new names for used parameters,
+  -- we just need to change the monad to use a Map associating known free
+  -- variables with their fresh version.
 
 instance LL a => LL [a] where
   ll = traverse ll
@@ -275,11 +408,11 @@ instance LL Expr where
     doFun = callLambda expr [] 0 []
 
     doCall =
-      do let (fun, tyArgs, proofArgs, args) = exprToCall expr
-         mapM_ ll tyArgs
+      do let (fun, tyArgs0, proofArgs, args) = exprToCall expr
+         tyArgs  <- mapM ll tyArgs0
          newArgs <- mapM ll args
 
-         ty <- getExprType fun
+         ty <- getExprType (mkCall fun tyArgs0 proofArgs [])
          let needCall = not (null tyArgs)
                      || proofArgs > 0
                      || isJust (tIsFun ty)
@@ -331,6 +464,14 @@ mkCall f ts p xs =
         _ -> mkCall (EProofApp f) [] (p-1) xs
     t : more -> mkCall (ETApp f t) more p xs
 
+mkLam :: [TParam] -> [Prop] -> [(Name,Type)] -> Expr -> Expr
+mkLam tps pps ps body = foldr ETAbs withProofs tps
+  where
+  withProofs = foldr EProofAbs withArgs pps
+  withArgs   = foldr (uncurry EAbs) body ps
+
+
+
 -- | Lift a bunch of things, where each thing can bind things in the next,
 -- and may also disappear.
 llSeq :: (LLMaybe a, Defs a) => [a] -> M [a]
@@ -373,19 +514,23 @@ instance LLMaybe DeclGroup where
           -- recursive group call each other correctly.
           -- Furthermore, free variables in any member, should become
           -- be parameters to all members.
+          -- We can do this with `mfix` by passing in lazyly the collected extra
+          -- vars.
           else Just . Recursive . catMaybes <$> mapM llMaybe ds
                                            {- These should all be Just! -}
 doLiftFun :: Maybe Name -> Expr -> M (Name,[Type],Int,[(Name,Type)])
 doLiftFun mbStore expr =
   do let (tps,pps,xs,body) = exprToFun expr
-     (newTPs,newProps,newXs,newBody) <- enterFun tps pps xs (ll body)
-      -- XXX: should we generate fresh names for the type and value parameters?
-     let allTPs   = newTPs ++ tps
+     (newTPs,newProps,newXs,(newBody,bodyT)) <-
+          pushName mbStore $
+          enterFun tps pps xs
+          do newB <- ll body
+             t <- getExprType newB
+             pure (newB,t)
+     let allTPs   = newTPs   ++ tps
      let allProps = newProps ++ pps
-     let allXs    = newXs ++ xs
-     f <- newName
-
-     bodyT <- getExprType newBody
+     let allXs    = newXs    ++ xs
+     f <- newName mbStore
 
      let newTy = Forall
                    { sVars  = allTPs
@@ -393,14 +538,10 @@ doLiftFun mbStore expr =
                    , sType  = foldr (tFun . snd) bodyT allXs
                    }
 
-     let withArgs     = foldr (uncurry EAbs) newBody allXs
-         withProofs   = foldr EProofAbs withArgs allProps
-         newDef       = foldr ETAbs withProofs allTPs
-
      addDecl
        Decl { dName       = f
             , dSignature  = newTy
-            , dDefinition = DExpr newDef
+            , dDefinition = DExpr (mkLam allTPs allProps allXs newBody)
             , dPragmas    = []
             , dInfix      = False
             , dFixity     = Nothing
