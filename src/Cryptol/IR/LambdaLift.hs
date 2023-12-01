@@ -468,23 +468,25 @@ instance LL Expr where
          case dropLocs fun of
 
            -- Variable
-           EVar x ->
-             do useVar x ty
-                if needCall
-                  then
-                    do liftMap <- liftedVars <$> get
-                       case Map.lookup x liftMap of
-                         Just (topFun,moreTs,morePs,moreXs) ->
-                           do mapM_ ll moreTs
-                              mapM_ (uncurry useVar) moreXs
-                              pure (mkCall (EVar topFun)
-                                           (moreTs ++ tyArgs)
-                                           (morePs + proofArgs)
-                                           (map (EVar . fst) moreXs ++ newArgs))
+           EVar x
+             | needCall ->
+               do liftMap <- liftedVars <$> get
+                  case Map.lookup x liftMap of
+                    Just (topFun,moreTs0,morePs,moreXs) ->
+                      do moreTs <- mapM ll moreTs0
+                         mapM_ (uncurry useVar) moreXs
+                         pure (mkCall (EVar topFun)
+                                      (moreTs ++ tyArgs)
+                                      (morePs + proofArgs)
+                                      (map (EVar . fst) moreXs ++ newArgs))
 
 
-                         Nothing -> pure expr
-                  else pure expr
+                    Nothing ->
+                      do useVar x ty
+                         pure (mkCall fun tyArgs proofArgs newArgs)
+             | otherwise ->
+               do useVar x ty
+                  pure (mkCall fun tyArgs proofArgs newArgs)
 
            -- Lambda
            _ -> callLambda fun tyArgs proofArgs newArgs
