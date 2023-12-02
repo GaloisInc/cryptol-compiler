@@ -99,7 +99,14 @@ instance
   FreeNames (IRStreamExpr tname name expr) where
   freeNames expr = foldr (removeLocal . fst) fs (irsExterns expr)
     where
-    fs = freeNames (map snd (irsExterns expr), (irsInit expr, irsNext expr))
+    fs = freeNames (map snd (irsExterns expr), (irsRec expr, irsNext expr))
+
+
+instance FreeNames expr => FreeNames (IRStreamRec expr) where
+  freeNames re =
+    case re of
+      NonRecStream  -> mempty
+      RecStream e   -> freeNames e
 
 instance (Ord tname, Ord name) => FreeNames (IRExpr tname name) where
   freeNames (IRExpr e) = freeNames e

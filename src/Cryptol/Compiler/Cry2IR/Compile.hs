@@ -625,7 +625,7 @@ compileRecStream x def =
                 IRStreamExpr
                   { irsType     = irNameType x
                   , irsExterns  = exts
-                  , irsInit     = hist
+                  , irsRec      = RecStream hist
                   , irsNext     = body
                   }
 

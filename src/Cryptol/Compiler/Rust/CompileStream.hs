@@ -31,10 +31,6 @@ genStream sexpr =
                TStream _ elT -> compileType TypeAsStored AsOwned elT
                _ -> panic "genStream" ["Not a stream"]
 
-     let histLen =
-            case typeOf (irsInit sexpr) of
-              TArray (IRFixedSize i) _ -> i
-              _ -> panic "genStream" ["init fields is not a know fixed array"]
 
      -- Adds the locals corresponding to the captured streams.
      extStreamInfo <- zipWithM streamTypeVar [1..] (irsExterns sexpr)
@@ -46,7 +42,18 @@ genStream sexpr =
            (uncurry blockExprIfNeeded <$> ?genExpr OwnContext (irsNext sexpr))
      forM_ (irsExterns sexpr) \(s,_) -> removeLocalLet (irNameName s)
 
-     (initStmts,initE) <- ?genExpr OwnContext (irsInit sexpr)
+     (initStmts,mbRec) <-
+       case irsRec sexpr of
+         NonRecStream -> pure ([], Nothing)
+         RecStream ini ->
+           do let histLen =
+                    case typeOf ini of
+                       TArray (IRFixedSize i) _ -> i
+                       _ -> panic "genStream"
+                              ["init fields is not a know fixed array"]
+              (stmts,e) <- ?genExpr OwnContext ini
+              pure (stmts, Just (histLen,e))
+
      (extStrStmts, binds) <- foldM doExtStream ([],[]) (irsExterns sexpr)
      let stmts = concat (initStmts : reverse extStrStmts)
 
@@ -70,7 +77,7 @@ genStream sexpr =
           [ (extStrLabel info, extStrType info, bind)
           | (info,bind) <- zip extStreamInfo (reverse binds)
           ]
-     pure (stmts, streamMacro gen elTy histLen capture initE step)
+     pure (stmts, streamMacro gen elTy capture mbRec step)
 
 
   where
@@ -171,27 +178,30 @@ makeGenerics allTypeVars svars =
 streamMacro ::
   [(Rust.Ident, [RustPath])] ->
   RustType ->
-  Integer ->
   [ (Rust.Ident, RustType, RustExpr) ] ->
-  RustExpr ->
+  Maybe (Integer, RustExpr) ->
   RustExpr ->
   RustExpr
-streamMacro gen elT histLen capture initE stepE =
+streamMacro gen elT capture mbRec stepE =
     callMacro' (simplePath' [cryptolCrate, "stream"])
-  $ commas
+  $ commas $
     [ "forall"  ~> delim [ [ident x, colon,
                                   delim [ [inter Rust.NtPath p] | p <- cs ] ]
                          | (x,cs) <- gen
                          ]
     , "element" ~> inter Rust.NtTy elT
-    , "history" ~> num histLen
-
-    , "capture" ~> delim [ [ ident x, colon, inter Rust.NtTy t,
+    ] ++
+    [ f
+    | Just (histLen,initE) <- [mbRec]
+    , f <- [ "history" ~> num histLen
+           , "init"    ~> inter Rust.NtExpr initE
+           ]
+    ]
+    ++
+    [ "capture" ~> delim [ [ ident x, colon, inter Rust.NtTy t,
                                             eq, inter Rust.NtExpr e ]
                          | (x,t,e) <- capture
                          ]
-
-    , "init"    ~> inter Rust.NtExpr initE
     , "step"    ~> Rust.Stream [ tok Rust.Pipe
                                , ident "this"
                                , tok Rust.Pipe
@@ -200,7 +210,6 @@ streamMacro gen elT histLen capture initE stepE =
      ]
   where
   k ~> v  = [ ident k, eq, v ]
-
   tok     = Rust.Tree . Rust.Token dummySpan
   ident   = tok . Rust.IdentTok
   commas  = Rust.Stream . intercalate [tok Rust.Comma]

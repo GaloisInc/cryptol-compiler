@@ -28,6 +28,7 @@ module Cryptol.Compiler.IR
 
     -- ** Streams
   , IRStreamExpr(..)
+  , IRStreamRec(..)
 
     -- * Types
   , IRType(..)
@@ -159,9 +160,14 @@ data IRStreamExpr tname name expr =
   IRStreamExpr
     { irsType    :: IRType tname      -- ^ TStream l a
     , irsExterns :: [(IRName tname name, expr)]
-    , irsInit    :: expr              -- ^ TArray hist a
+    , irsRec     :: IRStreamRec expr
     , irsNext    :: expr              -- ^ a
     } deriving (Functor,Foldable,Traversable)
+
+data IRStreamRec expr =
+    NonRecStream
+  | RecStream expr    -- ^ TArray hist a, initializer
+    deriving (Functor,Foldable,Traversable)
 
 --------------------------------------------------------------------------------
 -- Computing Types
@@ -175,6 +181,7 @@ type instance TName (IRCall tname name expr) = tname
 type instance TName (IRTopFunCall tname name) = tname
 type instance TName (IRCallable tname name expr) = tname
 type instance TName (IRStreamExpr tname name expr) = tname
+type instance TName (IRStreamRec expr) = TName expr
 
 type family VName a
 type instance VName [a]       = VName a
@@ -190,6 +197,7 @@ type instance VName (IRCall tname name expr) = name
 type instance VName (IRTopFunCall tname name) = name
 type instance VName (IRCallable tname name expr) = name
 type instance VName (IRStreamExpr tname name expr) = name
+type instance VName (IRStreamRec expr) = VName expr
 
 
 
@@ -379,16 +387,24 @@ instance (PP tname, PP name, PP expr) =>
   PP (IRStreamExpr tname name expr) where
   pp expr =
     vcat [ "stream" <+> "{"
-         , nest 2 (pp (irsInit expr))
-         , "#"
+         , case irsRec expr of
+             RecStream e  -> nest 2 (pp e) $$ "#"
+             NonRecStream -> mempty
          , nest 2 (pp (irsNext expr))
          , ppExterns
+         , "}"
          ]
     where
     ppExtern (x,e) = pp x <+> "=" <+> pp e
     ppExterns = case irsExterns expr of
                   [] -> mempty
                   ds -> "where" $$ nest 2 (vcat (map ppExtern ds))
+
+instance PP expr => PP (IRStreamRec expr) where
+  pp re =
+    case re of
+      NonRecStream -> "non_rec_stream"
+      RecStream e  -> "rec_stream" $$ nest 2 (pp e)
 
 instance (PP tname, PP name) => PP (IRExpr tname name) where
   pp (IRExpr e) = pp e

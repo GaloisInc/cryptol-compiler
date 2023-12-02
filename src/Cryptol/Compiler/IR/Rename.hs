@@ -61,7 +61,7 @@ instance RenameF IRStreamExpr where
     IRStreamExpr
       <$> traverse ?renameT (irsType expr)
       <*> traverse renExt (irsExterns expr)
-      <*> irsInit expr
+      <*> sequenceA (irsRec expr)
       <*> irsNext expr
     where
     renExt (x,e) = (,) <$> renameIP x <*> e

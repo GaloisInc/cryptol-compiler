@@ -160,15 +160,20 @@ instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
 instance (Ord tname, ApSubst expr, TName expr ~ tname) =>
   ApSubst (IRStreamExpr tname name expr) where
   apSubstMaybe su expr =
-    do (ty, (exts, (ini,nex))) <- apSubstMaybe su (irsType expr,
+    do (ty, (exts, (re,nex))) <- apSubstMaybe su (irsType expr,
                                                   (irsExterns expr,
-                                                  (irsInit expr, irsNext expr)))
+                                                  (irsRec expr, irsNext expr)))
        pure IRStreamExpr
               { irsType = ty
               , irsExterns = exts
-              , irsInit = ini
+              , irsRec = re
               , irsNext = nex }
 
+instance ApSubst expr => ApSubst (IRStreamRec expr) where
+  apSubstMaybe su re =
+    case re of
+      NonRecStream -> Nothing
+      RecStream e  -> RecStream <$> apSubstMaybe su e
 
 instance (Ord tname) => ApSubst (IRTopFunCall tname name) where
   apSubstMaybe su (IRTopFunCall f ts sz) =
