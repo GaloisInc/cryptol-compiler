@@ -134,7 +134,6 @@ primArgOwnership prim szArgs argTs resT =
     LtSize        -> ([BorrowContext,BorrowContext], [])
     LeqSize       -> ([BorrowContext,BorrowContext], [])
 
-    Map           -> ([], [OwnContext, OwnContext]) -- function is 2nd
     FlatMap       -> ([], [OwnContext, OwnContext]) -- function is 2nd
     Zip           -> ([], [OwnContext, OwnContext]) -- function is 2nd
 
@@ -202,10 +201,6 @@ compilePrim name args =
     Head ->
       arg1 \x ->
         pure (rustTry (callMethod x "next" []))
-
-    Map ->
-      arg2 \xs f ->
-        pure (mkRustCall (pathExpr (rtsName "cry_map")) [f,xs])
 
     Zip ->
       arg2 \xs ys ->

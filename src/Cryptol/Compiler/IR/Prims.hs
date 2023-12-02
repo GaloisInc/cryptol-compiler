@@ -36,7 +36,6 @@ data IRPrim =
     -- ^ Compare two size types.  They are in the size args of the call
 
     -- Iterators
-  | Map       -- ^ (xs : Stream n a, f : a -> b) -> Stream n b
   | FlatMap   -- ^ (xs : Stream m a, f : a -> Stream n b) -> Stream (m*n) b
   | Zip       -- ^ (xs : Stream m a, ys : Stream n b) -> Stream (min m n) (a,b)
 

@@ -383,10 +383,8 @@ compileComprehension elT tgtT res mss =
                defName ((x,t),f) k =
                  IRExpr . IRLet x (f tupExpr) <$> C.withLocals [(x,t)] k
 
-           body <- IRExpr . IRLam [tupName] <$>
-                   foldr defName (compileExpr res elT) nms
-
-           pure (callPrim Map [gen,body] (TStream genLen elT))
+           body <- foldr defName (compileExpr res elT) nms
+           compileMapStream genLen elT body tupName gen
 
 
   -- NOTE: It is an invariant on the type of list comprehensions that
@@ -409,8 +407,7 @@ compileComprehension elT tgtT res mss =
              case more of
                [] ->
                  do body <- compileExpr res elT
-                    let fun = IRExpr (IRLam [name] body)
-                    pure (callPrim Map [it,fun] (TStream lenTy elT))
+                    compileMapStream lenTy elT body name it
                _ ->
                  do body <- doOneAltArm False more
                     let fun    = IRExpr (IRLam [name] body)
@@ -441,8 +438,7 @@ compileComprehension elT tgtT res mss =
 
                         sel x n e = callPrim (TupleSel n len) [e] (typeOf x)
                         ns = [ ((x,t),sel x fi) |((x,t),fi) <- zip allNms [0..]]
-                        fu = IRExpr (IRLam [name] tupE)
-                        newIt = callPrim Map [it,fu] (TStream lenTy tupT)
+                    newIt <- compileMapStream lenTy tupT tupE name it
                     pure (ns,newIt)
 
                _ ->
@@ -595,6 +591,27 @@ coerceTo e tgtT =
   where
   srcT = typeOf e
 --------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------
+
+compileMapStream ::
+  StreamSize -> Type -> Expr -> Name -> Expr -> C.ConvertM Expr
+compileMapStream len elT body var xs =
+  do nameId <- C.doCryC M.newNameId
+     let ty   = TStream len elT
+         name = IRName { irNameName = nameId, irNameType = ty }
+         val  = callPrim Head [ IRExpr (IRVar name) ] elT
+     pure $ IRExpr $ IRStream
+       IRStreamExpr
+         { irsType    = ty
+         , irsExterns = [ (name, xs) ]
+         , irsRec     = NonRecStream
+         , irsNext    = IRExpr (IRLet var val body)
+         }
+
+
+
+
 
 -------------------------------------------------------------------------------
 -- Simeple recursive equations, of the form:
