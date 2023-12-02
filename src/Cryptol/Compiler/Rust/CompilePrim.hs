@@ -263,7 +263,7 @@ compileCryptolPreludePrim name args =
     -- Ring --
     "+"           -> pure (callTyTraitMethod "add")
     "-"           -> pure (callTyTraitMethod "sub")
-    "*"           -> pure (callTyTraitMethod "mut")
+    "*"           -> pure (callTyTraitMethod "mul")
     "negate"      -> pure (callTyTraitMethod "negate")
     "^^" ->
       do let fu = pathAddTypeSuffix (rtsName "exp") (primTypeArgs args)
