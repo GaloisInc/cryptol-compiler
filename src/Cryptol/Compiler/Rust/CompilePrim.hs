@@ -144,7 +144,7 @@ primArgOwnership prim szArgs argTs resT =
     StreamToWord  -> ([], [OwnContext])
     StreamToArray -> ([], [OwnContext])
 
-    Head          -> ([], [OwnContext]) -- head needs to own its argument
+    Head          -> ([], [MutContext])
     Hist          -> ([OwnContext], [])
 
 

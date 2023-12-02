@@ -14,6 +14,7 @@ import Language.Rust.Data.Ident qualified as Rust
 import Cryptol.Utils.Ident qualified as Cry
 
 -- import Cryptol.Compiler.PP
+import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Monad
@@ -127,6 +128,8 @@ genExpr how (IRExpr e0) =
       do (isLocal,isLastUse,rexpr) <- lookupNameId name
          justExpr <$>
            case how of
+             MutContext -> pure rexpr
+
              OwnContext
                | isLocal || (ownIfStream ty == OwnContext) {-passed by value-} ->
                  pure
@@ -147,6 +150,7 @@ genExpr how (IRExpr e0) =
            , case how of
                OwnContext    -> rexpr
                BorrowContext -> callMethod rexpr "as_arg" []
+               MutContext -> panic "genExpr" ["MutContext"]
            )
 
     IRIf eTest eThen eElse ->

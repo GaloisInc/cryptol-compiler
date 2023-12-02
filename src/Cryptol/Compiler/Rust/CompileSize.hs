@@ -21,6 +21,7 @@ compileSizeType ctxt szT =
       case ctxt of
         OwnContext -> own
         BorrowContext -> refType Nothing own
+        MutContext -> panic "compileSizeType" ["MutContext"]
       where
       own = pathType (simplePath' ["num","BigUint"])
 
@@ -35,7 +36,9 @@ compileSize ctxt sz tgtSz =
         MemSize   -> pure (litExpr (mkUSizeLit n))
         LargeSize -> pure (case ctxt of
                              OwnContext -> val
-                             BorrowContext -> addrOf val)
+                             BorrowContext -> addrOf val
+                             MutContext -> panic "compileSize" ["MutContext"]
+                          )
           where
           val  =  mkRustCall fn [arg]
           fn   = pathExpr (simplePath' ["num","BigUint","from_bytes_le"])

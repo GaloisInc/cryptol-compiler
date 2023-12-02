@@ -45,6 +45,9 @@ runRustM gi (Rust m) = fst <$> runStateT rw (runReaderT ro m)
 data ExprContext =
     OwnContext    -- ^ We are generating an ownded expression
   | BorrowContext -- ^ We are generating a borrowed expression
+  | MutContext
+    -- ^ At the moment, this is only used for Head, and
+    -- is extremely special cased
     deriving Eq
 
 -- | Use Own for streams and functions, and Borrow otherwise
