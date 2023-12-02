@@ -1,10 +1,6 @@
 use crate::type_traits::*;
 
 
-// The struct declaration doesn't need most of the trait constraints,
-// but we add them to avoid unused types.  For example, the only use
-// of `T` might be in the constraint `I : Stream<T>`.
-
 #[macro_export]
 macro_rules! stream {
   ( forall  = [ $( $t:ident : [ $($trait:path),* ] ),* ]
@@ -16,13 +12,12 @@ macro_rules! stream {
   ) => {
     {
       #[derive(Clone)]
-      struct S<$($t,)*>
-        where
-        $( $( $t : $trait ,)* )*
+      struct S<$($t,)*> where $($t: $crate::type_traits::Type),*
       {
         index:    usize,
         history:  [ $elT; $history ],
         $( $field: $type, )*
+        $( $t: std::marker::PhantomData::<$t>, )*
       }
 
       impl<$($t,)*>  S<$($t,)*>
@@ -76,6 +71,7 @@ macro_rules! stream {
       S { index: 0
         , history: $init.try_into().ok().unwrap()
         , $($field: $field_value,)*
+        $( $t: std::marker::PhantomData, )*
         }
     }
   };
@@ -87,11 +83,10 @@ macro_rules! stream {
   ) => {
     {
       #[derive(Clone)]
-      struct S<$($t,)*>
-        where
-        $( $( $t : $trait ,)* )*
+      struct S<$($t,)*> where $($t: $crate::type_traits::Type),*
       {
           $( $field: $type, )*
+          $( $t: std::marker::PhantomData::<$t>, )*
       }
 
       impl <$($t,)*> Iterator for S<$($t,)*>
@@ -119,7 +114,14 @@ macro_rules! stream {
         fn clone_arg(self) -> Self::Owned { self }
       }
 
-      S { $($field: $field_value,)* }
+      impl<$($t,)*> $crate::type_traits::Stream<$elT> for S<$($t,)*>
+        where
+        $( $( $t : $trait ,)* )*
+      { }
+
+      S { $($field: $field_value,)*
+          $( $t: std::marker::PhantomData, )*
+        }
     }
   };
 }
