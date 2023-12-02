@@ -55,7 +55,8 @@ compileType use mode ty =
         TypeInFunSig -> stream <$> compileType TypeAsStored AsOwned t
           where stream el = implTraitType [streamTraitPath el]
         TypeAsParam  -> pure inferType
-        TypeAsStored -> unsupported "Stream stored in another type"
+        -- TypeAsStored -> unsupported "Stream stored in another type"
+        TypeAsStored -> pure (simpleType "STREAM")
 
     IR.TTuple ts ->
       case ts of
