@@ -12,7 +12,7 @@ pub enum IndexFrom {
 
 
 /// Direction for indexing.
-pub trait IndexDir {
+pub trait IndexDir: Clone {
   const DIR: IndexFrom;
 }
 

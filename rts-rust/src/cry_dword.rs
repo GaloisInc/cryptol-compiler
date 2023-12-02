@@ -1,6 +1,8 @@
 use crate::traits::*;
 use crate::type_traits::*;
 use dword::*;
+use dword::iter_bits::*;
+use dword::split::*;
 
 
 crate::derive_display!(DWordRef<'_>);
@@ -86,5 +88,39 @@ impl Sequence for DWordRef<'_> {
   fn index(self, i: usize) -> Self::Item { self.index_msb(i) }
 
 }
+
+
+
+impl<INDEX: IndexDir> CloneArg for TraverseBitsOwned<INDEX> {
+  type Owned = Self;
+  fn clone_arg(self) -> Self::Owned { self }
+}
+
+impl<INDEX: IndexDir> Type for TraverseBitsOwned<INDEX> {
+  type Arg<'a> = Self where Self: 'a;
+  type Length  = ();    // XXX: ???
+  fn as_arg(&self) -> Self::Arg<'_> { self.clone() }
+}
+
+impl<INDEX: IndexDir> Stream<bool> for TraverseBitsOwned<INDEX>
+{}
+
+
+impl<INDEX: IndexDir> CloneArg for TraverseWordsOwned<INDEX> {
+  type Owned = Self;
+  fn clone_arg(self) -> Self::Owned { self }
+}
+
+impl<INDEX: IndexDir> Type for TraverseWordsOwned<INDEX> {
+  type Arg<'a> = Self where Self: 'a;
+  type Length  = ();    // XXX: ???
+  fn as_arg(&self) -> Self::Arg<'_> { self.clone() }
+}
+
+impl<INDEX: IndexDir> Stream<DWord> for TraverseWordsOwned<INDEX>
+{}
+
+
+
 
 
