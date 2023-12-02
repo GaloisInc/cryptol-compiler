@@ -36,18 +36,20 @@ instance PP CompilerError where
   pp err =
     case err of
       LoadError e -> pp (Cry.pp e)
-      Unsupported loc feature ->
-        case loc of
-          [] -> msg
-          _  -> hang locDoc 2 msg
-        where
-        locDoc = hsep (intersperse "/" loc)
-        msg = "Unsupported feature:" $$ nest 2 feature
+      Unsupported loc feature -> ppWithLoc loc msg
+        where msg = "Unsupported feature:" $$ nest 2 feature
 
       CatchablePanic m ms ->
          ("PANIC:" <+> pp (Text.pack m)) $$
             nest 2 (vcat (map (pp . Text.pack) ms))
 
+ppWithLoc :: Loc -> Doc -> Doc
+ppWithLoc loc msg =
+  case loc of
+    [] -> msg
+    _  -> hang locDoc 2 msg
+  where
+  locDoc = hsep (intersperse "/" loc)
 
 instance PP CompilerWarning where
   pp warn =

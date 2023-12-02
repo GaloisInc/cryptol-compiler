@@ -269,8 +269,9 @@ loadModuleByName name =
 -- | Report this warning
 addWarning :: CompilerWarning -> CryC ()
 addWarning w =
-  do logger <- CryC (rwWarnings <$> get)
-     doIO (Cry.logPrint logger (pp w))
+  do loc <- roLoc <$> CryC ask
+     logger <- CryC (rwWarnings <$> get)
+     doIO (Cry.logPrint logger (ppWithLoc loc (pp w)))
 
 -- | Abort execution with this error
 throwError :: CompilerError -> CryC a

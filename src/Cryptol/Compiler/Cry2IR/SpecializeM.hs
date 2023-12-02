@@ -9,6 +9,7 @@ module Cryptol.Compiler.Cry2IR.SpecializeM
 
     -- * Errors
   , unsupported
+  , warnUnsupported
   , M.panic
   , enter
 
@@ -51,6 +52,7 @@ import Cryptol.TypeCheck.Type qualified as Cry
 import Cryptol.TypeCheck.Solver.SMT qualified as Cry
 import Cryptol.Utils.Ident qualified as Cry
 
+import Cryptol.Compiler.Error(CompilerWarning(..))
 import Cryptol.Compiler.PP(Doc,cryPP,(<+>))
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR.Cryptol
@@ -134,6 +136,14 @@ doCryCWith k (SpecM m) =
 -- | Abort: we found something that's unsupported.
 unsupported :: Doc -> SpecM a
 unsupported x = doCryC (M.unsupported ("[cry2ir]" <+> x))
+
+warnUnsupported :: Doc -> SpecM a
+warnUnsupported x =
+  do mb <- doCryC (M.catchError (M.unsupported ("[cry2ir]" <+> x)))
+     case mb of
+       Left err -> doCryC (M.addWarning (WarnError err))
+       Right _  -> pure ()
+     empty
 
 --------------------------------------------------------------------------------
 -- Boolean constraint

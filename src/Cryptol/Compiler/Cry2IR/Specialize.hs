@@ -49,8 +49,8 @@ compileSchema cn sch =
            specTy <-
               do mbHint <- getRepHint cn
                  case mbHint of
-                   Nothing   -> compileValType (Cry.sType sch)
-                   Just hint -> compileValTypeWithHint hint (Cry.sType sch)
+                   Nothing   -> compileValType False (Cry.sType sch)
+                   Just hint -> compileValTypeWithHint False hint (Cry.sType sch)
 
            let as = Cry.sVars sch
            (su,info) <- doTParams suEmpty [] as
@@ -112,11 +112,11 @@ compileSchema cn sch =
 
 
 
-compileValTypeWithHint :: RepHint -> Cry.Type -> SpecM Type
-compileValTypeWithHint hint ty =
+compileValTypeWithHint :: Bool -> RepHint -> Cry.Type -> SpecM Type
+compileValTypeWithHint nested hint ty =
 
   case hint of
-    NoHint -> compileValType ty
+    NoHint -> compileValType nested ty
 
     AsWord ->
       case Cry.tIsSeq ty of
@@ -138,7 +138,7 @@ compileValTypeWithHint hint ty =
                   addIsBoolProp a (Known False)
                _ -> when (Cry.tIsBit elTy) empty
 
-             a <- compileValTypeWithHint h elTy
+             a <- compileValTypeWithHint True h elTy
              pure (TArray n a)
 
         Nothing           -> bad
@@ -147,15 +147,15 @@ compileValTypeWithHint hint ty =
       case Cry.tIsSeq ty of
         Just (l, elTy) ->
           do len <- compileStreamLenSizeType l
-             t   <- compileValTypeWithHint h elTy
+             t   <- compileValTypeWithHint True h elTy
              pure (TStream len t)
         Nothing           -> bad
 
     x :-> y ->
       case Cry.tIsFun ty of
         Just (l,r) ->
-          do arg <- compileValTypeWithHint x l
-             res <- compileValTypeWithHint y r
+          do arg <- compileValTypeWithHint False x l
+             res <- compileValTypeWithHint False y r
              pure
                case res of
                  TFun as b -> TFun (arg:as) b
@@ -167,7 +167,7 @@ compileValTypeWithHint hint ty =
       case Cry.tIsTuple ty of
         Just ts
           | length ts == length hs ->
-            TTuple <$> zipWithM compileValTypeWithHint hs ts
+            TTuple <$> zipWithM (compileValTypeWithHint nested) hs ts
         _ -> bad
 
 
@@ -177,7 +177,8 @@ compileValTypeWithHint hint ty =
         Just ts
           | Right mp <- Cry.zipRecords (const (,)) r ts ->
             TTuple <$>
-              mapM (uncurry compileValTypeWithHint) (Cry.recordElements mp)
+              mapM (uncurry (compileValTypeWithHint nested))
+                   (Cry.recordElements mp)
         _ -> bad
 
   where
@@ -186,9 +187,8 @@ compileValTypeWithHint hint ty =
                           , show ("Type:" <+> cryPP ty)
                            ]
 
-
-compileValType :: Cry.Type -> SpecM Type
-compileValType ty =
+compileValType :: Bool -> Cry.Type -> SpecM Type
+compileValType nested ty =
   case ty of
     Cry.TCon tc ts ->
       case tc of
@@ -222,11 +222,16 @@ compileValType ty =
                 [tlen,tel] ->
                   do szf <- caseSize tlen
                      case szf of
-                       IsInf -> TStream IRInfSize <$> compileValType tel
-                       IsFin -> empty   -- too large
+                       IsInf
+                         | nested ->
+                           warnUnsupported
+                                "Infinite sequences stored in other types"
+                         | otherwise ->
+                           TStream IRInfSize <$> compileValType True tel
+                       IsFin -> warnUnsupported "Sequence length is too large"
                        IsFinSize ->
                          do isize <- compileStreamSizeType tlen
-                            vt    <- compileValType tel
+                            vt    <- compileValType True tel
                             case isize of
                               IRInfSize -> panic "InfSize when Fin" []
                               IRSize sz ->
@@ -240,14 +245,16 @@ compileValType ty =
 
                 _ -> unexpected "Malformed TSeq"
 
-            Cry.TCTuple {}    -> TTuple <$> mapM compileValType ts
+            Cry.TCTuple {}    -> TTuple <$> mapM (compileValType nested) ts
 
-            Cry.TCFun ->
+            Cry.TCFun
+              | nested -> warnUnsupported "Functions stored in other types"
+              | otherwise ->
               case ts of
                 [a,b] ->
                   do let (as,c) = Cry.splitWhile Cry.tIsFun b
-                     args <- mapM compileValType (a:as)
-                     res  <- compileValType c
+                     args <- mapM (compileValType False) (a:as)
+                     res  <- compileValType False c
                      pure (TFun args res)
                 _ -> unexpected "Malformed function type"
 
@@ -263,8 +270,9 @@ compileValType ty =
         Cry.TVBound a -> pure (TPoly a)
         Cry.TVFree {} -> unexpected "TVFree"
 
-    Cry.TUser _ _ t     -> compileValType t
-    Cry.TRec rec -> TTuple <$> mapM compileValType (Cry.recordElements rec)
+    Cry.TUser _ _ t     -> compileValType nested t
+    Cry.TRec rec -> TTuple <$> mapM (compileValType nested)
+                                        (Cry.recordElements rec)
     Cry.TNewtype {}     -> unsupported "newtype"    -- XXX
 
   where
