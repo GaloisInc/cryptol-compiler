@@ -598,12 +598,12 @@ compileMapStream ::
   StreamSize -> Type -> Expr -> Name -> Expr -> C.ConvertM Expr
 compileMapStream len elT body var xs =
   do nameId <- C.doCryC M.newNameId
-     let ty   = TStream len elT
-         name = IRName { irNameName = nameId, irNameType = ty }
-         val  = callPrim Head [ IRExpr (IRVar name) ] elT
+     let srcT = irNameType var
+         name = IRName { irNameName = nameId, irNameType = TStream len srcT }
+         val  = callPrim Head [ IRExpr (IRVar name) ] srcT
      pure $ IRExpr $ IRStream
        IRStreamExpr
-         { irsType    = ty
+         { irsType    = TStream len elT
          , irsExterns = [ (name, xs) ]
          , irsRec     = NonRecStream
          , irsNext    = IRExpr (IRLet var val body)

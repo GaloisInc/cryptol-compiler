@@ -395,7 +395,7 @@ instance (PP tname, PP name, PP expr) =>
          , "}"
          ]
     where
-    ppExtern (x,e) = pp x <+> "=" <+> pp e
+    ppExtern (x,e) = pp x <.> ":" <+> pp (irNameType x) <+> "=" <+> pp e
     ppExterns = case irsExterns expr of
                   [] -> mempty
                   ds -> "where" $$ nest 2 (vcat (map ppExtern ds))
