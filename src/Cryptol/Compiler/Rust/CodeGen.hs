@@ -83,8 +83,8 @@ genCall call =
          pure (fstmts ++ astmts, mkRustCall fun args)
 
     IRTopFun tf ->
-      do typeArgs <- traverse (compileType TypeAsParam AsOwned)
-                              (topCallTypeArgs tf)
+      do -- This contains all type args for the original Cryptol function
+         -- Not all of these are needed for this particular instance!
          lenArgs      <- genCallLenArgs call
          name         <- lookupFunName (irtfName tf)
 
@@ -92,7 +92,9 @@ genCall call =
 
          case name of
            Left prim ->
-              do let (szOwn, ctx) = primArgOwnership prim szArgNum argTs resT
+              do allTypeArgs <- traverse (compileType TypeAsParam AsOwned)
+                                 (topCallTypeArgs tf)
+                 let (szOwn, ctx) = primArgOwnership prim szArgNum argTs resT
                  szArgs       <- genCallSizeArgs szOwn call
                  (stmts,args) <- genCallArgs ctx call
                  rexpr <- compilePrim prim
@@ -100,7 +102,7 @@ genCall call =
                               { primInstance     = irfnInstance (irtfName tf)
                               , primTypesOfArgs  = argTs
                               , primTypeOfResult = resT
-                              , primTypeArgs     = typeArgs
+                              , primTypeArgs     = allTypeArgs
                               , primLenArgs      = lenArgs
                               , primSizeArgs     = szArgs
                               , primArgs         = args
@@ -111,6 +113,8 @@ genCall call =
              do let szOwn = replicate szArgNum BorrowContext
                 szArgs       <- genCallSizeArgs szOwn call
                 (stmts,args) <- genCallArgs (map ownIfStream argTs) call
+                typeArgs <- traverse (compileType TypeAsParam AsOwned)
+                                     (irtfTypeArgs tf)
                 let fun = pathExpr (pathAddTypeSuffix path typeArgs)
                     allArgs = lenArgs ++ szArgs ++ args
                 pure (stmts, mkRustCall fun allArgs)
