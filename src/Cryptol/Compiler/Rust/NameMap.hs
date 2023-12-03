@@ -26,12 +26,13 @@ emptyNameMap = NameMap { lUsed = mempty, lMap  = mempty }
 
 -- | Pick a Rust name for something, ensuring that it does not clash with
 -- any previously used names.
-addName :: (Ord a, RustIdent a) => a -> NameMap a -> (Rust.Ident, NameMap a)
-addName x mp =
+addName :: (Ord a, RustIdent a) =>
+  (String -> String) -> a -> NameMap a -> (Rust.Ident, NameMap a)
+addName norm x mp =
   (i, mp { lUsed = Set.insert i (lUsed mp), lMap  = Map.insert x i (lMap mp) })
   where
   used = lUsed mp
-  i    = rustIdentAvoiding used (rustIdent x)
+  i    = rustIdentAvoiding norm used (rustIdent x)
 
 removeName :: (Ord a) => a -> Rust.Ident -> NameMap a -> NameMap a
 removeName x i nm = nm { lUsed = Set.delete i (lUsed nm)

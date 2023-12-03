@@ -231,7 +231,7 @@ mapStreamClosure f =
 -- | Bind a function in this module
 bindFun :: FunName -> Rust Rust.Ident
 bindFun x =
-  Rust $ sets \rw -> let (i,fs) = addName x (rwLocalFunNames rw)
+  Rust $ sets \rw -> let (i,fs) = addName snakeCase x (rwLocalFunNames rw)
                     in (i, rw { rwLocalFunNames = fs })
 
 
@@ -448,7 +448,7 @@ emptyLocalNames = LocalNames
 addLocalType :: Cry.TParam -> LocalNames -> (Rust.Ident, LocalNames)
 addLocalType t ns = (i, ns { lTypeNames = mp })
   where
-  (i, mp) = addName t (lTypeNames ns)
+  (i, mp) = addName upperCamelCase t (lTypeNames ns)
 
 
 -- | Bind a local variable/paramter.
@@ -461,7 +461,7 @@ addLocalVar isLoc x ns = (i, ns { lValNames = mp
                                        Just b  -> Map.insert i b curLocs
                                 })
   where
-  (i, mp) = addName x (lValNames ns)
+  (i, mp) = addName snakeCase x (lValNames ns)
   curLocs = lLocalVars ns
 
 removeLocalVar :: NameId -> Rust.Ident -> LocalNames -> LocalNames
@@ -480,7 +480,7 @@ addLocalLenghtParam t ns = (i, ns { lValNames  = newVals
   where
   vals    = lValNames ns
   used    = lUsed vals
-  i       = rustIdentAvoiding used (rustIdent (TraitLengthName t))
+  i       = rustIdentAvoiding upperCamelCase used (rustIdent (TraitLengthName t))
   newVals = vals { lUsed = Set.insert i used }
   newPa   = Map.insert t i (lLenParams ns)
 
@@ -493,7 +493,7 @@ addLocalSizeParam t ns = (i, ns { lValNames  = newVals
   where
   vals    = lValNames ns
   used    = lUsed vals
-  i       = rustIdentAvoiding used (rustIdent (SizeParamName t))
+  i       = rustIdentAvoiding snakeCase used (rustIdent (SizeParamName t))
   newVals = vals { lUsed = Set.insert i used }
   newPa   = Map.insert t i (lSizeParams ns)
 

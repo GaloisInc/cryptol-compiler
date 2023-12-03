@@ -44,14 +44,15 @@ cryptolCrate = Rust.mkIdent cryptolCrateString
 
 -- | Pick a name for something, so that it does not clash with the given names.
 rustIdentAvoiding ::
+  (String -> String) ->
   Set Rust.Ident {- Avoid these -} ->
   [Rust.Ident] {- Variations on the name, pick first that doesn't clash -} ->
   Rust.Ident
-rustIdentAvoiding avoid names =
+rustIdentAvoiding norm avoid names =
     head [ x | x <- variants, not (x `Set.member` avoid) ]
     where
     variants  = names ++ concatMap variant [ 1 .. ]
-    variant i = [ Rust.mkIdent (Rust.name name ++ "_" ++ show (i :: Int))
+    variant i = [ Rust.mkIdent (norm (Rust.name name ++ "_" ++ show (i :: Int)))
                 | name <- names
                 ]
 
