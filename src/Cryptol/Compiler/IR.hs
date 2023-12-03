@@ -160,6 +160,9 @@ data IRStreamExpr tname name expr =
   IRStreamExpr
     { irsType    :: IRType tname      -- ^ TStream l a
     , irsExterns :: [(IRName tname name, expr)]
+      -- ^ These are external streams we traverse.
+      -- They should only be used *uniquely*, so we can mutate them on use.
+
     , irsRec     :: IRStreamRec expr
     , irsNext    :: expr              -- ^ a
     } deriving (Functor,Foldable,Traversable)
