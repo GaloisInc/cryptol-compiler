@@ -2,6 +2,7 @@ use crate::type_traits::*;
 
 
 #[macro_export]
+#[allow(bad_style)]
 macro_rules! stream {
   ( forall  = [ $( $t:ident : [ $($trait:path),* ] ),* ]
   , element = $elT:ty
@@ -12,6 +13,7 @@ macro_rules! stream {
   ) => {
     {
       #[derive(Clone)]
+      #[allow(non_snake_case)]
       struct S<$($t,)*> where $($t: $crate::type_traits::Type),*
       {
         index:    usize,
@@ -83,6 +85,7 @@ macro_rules! stream {
   ) => {
     {
       #[derive(Clone)]
+      #[allow(non_snake_case)]
       struct S<$($t,)*> where $($t: $crate::type_traits::Type),*
       {
           $( $field: $type, )*
