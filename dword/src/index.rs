@@ -95,7 +95,7 @@ impl DWord {
 
 #[cfg(test)]
 mod test {
-  use crate::{DWord,FromLSB,FromMSB,IndexDir,IndexFrom};
+  use crate::{DWord,FromLSB,FromMSB};
   use crate::proptest::*;
 
   #[test]
