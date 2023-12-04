@@ -1,4 +1,6 @@
 #!/bin/bash
 
-rm -rf docs/haddock
-cp -r $(./scripts/haddock-dir) docs/haddock
+TGT=manual/src/static/haddock
+
+rm -rf $TGT 
+cp -r $(./scripts/haddock-dir) $TGT
