@@ -480,7 +480,7 @@ addLocalLenghtParam t ns = (i, ns { lValNames  = newVals
   where
   vals    = lValNames ns
   used    = lUsed vals
-  i       = rustIdentAvoiding upperCamelCase used (rustIdent (TraitLengthName t))
+  i       = rustIdentAvoiding snakeCase used (rustIdent (TraitLengthName t))
   newVals = vals { lUsed = Set.insert i used }
   newPa   = Map.insert t i (lLenParams ns)
 

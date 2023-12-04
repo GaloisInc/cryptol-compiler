@@ -172,6 +172,7 @@ instance RustIdent NameId where
 
 instance RustIdent Cry.Name where
   rustIdent nm =
+    map (changeIdent snakeCase)
     case Cry.nameInfo nm of
       Cry.LocalName _ i -> rustIdent i
       Cry.GlobalName _ og -> rustIdent og
