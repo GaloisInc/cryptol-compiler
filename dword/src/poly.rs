@@ -33,8 +33,6 @@ impl DWordRef<'_> {
     assert!(n < v1);                 // otherise, division by 0
     let degree = v1 - n - 1;         // lsb index of most signficant bit.
 
-    let is_max_degree = degree == v;
-
     let mut result =
       if u > degree { self.sub_word_lsb(degree, 0) } else { self.clone_word() };
 
@@ -45,14 +43,17 @@ impl DWordRef<'_> {
 
     let m1     = m.sub_word_lsb(v, 0);
     let mut p  = m1.as_ref().clone_word();
-    if !is_max_degree { p.set_bit_lsb(degree,false) }
+    if degree < v { p.set_bit_lsb(degree,false) }
 
     for i in degree .. u {
       //println!("i = {}, result = {}, p = {}", i, result, p);
       if self.index_lsb(i) { result ^= p.as_ref() }
+      let carry = if degree == 0 { false }
+                  else { p.as_ref().index_lsb(degree-1) };
       p <<= 1;
-      if !is_max_degree && p.as_ref().index_lsb(degree) {
-        //print!("reducing {} ~>",p);
+
+      if carry {
+        // print!("reducing {} ~>",p);
         p ^= m1.as_ref();
         // println!("{}",p);
       }
@@ -84,6 +85,11 @@ mod test {
     y = DWord::from_uint(76, &n);
     n = num::BigUint::parse_bytes(b"03b36e346d5619205af",16).unwrap();
     z = DWord::from_uint(75, &n);
+    assert_eq!(x.as_ref().pmod(y.as_ref()), z);
+
+    x = DWord::from_u64(52, 0xFFFFFFFFFFFFF);
+    y = DWord::from_u64(8, 0xDA);
+    z = DWord::from_u64(7, 0x11);
     assert_eq!(x.as_ref().pmod(y.as_ref()), z);
   }
 
