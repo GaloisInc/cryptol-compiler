@@ -151,4 +151,5 @@ test-suite cryptol-compiler-test
         temporary,
         directory,
         bytestring,
-        utf8-string
+        utf8-string,
+        filepath

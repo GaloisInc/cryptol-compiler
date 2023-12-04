@@ -1,9 +1,0 @@
-#!/bin/sh
-
-if [ -z ${1+x} ]; then
-  echo "Usage: $0 PATTERN";
-  exit
-fi
-
-echo cabal test --test-options="-p $1" --test-show-details=streaming
-cabal test --test-options="-p $1" --test-show-details=streaming

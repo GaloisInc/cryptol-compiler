@@ -1,2 +1,10 @@
 #!/bin/sh
-cabal test --test-show-details=streaming
+
+if [ -z ${1+x} ]; then
+  echo cabal test --test-show-details=streaming
+  cabal test --test-show-details=streaming
+else
+  echo cabal test --test-options="-j 4 -p $1" --test-show-details=streaming
+  cabal test --test-options="-j 4 -p $1" --test-show-details=streaming
+fi
+

@@ -10,6 +10,8 @@ import qualified Cryptol.Compiler.Driver as Compiler
 import Cryptol.Compiler.Monad (runCryC)
 import qualified Data.ByteString.Lazy as BS
 import qualified Data.ByteString.Lazy.UTF8 as BSU8
+import qualified System.FilePath as FilePath
+import qualified Data.List as List
 
 tests :: IO Tasty.TestTree
 tests =
@@ -41,5 +43,7 @@ runCompiledSimple path =
   BSU8.fromString <$> compileAndRunRust' [path]
 
 findTestFiles :: IO [FilePath]
-findTestFiles = Golden.findByExtension [".cry"] "test/golden"
+findTestFiles =
+  do  files <- Golden.findByExtension [".cry"] "test/golden"
+      pure $ filter (\p -> "test_" `List.isPrefixOf` FilePath.takeBaseName p) files
 
