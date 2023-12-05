@@ -4,6 +4,7 @@ import Data.Text(Text)
 import Data.Text qualified as Text
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.Utils.Ident qualified as Cry
+import Data.String(fromString)
 
 import Language.Rust.Syntax qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
@@ -127,6 +128,9 @@ primArgOwnership prim szArgs argTs resT =
 
     WordLookup    -> ([OwnContext], [BorrowContext])
 
+    StreamLookup      -> ([OwnContext], [OwnContext,BorrowContext])
+    StreamLookupBack  -> ([OwnContext], [OwnContext,BorrowContext])
+
     Tuple         -> ([], map (const OwnContext) argTs)
     TupleSel {}   -> ([], [BorrowContext])
 
@@ -164,6 +168,9 @@ compilePrim name args =
       size1 \i ->
       arg1  \a ->
         pure (callMethod a "index_msb" [i])
+
+    StreamLookup     -> compileIndexFront args
+    StreamLookupBack -> compileIndexBack args
 
     StreamToArray ->
       arg1 \s -> pure (callMethod s "to_vec" [])
@@ -294,7 +301,7 @@ compileCryptolPreludePrim name args =
 
     -- Sequence --
     "!"  -> compileIndexBack args
-    "@" -> compileIndexFront args
+    "@"  -> compileIndexFront args
 
     "take" ->
       arg1 \x ->
@@ -554,49 +561,45 @@ compileTranspose args =
                       (primSizeArgs args ++ primArgs args))
 
 
-compileIndexFront :: PrimArgs -> Rust RustExpr
-compileIndexFront args =
-  case primTypeArgs args of
-    [elT,ixT] ->
-      do fu <- case primTypesOfArgs args of
-                 [TStream {},_] ->
-                    pure (pathAddTypeSuffix (rtsName "index_stream") [elT,ixT])
-                 [TArray {},_] ->
-                    pure (pathAddTypeSuffix (rtsName "index_vec") [elT,ixT])
-                 [TWord {},_] ->
-                    pure (pathAddTypeSuffix (rtsName "index_word") [ixT])
-                 _ -> bad
-         pure (mkRustCall (pathExpr fu) (primArgs args))
+compileIndex :: String -> PrimArgs -> Rust RustExpr
+compileIndex nm args =
+  case primTypesOfArgs args of
+    [ seqT, ixT ] ->
+      do rIxT <- compileType TypeAsParam AsOwned ixT
+         (fu,mbLen,rElTs) <-
+            case seqT of
+              TStream slen elT ->
+                 do rElT <- compileType TypeAsParam AsOwned elT
+                    mbLen <- if nm == "!"
+                               then do len <- compileSize OwnContext
+                                                (streamSizeToSize slen)
+                                                MemSize
+                                       pure [len]
+                               else pure []
+                    pure (ixStream, mbLen, [rElT])
+              TArray _ elT ->
+                 do rElT <- compileType TypeAsParam AsOwned elT
+                    pure (ixArray, [], [rElT])
+              TWord {} ->
+                 pure (ixWord, [], [])
+              _ -> bad
+         let path = pathAddTypeSuffix (rtsName fu) (rElTs ++ [rIxT])
+         pure (mkRustCall (pathExpr path) (mbLen ++ primArgs args))
     _ -> bad
   where
   bad :: Rust a
-  bad = unsupportedPrim "@" args
+  bad = unsupportedPrim (fromString nm) args
+
+  ixStream = if nm == "!" then "index_stream_back" else "index_stream"
+  ixArray  = if nm == "!" then "index_vec_back"    else "index_vec"
+  ixWord   = if nm == "!" then "index_word_back"   else "index_word"
+
+
+compileIndexFront :: PrimArgs -> Rust RustExpr
+compileIndexFront = compileIndex "@"
 
 compileIndexBack :: PrimArgs -> Rust RustExpr
-compileIndexBack args =
-  case primTypeArgs args of
-    [elT,ixT] ->
-      do (mbLen, fu) <-
-          case primTypesOfArgs args of
-            [TStream {},_] ->
-               do (len,_) <- getSizeArg OwnContext args 0
-                  pure ( [len]
-                       , pathAddTypeSuffix (rtsName "index_stream_back")
-                                                                    [elT,ixT])
-
-            [TArray {},_] ->
-               pure ([], pathAddTypeSuffix (rtsName "index_vec_back") [elT,ixT])
-
-            [TWord {},_] ->
-               pure ([], pathAddTypeSuffix (rtsName "index_word_back") [ixT])
-            _ -> bad
-         pure (mkRustCall (pathExpr fu) (mbLen ++ primArgs args))
-    _ -> bad
-  where
-  bad :: Rust a
-  bad = unsupportedPrim "!" args
-
-
+compileIndexBack = compileIndex "!"
 
 compileFromTo :: PrimArgs -> Rust RustExpr
 compileFromTo args =

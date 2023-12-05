@@ -18,6 +18,14 @@ data IRPrim =
 
   | WordLookup  -- ^ (index: usize, xs: Word n) -> Bool
 
+    -- DIFFERENT TO THE ABOVE
+    -- These should be instances for (@) and (!), but we need to
+    -- modify the specialization system to support potientially overlapping
+    -- instance (or rather, discriminate based on the types of values, not
+    -- just the type parameters).
+  | StreamLookup     -- ^ {a,i} Integral i => (xs: Steram n a, index: i) -> a
+  | StreamLookupBack -- ^ {a,i} Integral i => (xs: Steram n a, index: i) -> a
+
 
   | Tuple
     -- ^ Make a tuple.

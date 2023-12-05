@@ -69,6 +69,7 @@ library
       Cryptol.Compiler.IR.Rename
       Cryptol.Compiler.IR.Free
       Cryptol.Compiler.IR.Cryptol
+      Cryptol.Compiler.IR.Opt
 
       Cryptol.Compiler.Driver
       Cryptol.Compiler.Monad

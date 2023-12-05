@@ -24,6 +24,7 @@ import Cryptol.IR.Eta(etaModule)
 import Cryptol.Compiler.Monad
 import Cryptol.Compiler.IR.Cryptol
 
+import Cryptol.Compiler.IR.Opt(rewFun)
 import Cryptol.Compiler.Cry2IR.Compile qualified as Cry2IR
 import Cryptol.Compiler.Rust.CodeGen qualified as Rust
 import Cryptol.Compiler.Rust.Crate qualified as Rust
@@ -37,7 +38,7 @@ cry2rust files =
      entries <- Set.fromList . map Text.pack <$> getEntryModules
      forM_ (cryFilterDecls entries cryMods) \m ->
        do decls <- cry2IR m
-          ir2Rust (Cry.mName m) decls
+          ir2Rust (Cry.mName m) (map rewFun decls)
 
      crate <- getCrateName
      dir   <- getOutputDir
