@@ -42,7 +42,11 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="flags.html">Invoking the Compiler</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Generated Code</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Generated Code</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#modules">Modules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#declarations">Declarations</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="library_api.html">Compiler Library API</a></li>
 </ul>
 
@@ -62,7 +66,7 @@
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
       <li class="breadcrumb-item active">Generated Code</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="_sources/generated_code.md.txt" rel="nofollow"> View page source</a>
+            <a href="_sources/generated_code.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -72,7 +76,93 @@
              
   <section id="generated-code">
 <h1>Generated Code<a class="headerlink" href="#generated-code" title="Permalink to this heading"></a></h1>
-<p>This section outlines how Cryptol specifications are mapped to Rust.</p>
+<p>This section outlines how Cryptol specifications are mapped to Rust code.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This is an early version of the compiler, so the information here is
+likely to change!</p>
+</div>
+<section id="modules">
+<h2>Modules<a class="headerlink" href="#modules" title="Permalink to this heading"></a></h2>
+<p>At present the compiler will generate a Rust crate for a Cryptol specification.
+The crate will contain a library, with a single Rust module for each
+top-level Cryptol module in the original specification.
+The names of the Rust modules are derived from the Cryptol ones,
+escaping special characters, and converting the result to snake case.</p>
+<p>At present we do not generate nested Rust modules: instead all modules
+reside at the top level of a crate, and Cryptol modules in
+sub-directories (e..g, <code class="docutils literal notranslate"><span class="pre">A::B</span></code>) get names like <code class="docutils literal notranslate"><span class="pre">a_colon_colon_b</span></code>.
+This is likely to change, as these names are quite long and not very
+nice to work with.</p>
+<p>Cryptol also supports sub-modules, but these do not manifest in the generated
+Rust code.  Instead, declarations in sub-modules become part of the top-level
+modules that contain them.   We take care to avoid name collisions due to
+such flattening.  In future versions of the compiler, we may change the
+names that we choose for declarations in nested modules.</p>
+</section>
+<section id="declarations">
+<h2>Declarations<a class="headerlink" href="#declarations" title="Permalink to this heading"></a></h2>
+<p>At present some of the modules in a Cryptol specification are considered to
+be the <em>entry points</em> for the specification (specified via a compiler flag).
+We only generate code for the public entries of these modules, and any other
+declarations that are required by the public entry points (transitively).</p>
+<p>Each Cryptol declaration is compiled to one or more Rust declaration with
+names derived from the Cryptol specification.  Monomorphic Cryptol functions
+are mapped to a single Rust function, however, polymorphic ones will result
+in multiple functions, depending on the number of <em>specializations</em>
+the compiler chooses for a function.   Each specialization allows calling
+the Cryptol function using a different representation for the arguments.</p>
+<p>At present, specializations may vary in the following dimensions:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>representation of numeric type parameters, and</p></li>
+<li><p>representation of sequences.</p></li>
+</ul>
+</div></blockquote>
+<p>Cryptol has two kinds of type arguments, numeric ones (kind <code class="docutils literal notranslate"><span class="pre">#</span></code>) and
+value ones (kind <code class="docutils literal notranslate"><span class="pre">*</span></code>).  Parameters of kind <code class="docutils literal notranslate"><span class="pre">*</span></code> get mapped to Rust generics,
+while parameters of kind <code class="docutils literal notranslate"><span class="pre">#</span></code> are mapped to concrete value parameters.
+The compiler performs an analysis to choose the representation for the
+additional <code class="docutils literal notranslate"><span class="pre">#</span></code> parameters:  it will either use <code class="docutils literal notranslate"><span class="pre">usize</span></code> or an unbounded
+unsigned integer, depending on an analysis that determines the possible
+values for the parameter (we assume that sequences never have sizes that
+may exceed <code class="docutils literal notranslate"><span class="pre">usize</span></code>).   Functions with unbounded numeric parameters may
+get different specializations—one for when they are applied with a smaller
+parameter, and one when they are applied to a really large one.  Finally,
+numeric parameters that may be infinite always result in a separate
+specialization where the parameter is not explicitly passed in, but rather
+is assumed to be <code class="docutils literal notranslate"><span class="pre">inf</span></code> in the implementation of the specialization.</p>
+<p>We also generate specializations for Cryptol functions that manipulate
+sequences.  At present, we support three representations of sequences:
+<code class="docutils literal notranslate"><span class="pre">dword</span></code>, which is used for finite sequences of bits, <code class="docutils literal notranslate"><span class="pre">Vec</span></code>, which is used
+for other finite sequences, and <em>streams</em> which correspond to Rust’s iterators,
+and are presently used for infinite streams.  Choosing the correct
+representation for a sequence can have a big impact on the performance
+on the generated code.  At present, we employ a fairly simple algorithm,
+that generates instantiations based on the types of a function—one for
+each possible case.  There is a lot more work that can be done here, and
+future versions of the compiler are likely to support both more sequence
+representations (e.g., use specialized types when the sizes of a sequence
+is statically known, which is <em>very</em> common), and also a mechanism where
+users can give hints to the compiler on what specializations to generate.</p>
+<p>In addition to the parameters corresponding to <code class="docutils literal notranslate"><span class="pre">#</span></code> types,
+the Rust implementations of some functions may also get some additional
+<em>length</em> parameters.  These are needed for polymorphic functions that may
+create values of different lengths.  For example, consider Cryptol’s
+<code class="docutils literal notranslate"><span class="pre">zero</span></code> function, which has the following type: <code class="docutils literal notranslate"><span class="pre">{a}</span> <span class="pre">Zero</span> <span class="pre">a</span> <span class="pre">=&gt;</span> <span class="pre">a</span></code>.
+We can use this function to create values of all kinds of types, including
+sequences of various lengths.  So when we call this function in Rust,
+we need to specify the <em>length</em> for the value we want to create.  For
+this reason, the generated Rust function for <code class="docutils literal notranslate"><span class="pre">zero</span></code> has a type like this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">zero</span><span class="o">&lt;</span><span class="n">A</span><span class="p">:</span> <span class="n">Zero</span><span class="o">&gt;</span><span class="p">(</span><span class="nb">len</span><span class="p">:</span> <span class="n">A</span><span class="p">::</span><span class="n">Length</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">A</span> <span class="p">{</span> <span class="o">...</span> <span class="p">}</span>
+</pre></div>
+</div>
+<p>For types that do need a length, <code class="docutils literal notranslate"><span class="pre">A::Length</span></code> is simply defined to be
+a dummy <code class="docutils literal notranslate"><span class="pre">()</span></code> parameter, but for a type such as <code class="docutils literal notranslate"><span class="pre">dword</span></code> it will be
+<code class="docutils literal notranslate"><span class="pre">usize</span></code>, and for a vector it will be <code class="docutils literal notranslate"><span class="pre">(usize,</span> <span class="pre">T::Length)</span></code> where the
+first element of the pair is the length of the vector, and the second is
+the length to be used for the elements of the vector.</p>
+</section>
 </section>
 
 

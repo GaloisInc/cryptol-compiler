@@ -8,5 +8,5 @@ Test
   :maxdepth: 1
 
   flags.rst
-  generated_code.md
+  generated_code.rst
   library_api.md
