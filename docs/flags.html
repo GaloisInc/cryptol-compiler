@@ -41,7 +41,15 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Invoking the Compiler</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Invoking the Compiler</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#running-the-compiler">Running the Compiler</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#generating-examples">Generating Examples</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#flags">Flags</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#debugging-flags">Debugging Flags</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="generated_code.html">Generated Code</a></li>
 <li class="toctree-l1"><a class="reference internal" href="library_api.html">Compiler Library API</a></li>
 </ul>
@@ -62,7 +70,7 @@
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
       <li class="breadcrumb-item active">Invoking the Compiler</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="_sources/flags.md.txt" rel="nofollow"> View page source</a>
+            <a href="_sources/flags.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -72,7 +80,79 @@
              
   <section id="invoking-the-compiler">
 <h1>Invoking the Compiler<a class="headerlink" href="#invoking-the-compiler" title="Permalink to this heading"></a></h1>
-<p>XXX: Describe the compiler flags</p>
+<p><strong>Please note</strong>: the features of <code class="docutils literal notranslate"><span class="pre">cryptol-compiler`</span></code> are currently early in
+development and as such are incomplete and subject to change.</p>
+<section id="running-the-compiler">
+<h2>Running the Compiler<a class="headerlink" href="#running-the-compiler" title="Permalink to this heading"></a></h2>
+<section id="generating-examples">
+<h3>Generating Examples<a class="headerlink" href="#generating-examples" title="Permalink to this heading"></a></h3>
+<p>The default mode of the compiler is to generate a crate that compiles a <code class="docutils literal notranslate"><span class="pre">cryptol</span></code>
+single expression (the cryptol value named <cite>main</cite>) and produces a Rust crate that computes
+this value and prints it to stdout.  This is used for testing/demonstration purposes.</p>
+<p>Suppose we have a file named <code class="docutils literal notranslate"><span class="pre">simple.cry</span></code> with the contents:</p>
+<div class="highlight-cryptol notranslate"><div class="highlight"><pre><span></span><span class="nf">main</span><span class="w"> </span><span class="ow">=</span><span class="w"> </span><span class="mh">0x10</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mh">0x01</span>
+</pre></div>
+</div>
+<p>We can invoke <code class="docutils literal notranslate"><span class="pre">cryptol-compiler</span></code> on it to produce a crate:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cryptol-compiler<span class="w"> </span>--crate<span class="o">=</span>simple<span class="w"> </span>--output<span class="o">=</span>simple_out<span class="w"> </span>simple.cry
+</pre></div>
+</div>
+<p>Which will produce a crate named <code class="docutils literal notranslate"><span class="pre">simple</span></code> in the <code class="docutils literal notranslate"><span class="pre">simple_out</span></code> subdirectory
+of the current directory that can be built and run using <code class="docutils literal notranslate"><span class="pre">cargo</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>simple_out
+cargo<span class="w"> </span>run
+</pre></div>
+</div>
+<p>Which, after building, prints the value <code class="docutils literal notranslate"><span class="pre">0x11</span></code> to the console.</p>
+</section>
+</section>
+<section id="flags">
+<h2>Flags<a class="headerlink" href="#flags" title="Permalink to this heading"></a></h2>
+<dl class="py data">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">--help</span></span></dt>
+<dd><p>Display help for compiler flags.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">--output=PATH,</span> <span class="pre">-o</span></span></dt>
+<dd><p>Specifies the output directory for the code the compiler generates.  Defaults to <code class="docutils literal notranslate"><span class="pre">cry-rust</span></code>
+in the current working directory.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">--crate=NAME</span></span></dt>
+<dd><p>Specifies the name of the generated rust crate.  Defaults to <code class="docutils literal notranslate"><span class="pre">cry-rust</span></code>.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">--entry-module=MODULE</span></span></dt>
+<dd><p>By default the compiler generates only dependencies needed to support evaluating
+the cryptol value <code class="docutils literal notranslate"><span class="pre">main</span></code> in the generated crate.  The <code class="docutils literal notranslate"><span class="pre">entry-module</span></code> flag
+also causes the compiler to generate the functions in the specified module along
+with any needed dependencies.</p>
+</dd></dl>
+
+</section>
+<section id="debugging-flags">
+<h2>Debugging Flags<a class="headerlink" href="#debugging-flags" title="Permalink to this heading"></a></h2>
+<p>These flags are mainly useful for compiler development and will likely not be useful to a typical user.</p>
+<dl class="py data">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">--dbg-list-primitives</span></span></dt>
+<dd><p>List declared primitives.</p>
+</dd></dl>
+
+<dl class="py data">
+<dt class="sig sig-object py">
+<span class="sig-name descname"><span class="pre">--enable-warnings,</span> <span class="pre">-w</span></span></dt>
+<dd><p>Enable output (to stderr) of <code class="docutils literal notranslate"><span class="pre">cryptol</span></code> compilation warnings during compilation.</p>
+</dd></dl>
+
+</section>
 </section>
 
 

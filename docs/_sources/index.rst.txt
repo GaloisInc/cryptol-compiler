@@ -7,6 +7,6 @@ Test
 .. toctree::
   :maxdepth: 1
 
-  flags.md
+  flags.rst
   generated_code.md
   library_api.md
