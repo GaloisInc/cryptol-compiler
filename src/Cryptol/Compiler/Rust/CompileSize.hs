@@ -11,6 +11,7 @@ import Cryptol.Compiler.IR.Cryptol
 import Cryptol.Compiler.IR.EvalType
 
 import Cryptol.Compiler.Rust.Utils
+import Cryptol.Compiler.Rust.Names(cryptolCrate)
 import Cryptol.Compiler.Rust.Monad
 
 compileSizeType :: ExprContext -> SizeVarSize -> RustType
@@ -59,34 +60,34 @@ compileComputedSize fu args sz =
       withBin \x y ->
         do a <- compileSize BorrowContext x sz
            b <- compileSize BorrowContext y sz
-           pure (op "add_size" [a,b])
+           pure (op (suf sz "add_size") [a,b])
 
     Cry.TCSub ->
       withBin \x y ->
         do let xsz = sizeTypeSize x
            a <- compileSize BorrowContext x xsz
            b <- compileSize BorrowContext y xsz
-           pure (castSize xsz sz (op "sub_size" [a,b]))
+           pure (castSize xsz sz (op (suf xsz "sub_size") [a,b]))
 
     Cry.TCMul ->
       withBin \x y ->
         do a <- compileSize BorrowContext x sz
            b <- compileSize BorrowContext y sz
-           pure (op "mul_size" [a,b])
+           pure (op (suf sz "mul_size") [a,b])
 
     Cry.TCDiv ->
       withBin \x y ->
       do let use = memIfBoth x y
          a <- compileSize BorrowContext x use
          b <- compileSize BorrowContext y use
-         pure (castSize use sz (op "div_size" [a,b]))
+         pure (castSize use sz (op (suf use "div_size") [a,b]))
 
     Cry.TCMod ->
       withBin \x y ->
       do let use = memIfBoth x y
          a <- compileSize BorrowContext x use
          b <- compileSize BorrowContext y use
-         pure (castSize use sz (op "mod_size" [a,b]))
+         pure (castSize use sz (op (suf use "mod_size") [a,b]))
 
 
     -- Assumes exponent fits in MemSize
@@ -94,40 +95,41 @@ compileComputedSize fu args sz =
       withBin \x y ->
       do a <- compileSize BorrowContext x sz
          b <- compileSize BorrowContext y MemSize
-         pure (op "exp_size" [a,b])
+         pure (op (suf sz "exp_size") [a,b])
 
     -- Assumes result fits in MemSize
     Cry.TCWidth ->
       withUn \x ->
-        do a <- compileSize BorrowContext x (sizeTypeSize x)
-           pure (castSize MemSize sz (op "width_size" [a]))
+        do let use = sizeTypeSize x
+           a <- compileSize BorrowContext x use
+           pure (castSize MemSize sz (op (suf use "width_size") [a]))
 
     Cry.TCMin ->
       withBin \x y ->
       do let use = memIfBoth x y
          a <- compileSize BorrowContext x use
          b <- compileSize BorrowContext y use
-         pure (castSize use sz (op "min_size" [a,b]))
+         pure (castSize use sz (op (suf use "min_size") [a,b]))
 
     Cry.TCMax ->
       withBin \x y ->
         do a <- compileSize BorrowContext x sz
            b <- compileSize BorrowContext y sz
-           pure (op "max_size" [a,b])
+           pure (op (suf sz "max_size") [a,b])
 
     Cry.TCCeilDiv ->
       withBin \x y ->
       do let use = memIfBoth x y
          a <- compileSize BorrowContext x use
          b <- compileSize BorrowContext y use
-         pure (castSize use sz (op "ceil_div_size" [a,b]))
+         pure (castSize use sz (op (suf use "ceil_div_size") [a,b]))
 
     Cry.TCCeilMod ->
       withBin \x y ->
       do let use = memIfBoth x y
          a <- compileSize BorrowContext x use
          b <- compileSize BorrowContext y use
-         pure (castSize use sz (op "ceil_mod_size" [a,b]))
+         pure (castSize use sz (op (suf use "ceil_mod_size") [a,b]))
 
 
     Cry.TCLenFromThenTo ->
@@ -138,11 +140,16 @@ compileComputedSize fu args sz =
            a <- compileSize BorrowContext x use
            b <- compileSize BorrowContext x use
            c <- compileSize BorrowContext x use
-           pure (castSize use sz (op "from_then_to_size" [a,b,c]))
+           pure (castSize use sz (op (suf use "from_then_to_size") [a,b,c]))
 
   where
   bad = panic "compileComputedSize" ["Malformed expression"]
 
+  suf s i =
+    Rust.mkIdent
+    case s of
+      MemSize   -> i
+      LargeSize -> i ++ "_uint"
 
   memIfBoth x y =
     case (sizeTypeSize x, sizeTypeSize y) of
@@ -182,8 +189,7 @@ castSize from to expr =
     (LargeSize,MemSize)   -> op "int_to_size" [expr]
     _                     -> expr
 
-
 op :: Rust.Ident -> [RustExpr] -> RustExpr
-op = mkRustCall . pathExpr . simplePath
+op i = mkRustCall (pathExpr (simplePath' [ cryptolCrate, i ]))
 
 
