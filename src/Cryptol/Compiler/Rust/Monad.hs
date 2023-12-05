@@ -73,7 +73,7 @@ doIO io = Rust (inBase io)
 
 -- | Information about previously compiled modules.
 data ExtModule = ExtModule
-  { extModuleName  :: Rust.Ident
+  { extModuleName  :: [Rust.Ident]
     -- ^ Name of module
 
   , extModuleNames :: Map FunName Rust.Ident
@@ -358,7 +358,9 @@ lookupFunName fu =
                                ] ++ map (show.cryPP)
                                    (Map.keys (roExternalNames ro))
                   case Map.lookup fu (extModuleNames ext) of
-                    Just it -> pure (simplePath' [ "crate", extModuleName ext, it ])
+                    Just it -> pure (simplePath' ("crate"
+                                                 : extModuleName ext ++ [it]
+                                                 ))
                     Nothing -> panic "lookupFunName"
                                  [ "Missing function"
                                  , "Module: " ++ show (cryPP mo)

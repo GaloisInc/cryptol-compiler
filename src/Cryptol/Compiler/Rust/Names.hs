@@ -8,7 +8,7 @@ module Cryptol.Compiler.Rust.Names
   , snakeCase
   , screamingSnakeCase
   , upperCamelCase
-  , modNameToRustModName
+  , rustModNameChunks
 
     -- * Commonly used names
   , cryptolCrateString
@@ -56,14 +56,13 @@ rustIdentAvoiding norm avoid names =
                 | name <- names
                 ]
 
-modNameToRustModName :: Cry.ModName -> Rust.Name
-modNameToRustModName x
-  -- | y == "main" = "cry_main"
-  | y == "lib"  = "cry_lib"
-  | otherwise   = y
+rustModNameChunks :: Cry.ModName -> [Rust.Ident]
+rustModNameChunks = map cvt . Cry.modNameChunks
   where
-  y = snakeCase (escString (Text.unpack (Cry.modNameToText x)))
-  -- XXX: for anonymous names this results in too long nonse stuff
+  cvt = Rust.mkIdent . check . snakeCase . escString
+  check y = if y == "lib" then "cry_lib" else y
+
+
 
 --------------------------------------------------------------------------------
 -- Cases

@@ -263,11 +263,12 @@ genSourceFile m decls =
       fnItems <- catMaybes <$> (genFunDecl `traverse` decls)
       let imports = [ mkUseGlob [ cryptolCrate, "trait_methods"]
                     ]
-          modName = modNameToRustModName m
+          modNameChunks = rustModNameChunks m
+          modName = Rust.name (last modNameChunks)
           file = Rust.SourceFile (Just modName) attribs (imports ++ fnItems)
       names <- getFunNames
       let extMod =
-            ExtModule { extModuleName  = Rust.mkIdent modName
+            ExtModule { extModuleName  = modNameChunks
                       , extModuleNames = names
                       }
       pure (extMod, file)

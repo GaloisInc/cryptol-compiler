@@ -18,11 +18,9 @@ top-level Cryptol module in the original specification.
 The names of the Rust modules are derived from the Cryptol ones,
 escaping special characters, and converting the result to snake case.
 
-At present we do not generate nested Rust modules: instead all modules
-reside at the top level of a crate, and Cryptol modules in
-sub-directories (e..g, ``A::B``) get names like ``a_colon_colon_b``.
-This is likely to change, as these names are quite long and not very
-nice to work with.
+Hierarchical Cryptol modules (i.e., of the form ``A::B``) are mapped to
+nested Rust modules, with a directory structure matching the Cryptol
+specification.
 
 Cryptol also supports sub-modules, but these do not manifest in the generated
 Rust code.  Instead, declarations in sub-modules become part of the top-level

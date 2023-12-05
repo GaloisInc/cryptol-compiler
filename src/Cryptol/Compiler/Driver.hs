@@ -7,10 +7,11 @@ import Data.Set qualified as Set
 import Data.Map qualified as Map
 import Data.Maybe(mapMaybe)
 import Control.Monad(forM_)
-import System.FilePath(addExtension,(</>))
+import System.FilePath(addExtension,(</>),joinPath)
 import System.Directory(createDirectoryIfMissing)
 
 import Language.Rust.Pretty qualified as Rust
+import Language.Rust.Data.Ident qualified as Rust
 
 import Cryptol.Utils.Ident qualified as Cry
 import Cryptol.ModuleSystem.Exports qualified as Cry
@@ -130,12 +131,13 @@ ir2Rust m ds =
      (extM,rustFile) <- doIO (Rust.genModule gi ds)
      addRustInfo m extM
      dir <- getOutputDir
-     let rootName = show (Rust.pretty' (Rust.extModuleName  extM))
-         srcDir   = dir </> "src"
-         filePath = srcDir </> addExtension rootName "rs"
+     let chunks   = map Rust.name (Rust.extModuleName extM)
+         srcDir   = dir </> "src" </> joinPath (init chunks)
+         filePath = srcDir </> addExtension (last chunks) "rs"
      doIO
        do createDirectoryIfMissing True srcDir
           writeFile filePath (show (Rust.pretty' rustFile))
+
 
 
 

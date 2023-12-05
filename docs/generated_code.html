@@ -89,11 +89,9 @@ The crate will contain a library, with a single Rust module for each
 top-level Cryptol module in the original specification.
 The names of the Rust modules are derived from the Cryptol ones,
 escaping special characters, and converting the result to snake case.</p>
-<p>At present we do not generate nested Rust modules: instead all modules
-reside at the top level of a crate, and Cryptol modules in
-sub-directories (e..g, <code class="docutils literal notranslate"><span class="pre">A::B</span></code>) get names like <code class="docutils literal notranslate"><span class="pre">a_colon_colon_b</span></code>.
-This is likely to change, as these names are quite long and not very
-nice to work with.</p>
+<p>Hierarchical Cryptol modules (i.e., of the form <code class="docutils literal notranslate"><span class="pre">A::B</span></code>) are mapped to
+nested Rust modules, with a directory structure matching the Cryptol
+specification.</p>
 <p>Cryptol also supports sub-modules, but these do not manifest in the generated
 Rust code.  Instead, declarations in sub-modules become part of the top-level
 modules that contain them.   We take care to avoid name collisions due to

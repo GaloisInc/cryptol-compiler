@@ -6,13 +6,12 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import System.FilePath ((</>), takeDirectory)
 import System.Directory (createDirectoryIfMissing)
-import Control.Monad(forM_,unless,when)
+import Control.Monad(forM_,when)
 
-import Language.Rust.Pretty qualified as Rust
 import Language.Rust.Data.Ident qualified as Rust
 
-import Cryptol.Compiler.Rust.Utils
 import Cryptol.Compiler.Rust.Names(cryptolCrateString)
+import Cryptol.Compiler.Rust.ModuleTree
 
 mapFst :: (a -> a) -> (a, b) -> (a, b)
 mapFst f (a,b) = (f a, b)
@@ -71,7 +70,7 @@ mkCrate ::
   Bool          {- ^ Do we want an example driver -} ->
   String        {- ^ Name of the crate -} ->
   FilePath      {- ^ Directory to store the crate in -} ->
-  [Rust.Ident]  {- ^ Crate `lib.rs` with these modules, if non-empty -} ->
+  [[Rust.Ident]] ->
   IO ()
 mkCrate withExe crateName target mods =
   do  createDirectoryIfMissing True target
@@ -82,10 +81,13 @@ mkCrate withExe crateName target mods =
       let src = target </> "src"
       createDirectoryIfMissing True src
 
+      addModuleDecls src mods
+{-
       unless (null mods)
         do let lib = sourceFile Nothing [disableWarning "special_module_name"]
                                         (map pubMod mods)
            writeFile (src </> "lib.rs") (show (Rust.pretty' lib))
+-}
 
       when withExe sampleDriver
 
@@ -112,6 +114,12 @@ mkCrate withExe crateName target mods =
            , "}"
            ]
 
+
+{-
+declareNestedModulesTree :: Set [Text] -> FilePath -> ModTree -> IO ()
+declareNestedModulesTree genModules file outPath (Mod x cs) =
+  let nested = [ c | Mod c _ <- cs ]
+-}
 
 
 
