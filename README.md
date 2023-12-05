@@ -5,7 +5,5 @@ a Rust crate.
 The compiler is not yet stable, and is under active development!
 
 For documentation on how to use the compiler, please have a look
-at the manual:
-
-    https://galoisinc.github.io/cryptol-compiler/index.html
+at the [User's Guide](https://galoisinc.github.io/cryptol-compiler/index.html)
 
