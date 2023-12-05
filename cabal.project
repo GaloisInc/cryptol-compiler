@@ -7,6 +7,6 @@ documentation: True
 
 source-repository-package
   type: git
-  location: git@github.com:GaloisInc/language-rust.git
+  location: https://github.com/GaloisInc/language-rust.git
   tag: 82acd312c0cd2b467ea8fa2a0feb316185b52c69
 
