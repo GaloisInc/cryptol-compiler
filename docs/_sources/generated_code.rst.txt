@@ -29,15 +29,15 @@ such flattening.  In future versions of the compiler, we may change the
 names that we choose for declarations in nested modules.
 
 
-Declarations
-------------
+Specializations
+---------------
 
 At present some of the modules in a Cryptol specification are considered to
 be the *entry points* for the specification (specified via a compiler flag).
 We only generate code for the public entries of these modules, and any other
 declarations that are required by the public entry points (transitively).
 
-Each Cryptol declaration is compiled to one or more Rust declaration with
+Each Cryptol declaration is compiled to one or more Rust declarations with
 names derived from the Cryptol specification.  Monomorphic Cryptol functions
 are mapped to a single Rust function, however, polymorphic ones will result
 in multiple functions, depending on the number of *specializations*
@@ -48,6 +48,24 @@ At present, specializations may vary in the following dimensions:
 
   * representation of numeric type parameters, and
   * representation of sequences.
+
+We generate specializations for Cryptol functions that manipulate sequences.
+At present, we support three representations of sequences:
+``dword``, which is used for finite sequences of bits, ``Vec``, which is used
+for other finite sequences, and *streams* which correspond to Rust's iterators,
+and are presently used for infinite streams.  Choosing the correct
+representation for a sequence can have a big impact on the performance
+on the generated code.  At present, we employ a fairly simple algorithm,
+that generates instantiations based on the types of a function---one for
+each possible case.  There is a lot more work that can be done here, and
+future versions of the compiler are likely to support both more sequence
+representations (e.g., use specialized types when the sizes of a sequence
+is statically known, which is *very* common), and also a mechanism where
+users can give hints to the compiler on what specializations to generate.
+
+
+Parametes
+---------
 
 Cryptol has two kinds of type arguments, numeric ones (kind ``#``) and
 value ones (kind ``*``).  Parameters of kind ``*`` get mapped to Rust generics,
@@ -63,19 +81,6 @@ numeric parameters that may be infinite always result in a separate
 specialization where the parameter is not explicitly passed in, but rather
 is assumed to be ``inf`` in the implementation of the specialization.
 
-We also generate specializations for Cryptol functions that manipulate
-sequences.  At present, we support three representations of sequences:
-``dword``, which is used for finite sequences of bits, ``Vec``, which is used
-for other finite sequences, and *streams* which correspond to Rust's iterators,
-and are presently used for infinite streams.  Choosing the correct
-representation for a sequence can have a big impact on the performance
-on the generated code.  At present, we employ a fairly simple algorithm,
-that generates instantiations based on the types of a function---one for
-each possible case.  There is a lot more work that can be done here, and
-future versions of the compiler are likely to support both more sequence
-representations (e.g., use specialized types when the sizes of a sequence
-is statically known, which is *very* common), and also a mechanism where
-users can give hints to the compiler on what specializations to generate.
 
 In addition to the parameters corresponding to ``#`` types,
 the Rust implementations of some functions may also get some additional
@@ -96,6 +101,32 @@ a dummy ``()`` parameter, but for a type such as ``dword`` it will be
 ``usize``, and for a vector it will be ``(usize, T::Length)`` where the
 first element of the pair is the length of the vector, and the second is
 the length to be used for the elements of the vector.
+
+
+In general, we use two forms for each representation type:
+an *owned* one when a value of a type needs to be stored in other values,
+or returned as a result, and a *borrowed* value, which is used when
+the value is passed as an argument to a function.  For simple types,
+such as ``bool``, the two forms coincide because ``bool`` arguments are
+passed by value.   For large integers, the argument form is a reference
+``&num::BigInt``, and the argument form of a ``Vec<T>`` is a reference to
+a slice ``&[T]``.   The argument form for a type is specified as an
+associated type called ``Arg`` in the ``Type`` trait defined by the
+runtime system of the compiler, so a polymorphic argument would be of
+type ``T::Arg``.
+
+
+
+
+Display Trait
+-------------
+
+Not all Rust types provide implementations for the standard ``Display``
+trait (e.g., ``Vec`` does not).  To work around this, the compiler's
+runtime system defines another trait called ``Base`` that specifies how
+to display values at a numeric base (we support base 2, 8, 10, and 16).
+Values that implement ``Base`` may be displayed with the standard
+Rust mechanisms by invoking the ``display`` method.
 
 
 

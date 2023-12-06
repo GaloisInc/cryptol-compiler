@@ -2,8 +2,6 @@
 Cryptol Compiler Manual
 =======================
 
-Test
-
 .. toctree::
   :maxdepth: 1
 
