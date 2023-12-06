@@ -1,8 +1,11 @@
 Invoking the Compiler
 #####################
 
-**Please note**: the features of ``cryptol-compiler``` are currently early in
-development and as such are incomplete and subject to change.
+.. warning::
+
+    The features of ``cryptol-compiler`` are currently early in
+    development and as such are incomplete and subject to change.
+
 
 Running the Compiler
 ====================
