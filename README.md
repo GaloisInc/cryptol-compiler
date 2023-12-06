@@ -14,7 +14,7 @@ at the [User's Guide](https://galoisinc.github.io/cryptol-compiler/index.html)
 The compiler currently compiles Cryptol modules to an internal intermediate representation:
 
 ```mermaid
-graph cryptol-compiler
+graph cryptol-compiler;
   Cryptol Modules --> Compiler IR;
   Compiler IR --> Rust Crate;
 ```
