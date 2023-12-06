@@ -7,4 +7,4 @@ Cryptol Compiler Manual
 
   flags.rst
   generated_code.rst
-  library_api.md
+  library_api.rst
