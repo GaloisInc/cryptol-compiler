@@ -2,6 +2,12 @@ use crate::type_traits::*;
 use crate::display::*;
 use std::fmt;
 
+impl<const BASE: usize, const UPPER: bool> Base<BASE, UPPER> for () {
+  fn format(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    write!(fmt, "()")
+  }
+}
+
 #[macro_export]
 macro_rules! tuple_type {
   ($($t:ident),*) => {
