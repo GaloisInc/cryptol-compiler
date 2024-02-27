@@ -1,0 +1,24 @@
+name: cargo-deny
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-deny:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Clone repo
+      uses: actions/checkout@v3
+
+    - uses: EmbarkStudios/cargo-deny-action@v1
+      with:
+        rust-version: "1.76.0"
+        command: check
+        manifest-path: rts-rust/Cargo.toml
