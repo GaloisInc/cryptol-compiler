@@ -9,20 +9,27 @@ on:
 permissions:
   contents: read
 
+env:
+  SOLVER_PKG_VERSION: "snapshot-20240212"
+
 jobs:
   build:
-
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04]
 
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
 
-    - name: Install prereqs.
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y curl
+    - name: Install system dependencies
+      shell: bash
+      run: .github/ci.sh install_system_deps
+      env:
+        BUILD_TARGET_OS: ${{ matrix.os }}
+        BUILD_TARGET_ARCH: ${{ runner.arch }}
 
     - uses: haskell/actions/setup@v1
       with:
