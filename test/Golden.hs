@@ -4,6 +4,7 @@ import qualified System.Process as Process
 import qualified System.IO.Temp as Temp
 
 import qualified Test.Tasty as Tasty
+import qualified Test.Tasty.ExpectedFailure as Tasty
 import qualified Test.Tasty.Golden as Golden
 
 import qualified Cryptol.Compiler.Driver as Compiler
@@ -22,8 +23,27 @@ tests =
     expected cryPath = cryPath ++ ".expected"
     runTest :: FilePath -> Tasty.TestTree
     runTest cryPath =
+      expectFailOrSucceed cryPath $
       Golden.goldenVsString cryPath (expected cryPath)
                                     (runCompiledSimple cryPath)
+
+    expectFailOrSucceed :: FilePath -> Tasty.TestTree -> Tasty.TestTree
+    expectFailOrSucceed cryPath
+      | cryPath `List.elem` zTypeTests
+      = Tasty.expectFail
+      | otherwise
+      = id
+
+    -- The following test cases rely on Z types, which aren't currently
+    -- supported (#34).
+    zTypeTests :: [FilePath]
+    zTypeTests =
+      [ "test/golden/core/test_ring_add_z7.cry"
+      , "test/golden/core/test_ring_mul_z7.cry"
+      , "test/golden/core/test_ring_negate_z7.cry"
+      , "test/golden/core/test_ring_pow_z7.cry"
+      , "test/golden/core/test_ring_sub_z7.cry"
+      ]
 
 compileAndRunRust :: [FilePath] -> FilePath -> IO String
 compileAndRunRust cryFiles cratePath =

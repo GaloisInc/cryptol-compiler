@@ -148,6 +148,7 @@ test-suite cryptol-compiler-test
         base,
         cryptol-compiler,
         tasty,
+        tasty-expected-failure,
         tasty-golden,
         process,
         temporary,
