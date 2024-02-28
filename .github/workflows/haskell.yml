@@ -36,8 +36,8 @@ jobs:
         ghc-version: '9.4.7'
         cabal-version: '3.6.2'
 
-    - name: Cache
-      uses: actions/cache@v3
+    - name: Restore cabal store cache
+      uses: actions/cache/restore@v3
       env:
         cache-name: cache-cabal
       with:
@@ -56,3 +56,12 @@ jobs:
       run: cabal build --enable-tests all
     - name: Run tests
       run: cabal test all
+
+    - name: Save cabal store cache
+      uses: actions/cache/save@v3
+      if: always()
+      env:
+        cache-name: cache-cabal
+      with:
+        path: ~/.cabal
+        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/*.cabal') }}-${{ hashFiles('**/cabal.project') }}
