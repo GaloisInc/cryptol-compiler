@@ -221,9 +221,12 @@ addNumProps ps =
                  checkPossible
 
 
+-- | Constraints on numeric types.
+-- Note that these are *not overlapping*, meaning that a number falls
+-- in exactly one of these classes.
 data SizeConstraint =
     IsFin         -- ^ large finite
-  | IsFinSize     -- ^ small non-zero finite
+  | IsFinSize     -- ^ small finite
   | IsInf         -- ^ infinite
     deriving Eq
 
@@ -316,6 +319,8 @@ caseSize ty =
   where
   tryCase p = addNumProps (sizeProp p ty) >> pure p
 
+-- | Check relation to a constant, which should be a natural number..
+-- May split the world.
 caseConst :: Cry.Type -> Ordering -> Integer -> SpecM Bool
 caseConst t rel n = tryCase propYes True <|> tryCase propNo False
   where
