@@ -415,6 +415,12 @@ instance LL a => LL (RecordMap k a) where
 instance LL Selector where
   ll = pure
 
+instance LL CaseAlt where
+  ll (CaseAlt xs e) =
+    do xs' <- traverse (\(x,t) -> (,) x <$> ll t) xs
+       withLocals (Map.fromList [ (x,tMono y) | (x,y) <- xs' ])
+                  (CaseAlt xs' <$> ll e)
+
 instance LL Expr where
   ll expr =
     case expr of
@@ -426,6 +432,8 @@ instance LL Expr where
       ESet rect rec sel val -> ESet <$> ll rect <*> ll rec <*> ll sel <*> ll val
       EIf e1 e2 e3 -> EIf <$> ll e1 <*> ll e2 <*> ll e3
       EPropGuards alts t -> EPropGuards <$> ll alts <*> ll t
+      ECase e alts dflt -> ECase <$> ll e <*> traverse ll alts
+                                          <*> traverse ll dflt
 
       -- Order is important!
       EComp tLen tEl e mss ->

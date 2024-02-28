@@ -136,6 +136,13 @@ etaExpr args expr =
          e' <- withLocals env (etaExprT elT e)
          pure (EComp len elT e' mms')
 
+    ECase e alts dflt ->
+      ECase <$> etaExpr' e <*> traverse doAlt alts <*> traverse doAlt dflt
+      where
+      doAlt (CaseAlt xs rhs) =
+        withLocals (Map.fromList [ (x,tMono t) | (x,t) <- xs ])
+                   (CaseAlt xs <$> etaExpr args rhs)
+
     ESel e s ->
       do e' <- etaExpr' e
          pure (doApp (ESel e' s))

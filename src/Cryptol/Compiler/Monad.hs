@@ -356,7 +356,10 @@ getPrims =
 
   primsFromMod ps m =
     let vs = foldl' addDeclVs ps (Cry.mDecls m)
-    in foldl' addNameT vs (Map.keys (Cry.mPrimTypes m))
+        primTs = [ x | (x,def) <- Map.toList (Cry.mNominalTypes m)
+                     , Cry.Abstract <- [Cry.ntDef def]
+                 ]
+    in foldl' addNameT vs primTs
 
   addDeclVs ps d =
     case d of

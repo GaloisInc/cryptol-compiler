@@ -259,7 +259,6 @@ compileValType nested ty =
                 _ -> unexpected "Malformed function type"
 
             Cry.TCArray       -> unsupported "Array type"
-            Cry.TCAbstract {} -> unsupported "abstract value types"
 
         Cry.PC {}       -> unexpected "PC"
         Cry.TF {}       -> unexpected "TF"
@@ -273,7 +272,7 @@ compileValType nested ty =
     Cry.TUser _ _ t     -> compileValType nested t
     Cry.TRec rec -> TTuple <$> mapM (compileValType nested)
                                         (Cry.recordElements rec)
-    Cry.TNewtype {}     -> unsupported "newtype"    -- XXX
+    Cry.TNominal {} -> unsupported "nominal type"    -- XXX
 
   where
   unexpected msg = panic "compileValType" [msg]
@@ -323,7 +322,6 @@ compileStreamSizeType ty =
           case tcon of
             Cry.TCNum n       -> pure (IRSize (IRFixedSize n))
             Cry.TCInf         -> pure IRInfSize
-            Cry.TCAbstract {} -> unsupported "abstract numeric types"
 
             Cry.TCBit         -> unexpected "TCBit"
             Cry.TCInteger     -> unexpected "TCInteger"
@@ -348,7 +346,7 @@ compileStreamSizeType ty =
         Cry.TError {}   -> unexpected "TError"
 
     Cry.TRec {}         -> unexpected "TRec"
-    Cry.TNewtype {}     -> unexpected "TNewtype"
+    Cry.TNominal {}     -> unexpected "TNominal"
   where
   unexpected x = panic "compileStreamSizeType" [x]
 

@@ -163,6 +163,8 @@ compileExpr expr0 tgtT =
 
        Cry.EVar x -> compileVar x tyArgs args tgtT
 
+       Cry.ECase {} -> C.unsupported "case"
+
        Cry.EList es _t ->
          do let newTgtT = seqElementType tgtT
             ces <- mapM (`compileExpr` newTgtT) es
