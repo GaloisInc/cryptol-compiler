@@ -33,7 +33,7 @@ jobs:
         BUILD_TARGET_OS: ${{ matrix.os }}
         BUILD_TARGET_ARCH: ${{ runner.arch }}
 
-    - uses: haskell/actions/setup@v1
+    - uses: haskell-actions/setup@v2
       with:
         ghc-version: ${{ matrix.ghc }}
         cabal-version: ${{ matrix.cabal }}
