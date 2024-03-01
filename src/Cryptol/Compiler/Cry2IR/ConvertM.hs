@@ -6,11 +6,13 @@ import MonadLib
 
 import Cryptol.ModuleSystem.Name qualified as Cry
 import Cryptol.TypeCheck.Type qualified as Cry
+import Cryptol.TypeCheck.Solver.SMT qualified as Cry
 
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.Error(panic,Loc)
 import Cryptol.Compiler.Monad qualified as M
 import Cryptol.Compiler.IR.Cryptol
+import Cryptol.Compiler.Cry2IR.Specialize(PropInfo(..))
 
 
 -- | Monad used to translate Cryptol expressions to IR
@@ -32,15 +34,32 @@ data RO = RO
 
   , roLocalIRNames  :: Map NameId Name
     -- ^ Maps Cryptol name to an IR name, which has the IRType of the local
+
+  , roSMTVars :: Cry.TVars
+    -- ^ Type paramters declared in the solver.
+
   }
 
 
-runConvertM :: ConvertM a -> M.CryC a
-runConvertM (ConvertM m) = runReaderT ro m
+-- XXX: Maybe we should only do the solver stuff if we actually need it?
+runConvertM :: PropInfo -> ConvertM a -> M.CryC a
+runConvertM props (ConvertM m) =
+  do s <- M.getSolver
+     tvs <- M.doIO
+              do Cry.push s
+                 vs <- Cry.declareVars s (map Cry.TVBound (propVars props))
+                 mapM_ (Cry.assume s vs) (propAsmps props)
+                 pure vs
+     mb <- M.catchError (runReaderT (ro tvs) m)
+     M.doIO (Cry.pop s)
+     case mb of
+       Right a    -> pure a
+       Left err -> M.throwError err
   where
-  ro = RO
+  ro tvs = RO
     { roNumericParams = mempty
     , roLocalIRNames = mempty
+    , roSMTVars = tvs
     }
 
 
@@ -107,7 +126,16 @@ withIRLocals locs (ConvertM m) = ConvertM (mapReader upd m)
 getLocal :: NameId -> ConvertM (Maybe Name)
 getLocal x = Map.lookup x . roLocalIRNames <$> ConvertM ask
 
-
-
+-- | Get the size of a finite type.
+getTypeSize :: Cry.Type -> ConvertM SizeVarSize
+getTypeSize ty =
+  do let propIsBig = ty Cry.>== Cry.tNum (maxSizeVal + 1)
+         propIsSmall = Cry.tNum maxSizeVal Cry.>== ty
+     s <- doCryC M.getSolver
+     vars <- roSMTVars <$> ConvertM ask
+     isSmall <- doIO (Cry.unsolvable s vars [propIsBig])
+     isBig   <- doIO (Cry.unsolvable s vars [propIsSmall])
+     when (isSmall && isBig) (panic "getTypeSize" ["Size can be either"])
+     pure (if isSmall then MemSize else LargeSize)
 
 

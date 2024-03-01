@@ -123,7 +123,7 @@ instance Ord tname => FreeSizeNames (IRSize tname) where
     case sz of
       IRFixedSize {}      -> mempty
       IRPolySize x        -> Set.singleton x
-      IRComputedSize _ xs -> freeSizeNames xs
+      IRComputedSize _ xs _ -> freeSizeNames xs
 
 instance (Ord tname) => FreeSizeNames (IRStreamSize tname) where
   freeSizeNames sz =

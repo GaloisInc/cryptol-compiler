@@ -47,8 +47,8 @@ compileSize ctxt sz tgtSz =
       do p <- lookupSizeParam x
          pure (castSize BorrowContext ctxt (irsSize x) tgtSz p)
 
-    IRComputedSize f as ->
-      castContext tgtSz OwnContext ctxt <$> compileComputedSize f as tgtSz
+    IRComputedSize f as rsz ->
+      castSize OwnContext ctxt rsz tgtSz <$> compileComputedSize f as rsz
 
 
 

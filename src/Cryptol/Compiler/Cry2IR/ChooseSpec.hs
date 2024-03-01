@@ -17,6 +17,7 @@ import Cryptol.Compiler.IR.Subst
 import Cryptol.Compiler.IR.Type
 import Cryptol.Compiler.IR.Free
 import Cryptol.Compiler.IR.Cryptol
+import Cryptol.Compiler.IR.EvalType
 import Cryptol.Compiler.Cry2IR.ConvertM
 import Cryptol.Compiler.Cry2IR.InstanceMap
 import Cryptol.Compiler.Cry2IR.Type
@@ -35,7 +36,8 @@ selectInstance ::
   Type          {- ^ And this is what we want to get -} ->
   ConvertM Call
 selectInstance f tyArgs tgtT =
-  do instDB <- doCryC (M.getFun f)
+  do -- _ <- doIO (putStrLn "XXX")
+     instDB <- doCryC (M.getFun f)
      let is = instanceMapToList instDB
      targs <- mapM prepTArg tyArgs
      select is Nothing targs is
@@ -203,23 +205,9 @@ matchParamInfo pinfo t =
       case t of
         Left (IRSize s) ->
           let ok = pure [Left s]
-          in
-          case s of
-             IRFixedSize n ->
-               case need of
-                 MemSize | n <= maxSizeVal -> ok
-                 LargeSize | n > maxSizeVal -> ok
-                 _ -> Nothing
-
-             IRPolySize x
-               | need == irsSize x -> ok
-               | otherwise -> Nothing
-
-             IRComputedSize {} -> ok
-             -- XXX:  We need a way to determine if the computation
-             -- fits the constraint on NumVar
-
-
+              haveSize = sizeTypeSize s
+          in if need == haveSize then ok else Nothing
+          -- XXX: Is there a problem here, because `sizeTypeSize` approximates?
         _ -> Nothing
 
     TyBool ->

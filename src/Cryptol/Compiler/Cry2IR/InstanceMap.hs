@@ -190,11 +190,11 @@ matchSize parami ty =
                                    then MatchIf [ GNum v n ]
                                    else NoMatch
 
-            IRComputedSize f ts ->
+            IRComputedSize f ts rsz ->
               case x of
                 Cry.Inf   -> NoMatch
                 Cry.Nat n ->
-                  case sizeTypeSize s of
+                  case rsz of
                     MemSize | n > maxSizeVal -> NoMatch
                     _ -> MatchIf [ GNumFun f ts EQ n ]
 
@@ -208,8 +208,8 @@ matchSize parami ty =
                 MemSize   -> if n <= maxSizeVal then MatchIf [] else NoMatch
                 LargeSize -> if n > maxSizeVal then MatchIf [] else NoMatch
             IRPolySize v -> if x == irsSize v then MatchIf [] else NoMatch
-            IRComputedSize f ts ->
-              case (x,sizeTypeSize sz) of
+            IRComputedSize f ts rsz ->
+              case (x,rsz) of
                 (MemSize,MemSize) -> MatchIf []
                 (LargeSize,MemSize) -> NoMatch
                 (MemSize,LargeSize) -> MatchIf [GNumFun f ts LT (maxSizeVal+1)]

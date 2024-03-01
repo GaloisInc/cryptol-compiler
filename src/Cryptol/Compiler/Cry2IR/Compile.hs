@@ -50,15 +50,17 @@ compileTopDecl d =
 
          Cry.DPrim       ->
            do insts <- Spec.compileSchema cname (Cry.dSignature d)
-              pure [ Right (i,ty,IRFunPrim) | (i,ty) <- insts ]
+              pure [ Right (i,ty,IRFunPrim) | (i,ty,_allProps) <- insts ]
 
          Cry.DExpr e ->
            do insts <- Spec.compileSchema cname (Cry.dSignature d)
               let (as,xs,body) = prepExprDecl e
-              forM insts \(inst@(FunInstance pis),fty) ->
+              forM insts \(inst@(FunInstance pis),fty,allProps) ->
                 M.catchError $
-                C.runConvertM $
-                do let is = map (NameId . fst) xs
+                C.runConvertM allProps
+                do -- C.doIO (putStrLn ("INST: " ++ show (cryPP (Cry.dName d) )++ " @ " ++ show (pp inst)))
+                   -- C.doIO (print (withTypes (pp fty)))
+                   let is = map (NameId . fst) xs
                    let (sizePs, knownTs) = knownPs as pis
                        su = Cry.listParamSubst knownTs
                        ibody = Cry.apSubst su body
@@ -170,7 +172,7 @@ compileExpr expr0 tgtT =
             ces <- mapM (`compileExpr` newTgtT) es
             let len = streamSizeToSize (seqLength tgtT)
             let arr = callPrim ArrayLit ces (TArray len newTgtT)
-            pure (arr `coerceTo` tgtT)
+            pure (coerceTo "EList" arr tgtT)
 
        Cry.ETuple es ->
          case tgtT of
@@ -347,7 +349,7 @@ compileComprehension elT tgtT res mss =
             case seqLength tgtT of
               IRInfSize -> True
               _         -> False
-     pure (e `coerceTo` tgtT)
+     pure (coerceTo "compileComprehnsion" e tgtT)
   where
   comp isInf =
     case mss of
@@ -396,7 +398,7 @@ compileComprehension elT tgtT res mss =
     | isInf     = IRInfSize
     | otherwise =
       case typeOf bodyRest of
-        TStream rest _ -> IRSize (evalSizeType Cry.TCMul [this,rest])
+        TStream rest _ -> IRSize (evalSizeType Cry.TCMul [this,rest] MemSize)
         _              -> unexpected "rest not TStream"
 
   doOneAltArm isInf ms =
@@ -504,7 +506,7 @@ compileVar x ts args tgtT =
        Nothing -> compileCall x ts args tgtT
        Just n ->
          case (ts,args) of
-           ([], []) -> pure (coerceTo (IRExpr (IRVar n)) tgtT)
+           ([], []) -> pure (coerceTo "compileVar" (IRExpr (IRVar n)) tgtT)
                        -- local mono value
 
            -- local mono function
@@ -528,7 +530,7 @@ compileVar x ts args tgtT =
                                  LT -> pure (IRClosure call
                                                { ircResType = TFun needTs b })
                                  GT -> C.unsupported "over application"
-                       pure (coerceTo (IRExpr expr) tgtT)
+                       pure (coerceTo "compileVar 2" (IRExpr expr) tgtT)
 
                   _ -> unexpected "application to non-function"
            (_ : _, _) -> C.unsupported "Polymorphic locals"
@@ -546,12 +548,12 @@ compileCall ::
 compileCall f ts es tgtT =
   do call <- selectInstance f ts tgtT
      es' <- zipWithM compileExpr es (ircArgTypes call)
-     pure (coerceTo (IRExpr (IRCallFun call { ircArgs = es' })) tgtT)
+     pure (coerceTo "compileCall" (IRExpr (IRCallFun call { ircArgs = es' })) tgtT)
 
 
 
-coerceTo :: Expr -> Type -> Expr
-coerceTo e tgtT =
+coerceTo :: String -> Expr -> Type -> Expr
+coerceTo loc e tgtT =
 
   case (srcT,tgtT) of
 
@@ -586,8 +588,9 @@ coerceTo e tgtT =
     _ | srcT == tgtT -> e
       | otherwise -> panic "coerceTo"
                        [ "Cannot coerce types"
-                       , "From: " ++ show (pp srcT)
-                       , "To  : " ++ show (pp tgtT)
+                       , "Location: " ++ loc
+                       , "From: " ++ show (withTypes (pp srcT))
+                       , "To  : " ++ show (withTypes (pp tgtT))
                        , "Expr: " ++ show (pp e)
                        ]
   where

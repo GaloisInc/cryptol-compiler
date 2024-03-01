@@ -1,5 +1,5 @@
 module Cryptol.Compiler.Cry2IR.Specialize
-  ( compileSchema
+  ( compileSchema, PropInfo(..)
   , compileValType
   , compileSizeType
   , compileStreamSizeType
@@ -32,7 +32,7 @@ import Cryptol.Compiler.Cry2IR.RepHints
 compileSchema ::
   Cry.Name                              {- ^ Name of what we are compiling -} ->
   Cry.Schema                            {- ^ Schema to compile -} ->
-  M.CryC [(FunInstance, FunType)]
+  M.CryC [(FunInstance, FunType, PropInfo)]
 compileSchema cn sch =
   case ctrProps (infoFromConstraints (Cry.sProps sch)) of
 
@@ -71,6 +71,9 @@ compileSchema cn sch =
                               TFun x y -> (x, y)
                               y        -> ([], y)
 
+           allPs <- getTParams
+           allProps <- getProps
+
            pure ( FunInstance info
                 , IRFunType
                     { ftTypeParams = tparams
@@ -79,6 +82,7 @@ compileSchema cn sch =
                     , ftParams     = args
                     , ftResult     = res
                     }
+                , PropInfo { propVars = allPs, propAsmps = allProps }
                 )
   where
   doTParams su info todo =
@@ -342,12 +346,14 @@ compileStreamSizeType ty =
 
 
         Cry.TF tf ->
-          do isInf <- caseIsInf ty
-             if isInf
-                then pure IRInfSize
-                else
-                  do args <- mapM compileStreamSizeType ts
-                     pure (IRSize (evalSizeType tf args))
+          do sz <- caseSize ty
+             let finCase rsz =
+                    do args <- mapM compileStreamSizeType ts
+                       pure (IRSize (evalSizeType tf args rsz))
+             case sz of
+               IsInf     -> pure IRInfSize
+               IsFinSize -> finCase MemSize
+               IsFin     -> finCase LargeSize
 
         Cry.PC {}       -> unexpected "PC"
         Cry.TError {}   -> unexpected "TError"
@@ -545,4 +551,17 @@ ctrProps = go (mempty,mempty,mempty)
       CtrTrait {}   -> panic "toProps" ["CtrTrait"]
       CtrIfBool {}  -> panic "toProps" ["CtrIfBool"]
 
+
+--------------------------------------------------------------------------------
+
+---- | Assumptions we can make on the number type parameters.
+data PropInfo = PropInfo
+  { propVars  :: [Cry.TParam]
+  , propAsmps :: [Cry.Prop]
+  }
+
+instance PP PropInfo where
+  pp info =
+    hang ("forall" <+> commaSep (map cryPP (propVars info)) <.> ".") 2
+         (vcat (map cryPP (propAsmps info)))
 

@@ -121,7 +121,8 @@ compileStreamSizeType ty =
 
         Cry.TF tf ->
           do args <- mapM compileStreamSizeType ts
-             pure (IRSize (evalSizeType tf args))
+             rsz  <- getTypeSize ty
+             pure (IRSize (evalSizeType tf args rsz))
 
         Cry.PC {}       -> unexpected "PC"
         Cry.TError {}   -> unexpected "TError"
