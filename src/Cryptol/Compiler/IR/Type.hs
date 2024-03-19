@@ -75,7 +75,7 @@ data IRSizeName tname = IRSizeName { irsName :: tname, irsSize :: SizeVarSize }
 data IRSize tname =
     IRFixedSize Integer                     -- ^ A specific size
   | IRPolySize (IRSizeName tname)           -- ^ Polymorphic size; finite
-  | IRComputedSize Cry.TFun [IRSize tname]  -- ^ Computed size
+  | IRComputedSize Cry.TFun [IRSize tname] SizeVarSize -- ^ Computed size
     deriving (Eq,Ord,Functor,Foldable,Traversable)
 
 
@@ -263,7 +263,7 @@ instance PP tname => PP (IRSize tname) where
     case ty of
       IRFixedSize size -> pp size
       IRPolySize x -> pp x
-      IRComputedSize fu ts ->
+      IRComputedSize fu ts sz ->
         case fu of
           Cry.TCAdd            -> ppInfix 1 1 1 "+"
           Cry.TCSub            -> ppInfix 1 1 2 "-"
@@ -279,13 +279,18 @@ instance PP tname => PP (IRSize tname) where
           Cry.TCLenFromThenTo  -> ppFun "lengthFromThenTo"
 
         where
-        ppFun f = parensAfter 8 (f <+> withPrec 9 (hsep (map pp ts)))
+        ppFun f = parensAfter' 8 (f <+> withPrec 9 (hsep (map pp ts)))
 
         ppInfix n l r op =
           case ts of
-            [t1,t2] -> parensAfter n
+            [t1,t2] -> parensAfter' n
                          (withPrec l (pp t1) <+> op <+> withPrec r (pp t2))
             _ -> panic "pp@IRSize" ["Malformed infix"]
+
+        parensAfter' n d = getPPCfg \cfg ->
+          if ppShowTypes cfg
+            then parens (d <+> ":" <+> pp sz)
+            else parensAfter n d
 
 
 instance (PP tname) => PP (IRTrait tname) where

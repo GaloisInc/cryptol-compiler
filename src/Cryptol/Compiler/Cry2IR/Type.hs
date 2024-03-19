@@ -34,13 +34,13 @@ compileValType ty =
 
             Cry.TCIntMod ->
               case ts of
-                [ sz ] -> TIntegerMod <$> compileSizeType sz
+                [ sz ] -> TIntegerMod <$> compileSizeType False sz
                 _      -> unexpected "Malformed TCIntMod"
 
             Cry.TCSeq ->
               case ts of
                 [tlen,tel] ->
-                  do sz <- compileStreamSizeType tlen
+                  do sz <- compileStreamSizeType True tlen
                      el <- compileValType tel
                      case sz of
                        IRInfSize -> pure (TStream IRInfSize el)
@@ -82,19 +82,19 @@ compileValType ty =
 
 
 -- | Compile a known finite Cryptol size type to an IR type.
-compileSizeType :: Cry.Type -> ConvertM Size
-compileSizeType ty =
-  do sz <- compileStreamSizeType ty
+compileSizeType :: Bool -> Cry.Type -> ConvertM Size
+compileSizeType forceSmall ty =
+  do sz <- compileStreamSizeType forceSmall ty
      case sz of
        IRSize s  -> pure s
        IRInfSize -> panic "compileSizeType" ["inf"]
 
 -- | Compile a Cryptol size type to an IR type.
-compileStreamSizeType :: Cry.Type -> ConvertM StreamSize
-compileStreamSizeType ty =
+compileStreamSizeType :: Bool -> Cry.Type -> ConvertM StreamSize
+compileStreamSizeType forceSmall ty =
 
   case ty of
-    Cry.TUser _ _ t -> compileStreamSizeType t
+    Cry.TUser _ _ t -> compileStreamSizeType forceSmall t
 
     Cry.TVar t ->
       case t of
@@ -120,8 +120,9 @@ compileStreamSizeType ty =
 
 
         Cry.TF tf ->
-          do args <- mapM compileStreamSizeType ts
-             pure (IRSize (evalSizeType tf args))
+          do args <- mapM (compileStreamSizeType False) ts
+             rsz  <- getTypeSize forceSmall ty
+             pure (IRSize (evalSizeType tf args rsz))
 
         Cry.PC {}       -> unexpected "PC"
         Cry.TError {}   -> unexpected "TError"

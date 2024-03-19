@@ -1,5 +1,5 @@
 module Cryptol.Compiler.Cry2IR.Specialize
-  ( compileSchema
+  ( compileSchema, PropInfo(..)
   , compileValType
   , compileSizeType
   , compileStreamSizeType
@@ -32,11 +32,12 @@ import Cryptol.Compiler.Cry2IR.RepHints
 compileSchema ::
   Cry.Name                              {- ^ Name of what we are compiling -} ->
   Cry.Schema                            {- ^ Schema to compile -} ->
-  M.CryC [(FunInstance, FunType)]
+  M.CryC [(FunInstance, FunType, PropInfo)]
 compileSchema cn sch =
   case ctrProps (infoFromConstraints (Cry.sProps sch)) of
 
     -- inconsistent
+    -- XXX: should we say something here?
     Nothing -> pure []
 
     Just (traits,props,boolProps) ->
@@ -70,6 +71,9 @@ compileSchema cn sch =
                               TFun x y -> (x, y)
                               y        -> ([], y)
 
+           allPs <- getTParams
+           allProps <- getProps
+
            pure ( FunInstance info
                 , IRFunType
                     { ftTypeParams = tparams
@@ -78,6 +82,7 @@ compileSchema cn sch =
                     , ftParams     = args
                     , ftResult     = res
                     }
+                , PropInfo { propVars = allPs, propAsmps = allProps }
                 )
   where
   doTParams su info todo =
@@ -112,7 +117,9 @@ compileSchema cn sch =
 
 
 
-compileValTypeWithHint :: Bool -> RepHint -> Cry.Type -> SpecM Type
+compileValTypeWithHint ::
+  Bool {- ^ Are we nested in an array? -} ->
+  RepHint -> Cry.Type -> SpecM Type
 compileValTypeWithHint nested hint ty =
 
   case hint of
@@ -123,33 +130,35 @@ compileValTypeWithHint nested hint ty =
         Just (lenTy,elTy) ->
           do case Cry.tIsVar elTy of
                Just (Cry.TVBound a) -> addIsBoolProp a (Known True)
-               _ -> pure ()
+               _ | Cry.tIsBit elTy -> pure ()
+                 | otherwise       -> bad
              n <- compileSeqLenSizeType lenTy
              pure (TWord n)
 
-        Nothing           -> bad
+        Nothing -> bad
 
     AsArray h ->
       case Cry.tIsSeq ty of
         Just (lenTy,elTy) ->
           do n <- compileSeqLenSizeType lenTy
              case Cry.tIsVar elTy of
-               Just (Cry.TVBound a) ->
-                  addIsBoolProp a (Known False)
-               _ -> when (Cry.tIsBit elTy) empty
+               Just (Cry.TVBound a) -> addIsBoolProp a (Known False)
+               _ -> when (Cry.tIsBit elTy) bad
 
              a <- compileValTypeWithHint True h elTy
              pure (TArray n a)
 
-        Nothing           -> bad
+        Nothing -> bad
 
-    AsStream h ->
-      case Cry.tIsSeq ty of
-        Just (l, elTy) ->
-          do len <- compileStreamLenSizeType l
-             t   <- compileValTypeWithHint True h elTy
-             pure (TStream len t)
-        Nothing           -> bad
+    AsStream h
+      | nested -> bad
+      | otherwise ->
+        case Cry.tIsSeq ty of
+          Just (l, elTy) ->
+            do len <- compileStreamLenSizeType l
+               t   <- compileValTypeWithHint True h elTy
+               pure (TStream len t)
+          Nothing -> bad
 
     x :-> y ->
       case Cry.tIsFun ty of
@@ -161,7 +170,7 @@ compileValTypeWithHint nested hint ty =
                  TFun as b -> TFun (arg:as) b
                  _         -> TFun [arg] res
 
-        Nothing   -> bad
+        Nothing -> bad
 
     TupHint hs ->
       case Cry.tIsTuple ty of
@@ -182,6 +191,7 @@ compileValTypeWithHint nested hint ty =
         _ -> bad
 
   where
+  bad :: SpecM a
   bad = panic "matchHint" [ "Hint and type do not match:"
                           , show ("Hint:" <+> pp hint)
                           , show ("Type:" <+> cryPP ty)
@@ -203,13 +213,13 @@ compileValType nested ty =
 
             Cry.TCFloat ->
               case ts of
-                   [ e, p ] -> opt 8 24 TFloat <|> opt 11 53 TDouble
-                     where
-                     isK a n = a Cry.=#= Cry.tNum (n :: Int)
-                     opt a b r =
-                       do addNumProps [ isK e a, isK p b ]
-                          pure  r
-                   _ -> unexpected "Malformed TFCFloat"
+                [ e, p ] -> opt 8 24 TFloat <|> opt 11 53 TDouble
+                  where
+                  isK a n = a Cry.=#= Cry.tNum (n :: Int)
+                  opt a b r =
+                    do addNumProps [ isK e a, isK p b ]
+                       pure  r
+                _ -> unexpected "Malformed TFCFloat"
 
             Cry.TCIntMod ->
               case ts of
@@ -225,30 +235,31 @@ compileValType nested ty =
                        IsInf
                          | nested ->
                            warnUnsupported
-                                "Infinite sequences stored in other types"
+                                "Infinite sequences stored in sequences"
                          | otherwise ->
                            TStream IRInfSize <$> compileValType True tel
-                       IsFin -> warnUnsupported "Sequence length is too large"
+
+                       IsFin -> empty
+                         -- We do not generate code for sequnece whose
+                         -- length would not fit in `usize`
+
                        IsFinSize ->
-                         do isize <- compileStreamSizeType tlen
-                            vt    <- compileValType True tel
-                            case isize of
-                              IRInfSize -> panic "InfSize when Fin" []
-                              IRSize sz ->
-                                case vt of
-                                  TBool -> pure (TWord sz)
-                                  TPoly x ->
-                                    do yes <- caseBool x
-                                       pure (if yes then TWord sz
-                                                    else TArray sz vt)
-                                  _  -> pure (TArray sz vt)
+                         do sz <- compileSizeType tlen
+                            vt <- compileValType True tel
+                            case vt of
+                              TBool -> pure (TWord sz)
+                              TPoly x ->
+                                do yes <- caseBool x
+                                   pure (if yes then TWord sz
+                                                else TArray sz vt)
+                              _  -> pure (TArray sz vt)
 
                 _ -> unexpected "Malformed TSeq"
 
             Cry.TCTuple {}    -> TTuple <$> mapM (compileValType nested) ts
 
             Cry.TCFun
-              | nested -> warnUnsupported "Functions stored in other types"
+              | nested -> warnUnsupported "Functions stored in sequences"
               | otherwise ->
               case ts of
                 [a,b] ->
@@ -335,12 +346,14 @@ compileStreamSizeType ty =
 
 
         Cry.TF tf ->
-          do isInf <- caseIsInf ty
-             if isInf
-                then pure IRInfSize
-                else
-                  do args <- mapM compileStreamSizeType ts
-                     pure (IRSize (evalSizeType tf args))
+          do sz <- caseSize ty
+             let finCase rsz =
+                    do args <- mapM compileStreamSizeType ts
+                       pure (IRSize (evalSizeType tf args rsz))
+             case sz of
+               IsInf     -> pure IRInfSize
+               IsFinSize -> finCase MemSize
+               IsFin     -> finCase LargeSize
 
         Cry.PC {}       -> unexpected "PC"
         Cry.TError {}   -> unexpected "TError"
@@ -476,10 +489,9 @@ data ConstraintInfo =
     -- see `ctrProps`.
 
 
--- | Returns unconditional assumptions, and ones that depend on the given
--- parameter being bool.  If the entry is `[]`, than the parameter must
--- not be bool.  If it we have some props, then they can be assumed but
--- only when the parameter *is* bool.
+-- | Returns traits, unconditional assumptions, and information about
+-- if variables are booleans, together with some additional constraints.
+-- See `BoolInfo` in "Crypol.Compiler.Cry2IR.SpeclializeM"
 ctrProps ::
   ConstraintInfo ->
   Maybe ([Trait], [Cry.Prop], Map Cry.TParam BoolInfo)
@@ -539,4 +551,17 @@ ctrProps = go (mempty,mempty,mempty)
       CtrTrait {}   -> panic "toProps" ["CtrTrait"]
       CtrIfBool {}  -> panic "toProps" ["CtrIfBool"]
 
+
+--------------------------------------------------------------------------------
+
+---- | Assumptions we can make on the number type parameters.
+data PropInfo = PropInfo
+  { propVars  :: [Cry.TParam]
+  , propAsmps :: [Cry.Prop]
+  }
+
+instance PP PropInfo where
+  pp info =
+    hang ("forall" <+> commaSep (map cryPP (propVars info)) <.> ".") 2
+         (vcat (map cryPP (propAsmps info)))
 

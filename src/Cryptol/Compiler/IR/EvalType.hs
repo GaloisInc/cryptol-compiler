@@ -12,18 +12,23 @@ evalSizeMin x y =
   case (x,y) of
     (IRInfSize,_) -> simpSizeType y
     (_,IRInfSize) -> simpSizeType x
-    _             -> IRSize (evalSizeType Cry.TCMin [x,y])
+    (IRSize a, IRSize b) -> IRSize (evalSizeType Cry.TCMin [x,y] resSz)
+      where resSz = case (sizeTypeSize a, sizeTypeSize b) of
+                      (MemSize, _) -> MemSize
+                      (_, MemSize) -> MemSize
+                      _            -> LargeSize
 
 class EvalSizeType size where
   simpSizeType  :: Eq tname => size tname -> size tname
-  evalSizeType  :: Eq tname => Cry.TFun -> [size tname] -> IRSize tname
+  evalSizeType  ::
+    Eq tname => Cry.TFun -> [size tname] -> SizeVarSize -> IRSize tname
 
 instance EvalSizeType IRSize where
   evalSizeType f ts = evalSizeType f (map IRSize ts)
   simpSizeType s =
     case s of
-      IRComputedSize f ts -> evalSizeType f ts
-      _                   -> s
+      IRComputedSize f ts sz -> evalSizeType f ts sz
+      _                      -> s
 
 instance EvalSizeType IRStreamSize where
   simpSizeType ty =
@@ -31,7 +36,7 @@ instance EvalSizeType IRStreamSize where
       IRSize s  -> IRSize (simpSizeType s)
       IRInfSize -> ty
 
-  evalSizeType tf args0 =
+  evalSizeType tf args0 resSz =
     case tf of
       Cry.TCAdd           -> liftInfNat dflt args Cry.nAdd
       Cry.TCSub           -> liftInfNat dflt args Cry.nSub
@@ -88,41 +93,11 @@ instance EvalSizeType IRStreamSize where
         (Cry.TCCeilMod       , [ IRInfSize, _])   -> IRFixedSize 0
         (Cry.TCCeilMod       , [ _, K 1])         -> IRFixedSize 0
 
-        _ -> IRComputedSize tf (map streamSizeToSize args)
+        _ -> IRComputedSize tf (map streamSizeToSize args) resSz
 
 
 
--- | Approximate the size of the result when we apply a function
--- to the inputs of the given sizes.
-evalSizeTypeSize :: Cry.TFun -> [SizeVarSize] -> SizeVarSize
-evalSizeTypeSize tf args =
-  case tf of
-    Cry.TCAdd           -> LargeSize
-    Cry.TCSub           -> op 0
-    Cry.TCMul           -> LargeSize
-    Cry.TCDiv           -> op 0
-    Cry.TCMod           -> op 1
-    Cry.TCExp           -> LargeSize
-    Cry.TCWidth         -> MemSize
-    Cry.TCMin           -> case (op 0, op 1) of
-                             (MemSize,_)  -> MemSize
-                             (_, MemSize) -> MemSize
-                             _            -> LargeSize
-    Cry.TCMax           -> case (op 0, op 1) of
-                             (MemSize,MemSize) -> MemSize
-                             _                 -> LargeSize
-    Cry.TCCeilDiv       -> op 0
-    Cry.TCCeilMod       -> op 1
-    Cry.TCLenFromThenTo -> case (op 0, op 2) of
-                             (MemSize,MemSize) -> MemSize
-                             _                 -> LargeSize
-  where
-  op n = case drop n args of
-           x : _ -> x
-           _     -> panic "evalSizeTypeSize" ["Bad operand"]
-
--- | Estimate the size of a size-type.
--- Assumes that we already know that the result is finite.
+-- | Get the size of size expression.
 sizeTypeSize :: IRSize tname -> SizeVarSize
 sizeTypeSize ty =
   case ty of
@@ -130,7 +105,7 @@ sizeTypeSize ty =
       | n <= maxSizeVal -> MemSize
       | otherwise       -> LargeSize
     IRPolySize x  -> irsSize x
-    IRComputedSize f ts -> evalSizeTypeSize f (map sizeTypeSize ts)
+    IRComputedSize _ _ sz -> sz
 
 
 class LiftInfNat a where

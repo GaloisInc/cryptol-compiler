@@ -41,6 +41,7 @@ module Cryptol.Compiler.Monad
   , getSchemaOf
   , getTopTypes
   , getFun
+  , FunIface(..), AssumeSmall(..), noAssumeSmall
 
     -- * Name generation
   , newNameId
@@ -150,7 +151,7 @@ data CompilerState = CompilerState
   , rwNameGen     :: !Int
     -- ^ A seed for generating names.
 
-  , rwFuns        :: !(Map Cry.Name (InstanceMap (FunName, FunType)))
+  , rwFuns        :: !(Map Cry.Name (InstanceMap FunIface))
     -- ^ Known instance for each Cryptol function
 
   , rwCompiled    :: ![FunDecl]
@@ -160,6 +161,27 @@ data CompilerState = CompilerState
     -- ^ Information about modules already compiled to Rust (IR2Rust)
 
   }
+
+data FunIface = FunIface {
+  fiName  :: FunName,
+  fiType  :: FunType,
+  fiSmall :: AssumeSmall
+}
+
+data AssumeSmall = AssumeSmall
+  { asForall :: [Cry.TParam]
+  , asSizes  :: [Cry.Type]
+    -- ^ Cryptol types of kind #.  It is only safe to call this functino,
+    -- if the given numeric types are small enough to fit in MemSize
+  }
+
+noAssumeSmall :: AssumeSmall
+noAssumeSmall = AssumeSmall
+  { asForall = []
+  , asSizes = []
+  }
+
+
 
 -- | Information about primitives
 data Prims = Prims
@@ -205,7 +227,7 @@ runCryC outDir crateName ents (CryC m) =
        Right a  -> pure a
 
   where
-  tcSolverConfig  = Cry.defaultSolverConfig []
+  tcSolverConfig  = (Cry.defaultSolverConfig []) { Cry.solverVerbose = 0 }
   evalConfig      = pure Cry.EvalOpts
                            { Cry.evalLogger  = Cry.quietLogger
                            , Cry.evalPPOpts  = Cry.defaultPPOpts
@@ -429,15 +451,18 @@ getSchemaOf expr =
   do env <- getTypes
      pure (Cry.fastSchemaOf env expr)
 
-addCompiled :: Cry.Name -> InstanceMap FunDecl -> CryC ()
+addCompiled :: Cry.Name -> InstanceMap (FunDecl, AssumeSmall) -> CryC ()
 addCompiled x def =
   CryC $ sets_ \s -> s { rwCompiled = newDecls ++ rwCompiled s
                        , rwFuns     = Map.insert x newKnown (rwFuns s)
                        }
   where
-  info d   = (irfName d, irfType d)
+  info (d,small)   = FunIface { fiName = irfName d,
+                                fiType = irfType d,
+                                fiSmall = small
+                               }
   newKnown = info <$> def
-  newDecls = instanceMapToList def
+  newDecls = map fst (instanceMapToList def)
 
 getCompiled :: CryC [FunDecl]
 getCompiled = CryC $ rwCompiled <$> get
@@ -445,7 +470,7 @@ getCompiled = CryC $ rwCompiled <$> get
 clearCompiled :: CryC ()
 clearCompiled = CryC $ sets_ \rw -> rw { rwCompiled = mempty }
 
-getFun :: Cry.Name -> CryC (InstanceMap (FunName,FunType))
+getFun :: Cry.Name -> CryC (InstanceMap FunIface)
 getFun x =
   do comp <- CryC (rwFuns <$> get)
      case Map.lookup x comp of

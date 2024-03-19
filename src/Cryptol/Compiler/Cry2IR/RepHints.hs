@@ -8,13 +8,42 @@ import Cryptol.Utils.Ident qualified as Cry
 
 import Cryptol.Compiler.PP
 
+-- | This specifies the representations for sequences that we want in a type.
+-- The hint should match the overall shape of the type
 data RepHint = AsWord
+               -- ^ Compile as a word.
+               -- The Cryptol type should be a finite sequence of bits.
+
              | AsArray RepHint
+              -- ^ Compile as an array/vector of things.
+              -- The Cryptol type should be a finite sequence.
+              -- Element restrictions:
+              --   * No bit
+              --   * No nested streams
+
              | AsStream RepHint
+              -- ^ Compile as a stream.
+              -- The Cryptol type should be a sequence.
+              -- It may be finite or infinite.
+              -- The elements may or may not be bits.
+              -- No nested streams.
+
              | NoHint
+              -- ^ Infer representation.
+              -- Works for any value type.
+
              | RepHint :-> RepHint
+               -- ^ The Cryptol type should be a function.
+
              | TupHint [RepHint]
+               -- ^ The Cryptol type should be a tuple.
+
              | RecHint (Cry.RecordMap Cry.Ident RepHint)
+               -- ^ The Cryptol type should be a record.
+               -- Probalby can reuse this for `newtype`
+
+              -- XXX: Add a hint for sum types
+
 
 isNoHint :: RepHint -> Bool
 isNoHint h =

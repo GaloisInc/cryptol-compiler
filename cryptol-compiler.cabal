@@ -45,7 +45,8 @@ common extensions
       ViewPatterns,
       RankNTypes,
       ScopedTypeVariables,
-      TemplateHaskell
+      TemplateHaskell,
+      DisambiguateRecordFields
 
 common executable
     import: warnings, extensions

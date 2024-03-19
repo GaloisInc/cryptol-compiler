@@ -131,7 +131,8 @@ instance Ord tname => ApSubst (IRSize tname) where
               IRInfSize -> panic "apSubstMaybe@IRSize" ["IRInfSize"]
               IRSize s  -> pure s
 
-      IRComputedSize fun as -> evalSizeType fun <$> apSubstMaybe su as
+      IRComputedSize fun as sz ->
+        (\xs -> evalSizeType fun xs sz) <$> apSubstMaybe su as
 
 
 instance Ord tname => ApSubst (IRName tname name) where
