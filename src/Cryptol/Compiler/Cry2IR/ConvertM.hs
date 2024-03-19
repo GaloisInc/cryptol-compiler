@@ -23,6 +23,7 @@ newtype ConvertM a = ConvertM (SpecImpl a)
 type SpecImpl =
   WithBase M.CryC
     '[ ReaderT RO
+     , StateT RW
      ]
 
 data RO = RO
@@ -40,9 +41,21 @@ data RO = RO
 
   }
 
+newtype RW = RW
+  { rwAssumeSmall :: [Cry.Type]
+    {- ^ Cryptol numberic types that we assumed to be "small", even though
+      in theory they could be large.  These arise from the length of local
+      sequence variables.  For example, consider `f xs = ([0] # xs) @ 0`.
+      Even if we know that `xs` has a "small" length, `[0] # xs` is 1 longer
+      so it might be.   Since we'd like to represent sequence lengts with
+      "small" numbers, we add the extra assumption that `1 + length xs`
+      is small over here.  The idea is top capture these extra constraints
+      with the compiled IR and check them at call sites.
+    -}
+  }
 
 -- XXX: Maybe we should only do the solver stuff if we actually need it?
-runConvertM :: PropInfo -> ConvertM a -> M.CryC a
+runConvertM :: PropInfo -> ConvertM a -> M.CryC (a, M.AssumeSmall)
 runConvertM props (ConvertM m) =
   do s <- M.getSolver
      tvs <- M.doIO
@@ -50,17 +63,21 @@ runConvertM props (ConvertM m) =
                  vs <- Cry.declareVars s (map Cry.TVBound (propVars props))
                  mapM_ (Cry.assume s vs) (propAsmps props)
                  pure vs
-     mb <- M.catchError (runReaderT (ro tvs) m)
+     mb <- M.catchError (runStateT rw (runReaderT (ro tvs) m))
      M.doIO (Cry.pop s)
      case mb of
-       Right a    -> pure a
-       Left err -> M.throwError err
+       Right (a,rwFin)  -> pure (a, M.AssumeSmall {
+                                      asForall = propVars props,
+                                      asSizes = rwAssumeSmall rwFin
+                                    })
+       Left err         -> M.throwError err
   where
   ro tvs = RO
     { roNumericParams = mempty
     , roLocalIRNames = mempty
     , roSMTVars = tvs
     }
+  rw = RW { rwAssumeSmall = [] }
 
 
 
@@ -76,7 +93,10 @@ doCryC m = ConvertM (inBase m)
 doCryCWith :: (forall a. M.CryC a -> M.CryC a) -> ConvertM b -> ConvertM b
 doCryCWith k (ConvertM m) =
   do ro <- ConvertM ask
-     doCryC (k (runReaderT ro m))
+     rw <- ConvertM get
+     (a,rw1) <- doCryC (k (runStateT rw (runReaderT ro m)))
+     ConvertM (set rw1)
+     pure a
 
 -- | Get the value of a numeric type parameter.
 lookupNumericTParam :: Cry.TParam -> ConvertM StreamSize
@@ -127,15 +147,35 @@ getLocal :: NameId -> ConvertM (Maybe Name)
 getLocal x = Map.lookup x . roLocalIRNames <$> ConvertM ask
 
 -- | Get the size of a finite type.
-getTypeSize :: Cry.Type -> ConvertM SizeVarSize
-getTypeSize ty =
+getTypeSize :: Bool -> Cry.Type -> ConvertM SizeVarSize
+getTypeSize forceSmall ty =
   do let propIsBig = ty Cry.>== Cry.tNum (maxSizeVal + 1)
          propIsSmall = Cry.tNum maxSizeVal Cry.>== ty
      s <- doCryC M.getSolver
      vars <- roSMTVars <$> ConvertM ask
-     isSmall <- doIO (Cry.unsolvable s vars [propIsBig])
-     isBig   <- doIO (Cry.unsolvable s vars [propIsSmall])
-     when (isSmall && isBig) (panic "getTypeSize" ["Size can be either"])
-     pure (if isSmall then MemSize else LargeSize)
+     defBig   <- doIO (Cry.unsolvable s vars [propIsSmall])
+     when (defBig && forceSmall)
+          (unsupported "Sequence whose length does not fit in `usize`")
+
+     defSmall <- doIO (Cry.unsolvable s vars [propIsBig])
+     when (defSmall && defBig)
+          (panic "getTypeSize" ["A type is small and big at the same time."])
+
+     case () of
+       _  | defSmall    -> pure MemSize     -- definately small
+          | defBig      -> pure LargeSize   -- definately big
+          | forceSmall  ->
+            do doIO (Cry.assume s vars propIsSmall)
+               ConvertM
+                  (sets_ \rw -> rw { rwAssumeSmall = ty : rwAssumeSmall rw })
+               pure MemSize
+          | otherwise   -> pure LargeSize   -- conservative
+
+
+assumeSmall :: Cry.Type -> ConvertM ()
+assumeSmall ty =
+  do _ <- getTypeSize True ty
+     pure ()
+
 
 

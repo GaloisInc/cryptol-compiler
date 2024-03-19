@@ -1,3 +1,4 @@
+-- XXX: This needs to be reworked.
 module Cryptol.Compiler.Cry2IR.InstanceMap
   ( ParamInfo(..)
   , FunInstance(..)
@@ -19,7 +20,6 @@ import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
 import Cryptol.Compiler.PP
 import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.IR
-import Cryptol.Compiler.IR.EvalType
 
 
 -- | A map where the keys are function instances.
@@ -28,8 +28,7 @@ data InstanceMap a =
   | Result a
     deriving Functor
 
-instanceMapFromList ::
-  PP a => [(FunInstance,a)] -> Either Doc (InstanceMap a)
+instanceMapFromList :: [(FunInstance,a)] -> Either Doc (InstanceMap a)
 instanceMapFromList ins =
   case ins of
     [] -> Left "instance map: empty"
@@ -38,9 +37,7 @@ instanceMapFromList ins =
             (uncurry singletonInstanceMap a)
             as
       in case res of
-           Left doc ->
-              Left (doc $$ nest 2 (vcat [ pp fu $$ nest 2 (pp b)
-                                        | (fu,b) <- ins ]))
+           Left doc -> Left (doc $$ nest 2 (vcat [ pp fu | (fu,_) <- ins ]))
            Right ok -> pure ok
 
 instanceMapToList :: InstanceMap a -> [a]
@@ -59,8 +56,7 @@ singletonInstanceMap (FunInstance pis) a =
 
 -- | Merge two isntance maps.
 -- More specific instances shadow less specific ones.
-mergeInstanceMap ::
-  PP a => InstanceMap a -> InstanceMap a -> Either Doc (InstanceMap a)
+mergeInstanceMap :: InstanceMap a -> InstanceMap a -> Either Doc (InstanceMap a)
 mergeInstanceMap mp1 mp2 =
   case (mp1,mp2) of
     (InstanceMap opts1, InstanceMap opts2) ->

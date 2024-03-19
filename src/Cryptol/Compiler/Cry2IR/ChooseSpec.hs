@@ -2,12 +2,14 @@ module Cryptol.Compiler.Cry2IR.ChooseSpec (selectInstance) where
 
 import Data.Set(Set)
 import Data.Set qualified as Set
+import Data.List(transpose)
 import Data.Either(partitionEithers)
 import MonadLib
 
 import Cryptol.ModuleSystem.Name qualified as Cry
 import Cryptol.TypeCheck.Type qualified as Cry
 import Cryptol.TypeCheck.Solver.InfNat qualified as Cry
+import Cryptol.TypeCheck.Subst qualified as Cry
 
 import Cryptol.Compiler.Error(panic)
 import Cryptol.Compiler.PP
@@ -36,10 +38,10 @@ selectInstance ::
   Type          {- ^ And this is what we want to get -} ->
   ConvertM Call
 selectInstance f tyArgs tgtT =
-  do -- _ <- doIO (putStrLn "XXX")
-     instDB <- doCryC (M.getFun f)
+  do instDB <- doCryC (M.getFun f)
      let is = instanceMapToList instDB
-     targs <- mapM prepTArg tyArgs
+         forceMemSize = findMemSizeParams (map (irfnInstance . M.fiName) is)
+     targs <- zipWithM prepTArg forceMemSize tyArgs
      select is Nothing targs is
   where
   select is0 candidate targs is =
@@ -47,20 +49,24 @@ selectInstance f tyArgs tgtT =
       [] ->
         case candidate of
           Nothing ->
-            unsupported $ vcat
+            unsupported $ vcat $
                [ "Unsupported function instance:"
                , "Function:" <+> pp f
-               , "Type arguments:" <+> commaSep (map (either pp cryPP) targs)
+               , "Type arguments:" <+>
+                    withTypes (commaSep (map (cryPP . fst) targs))
                , "Target type:" <+> pp tgtT
-               ]
-          Just (c,_)  -> pure c
+               , "Available instances:"
+               ] ++ [ "  " <+> (pp (M.fiName fi) <+> "::"
+                                    $$ nest 2 (pp (M.fiType fi)))
+                    | fi <- is0 ]
+          Just ans -> doSelect ans
       i : more ->
         do mbYes <- matchFun i targs tgtT
            case mbYes of
              Nothing -> select is0 candidate targs more
-             Just this@(c,hint) ->
+             Just this@(_,_,hint) ->
                case hint of
-                 NoHint -> pure c
+                 NoHint -> doSelect this
                  _ ->
                     let newCandidate =
                           case candidate of
@@ -68,17 +74,53 @@ selectInstance f tyArgs tgtT =
                             Just other  -> pickBetter this other
                     in select is0 (Just newCandidate) targs more
 
-  prepTArg t =
-    case Cry.kindOf t of
-      Cry.KNum -> Left <$> compileStreamSizeType t
-      _        -> pure (Right t)
+  doSelect (c,sm,_) =
+    do mapM_ assumeSmall sm
+       pure c
 
-  pickBetter (h1,c1) (h2,c2) =
-    if betterHint h1 h2 then (h1,c1) else (h2,c2)
+  prepTArg mbSz t =
+    do trans <-
+         case Cry.kindOf t of
+           Cry.KNum ->
+             case mbSz of
+               Just force -> Just <$> compileStreamSizeType force t
+               Nothing    -> panic "selectInstance.preTArg" [ "Expected Just?"]
+           _ -> pure Nothing
+       pure (t, trans)
+
+  pickBetter (h1,sm1,c1) (h2,sm2,c2) =
+    if betterHint h1 h2 then (h1,sm1,c1) else (h2,sm2,c2)
 
   -- XXX: ????
   betterHint _ _ = False  -- we alwyas pick the first one.
 
+
+-- | Find type parameters that must be compiled using MemSize, because
+-- this what the function we are trying to call supports.
+findMemSizeParams :: [ FunInstance ] -> [ Maybe Bool ]
+findMemSizeParams fis =
+  map shouldForceSmall (transpose [ pis | FunInstance pis <- fis ])
+  where
+  shouldForceSmall xs =
+    case xs of
+      [] -> Just True
+      x : more ->
+        case x of
+          NumFixed sz ->
+            case sz of
+              Cry.Inf -> shouldForceSmall more
+              Cry.Nat n
+                | n >= maxSizeVal -> Just False
+                | otherwise       -> shouldForceSmall more
+          NumVar sz ->
+            case sz of
+              LargeSize -> Just False     -- Large size is an option
+              MemSize   -> shouldForceSmall more
+
+          -- Not numeric
+          TyBool        -> Nothing
+          TyNotBool     -> Nothing
+          TyAny         -> Nothing
 
 
 liftMaybe :: Maybe a -> M a
@@ -95,17 +137,19 @@ runMatch m =
 -- | Check if some concrete type arguments match a particular
 -- function instance.  Returns (type arguments, size arguments)
 matchFun ::
-  (FunName, FunType)           {- ^ Instance under consideration -} ->
-  [Either StreamSize Cry.Type] {- ^ Type parameters, numeric ones compiled-} ->
-  Type                         {- ^ Target type -} ->
-  ConvertM (Maybe (Call, RepHint))
+  M.FunIface                     {- ^ Instance under consideration -} ->
+  [(Cry.Type, Maybe StreamSize)] {- ^ Type parameters, numeric ones compiled-} ->
+  Type                           {- ^ Target type -} ->
+  ConvertM (Maybe (Call, [Cry.Type], RepHint))
   -- ^ Nothing if the instnace does not apply.
   -- Just (call,hint) if we can use the instance, the hint gives transformation
   -- we have to apply to the result if we use this instance.
 
-matchFun (f, funTy) tyArgs tgtT =
+matchFun fi tyArgs tgtT =
   runMatch
-  do let FunInstance pinfo = irfnInstance f
+  do let f = M.fiName fi
+         funTy = M.fiType fi
+     let FunInstance pinfo = irfnInstance f
      matchPs <- liftMaybe (zipWithM matchParamInfo pinfo tyArgs)
      let (nums, vals) = partitionEithers (concat matchPs)
      let numPs = ftSizeParams funTy
@@ -161,7 +205,11 @@ matchFun (f, funTy) tyArgs tgtT =
                   , ircResType  = apSubst finalSu (ftResult funTy)
                   , ircArgs     = []
                   }
-     pure (call, hint)
+
+     let asmps = M.fiSmall fi
+         crySu = Cry.listParamSubst (zip (M.asForall asmps) (map fst tyArgs))
+     let sm = map (Cry.apSubst crySu) (M.asSizes asmps)
+     pure (call, sm, hint)
 
 -- | Type parameters that appear as elements in other sequences.
 nestedTyParams :: Type -> Set Cry.TParam
@@ -186,44 +234,39 @@ nestedTyParams ty =
 -- | Numeric on the left
 matchParamInfo ::
   ParamInfo ->
-  Either StreamSize Cry.Type ->
+  (Cry.Type, Maybe StreamSize) ->
   Maybe [Either Size Cry.Type]
-matchParamInfo pinfo t =
+matchParamInfo pinfo (t,mbSz) =
   case pinfo of
 
     NumFixed Cry.Inf ->
-      case t of
-        Left IRInfSize -> pure []
+      case mbSz of
+        Just IRInfSize -> pure []
         _ -> Nothing
 
     NumFixed (Cry.Nat n) ->
-      case t of
-        Left (IRSize (IRFixedSize m)) | m == n -> pure []
+      case mbSz of
+        Just (IRSize (IRFixedSize m)) | m == n -> pure []
         _ -> Nothing
 
     NumVar need ->
-      case t of
-        Left (IRSize s) ->
-          let ok = pure [Left s]
-              haveSize = sizeTypeSize s
-          in if need == haveSize then ok else Nothing
-          -- XXX: Is there a problem here, because `sizeTypeSize` approximates?
+      case mbSz of
+        Just (IRSize s) ->
+          let haveSize = sizeTypeSize s
+          in if need == haveSize then pure [Left s] else Nothing
         _ -> Nothing
 
-    TyBool ->
-       case t of
-         Right ty | Cry.tIsBit ty -> pure []
-         _ -> Nothing
+    TyBool
+      | Nothing <- mbSz, Cry.tIsBit t -> pure []
+      | otherwise    -> Nothing
 
-    TyNotBool ->
-      case t of
-        Right ty | not (Cry.tIsBit ty) -> pure [Right ty]
-        _ -> Nothing
+    TyNotBool
+      | Nothing <- mbSz, not (Cry.tIsBit t) -> pure [Right t]
+      | otherwise -> Nothing
 
-    TyAny ->
-      case t of
-        Right ty -> pure [Right ty]
-        _ -> Nothing
+    TyAny
+      | Nothing <- mbSz -> pure [Right t]
+      | otherwise -> Nothing
 
 
 
@@ -232,7 +275,7 @@ matchParamInfo pinfo t =
 -- second one (ignoring size computations).  If the two can't be made to
 -- match exactly, but only differ in the representations of sequences,
 -- we also return a hint describing the cast from the 2nd argument to
--- the instantiate 1st argument.
+-- the instantiated 1st argument.
 matchType :: Type -> Type -> Maybe (RepHint, Subst)
 matchType patTy argTy =
   case patTy of

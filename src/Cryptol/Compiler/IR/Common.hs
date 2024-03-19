@@ -10,8 +10,8 @@ maxSizeVal = 2^(64::Int) - 1
 
 -- | The size of a numeric type parameter.
 data SizeVarSize =
-    MemSize         -- ^ value will fit in usize
-  | LargeSize       -- ^ value *is* large, use BigInt
+    MemSize             -- ^ value will fit in usize.
+  | LargeSize           -- ^ value may be large, use BigUInt.
     deriving (Eq,Ord,Show,Read)
 
 

@@ -50,7 +50,8 @@ compileTopDecl d =
 
          Cry.DPrim       ->
            do insts <- Spec.compileSchema cname (Cry.dSignature d)
-              pure [ Right (i,ty,IRFunPrim) | (i,ty,_allProps) <- insts ]
+              pure [ Right ((i,ty,IRFunPrim),M.noAssumeSmall)
+                   | (i,ty,_allProps) <- insts ]
 
          Cry.DExpr e ->
            do insts <- Spec.compileSchema cname (Cry.dSignature d)
@@ -58,9 +59,7 @@ compileTopDecl d =
               forM insts \(inst@(FunInstance pis),fty,allProps) ->
                 M.catchError $
                 C.runConvertM allProps
-                do -- C.doIO (putStrLn ("INST: " ++ show (cryPP (Cry.dName d) )++ " @ " ++ show (pp inst)))
-                   -- C.doIO (print (withTypes (pp fty)))
-                   let is = map (NameId . fst) xs
+                do let is = map (NameId . fst) xs
                    let (sizePs, knownTs) = knownPs as pis
                        su = Cry.listParamSubst knownTs
                        ibody = Cry.apSubst su body
@@ -77,12 +76,13 @@ compileTopDecl d =
      let isPrim def = case def of
                         IRFunPrim -> True
                         _         -> False
-         hasPrims = not (null [ () | (_,_,p) <- insts, isPrim p ])
+         hasPrims = not (null [ () | ((_,_,p),_) <- insts, isPrim p ])
      funame <- compileFunName hasPrims cname
 
      let decls = map (mkDecl funame) insts
+         mbMap :: Either Doc (InstanceMap (FunDecl, M.AssumeSmall))
          mbMap = instanceMapFromList
-                   [ (irfnInstance (irfName fd), fd) | fd <- decls ]
+                   [ (irfnInstance (irfName fd), (fd,sm)) | (fd,sm) <- decls ]
      case mbMap of
        Right a  -> M.addCompiled cname a
        Left err -> M.unsupported err
@@ -90,12 +90,14 @@ compileTopDecl d =
   where
   cname = Cry.dName d
 
-  mkDecl funame (i,ty,def) =
-    IRFunDecl
-      { irfName = IRFunName { irfnName = funame, irfnInstance = i }
-      , irfType = ty
-      , irfDef  = def
-      }
+  mkDecl funame ((i,ty,def),assumedSmall) =
+    ( IRFunDecl
+        { irfName = IRFunName { irfnName = funame, irfnInstance = i }
+        , irfType = ty
+        , irfDef  = def
+        }
+    , assumedSmall :: M.AssumeSmall
+    )
 
   compileFunName pr nm =
     do mb <- M.isPrimDecl nm
@@ -455,7 +457,7 @@ compileComprehension elT tgtT res mss =
   doMatch m =
     case m of
       Cry.From x len ty gen ->
-        do lenTy   <- T.compileStreamSizeType len
+        do lenTy   <- T.compileStreamSizeType True len
            locElTy <- T.compileValType ty
            it      <- compileExpr gen (TStream lenTy locElTy)
            let name = IRName (NameId x) locElTy
@@ -473,6 +475,7 @@ compileLocalDeclGroups dgs k =
 
 compileLocalDeclGroup :: Cry.DeclGroup -> C.ConvertM Expr -> C.ConvertM Expr
 compileLocalDeclGroup dg k =
+
   case dg of
     Cry.Recursive ds ->
       case isRecValueGroup ds of
@@ -633,7 +636,7 @@ compileRecStream x def =
      case mb of
        Just (front,_back,ty,xs,ys)
          | isExtern xs ->
-           do len  <- T.compileSizeType front
+           do len  <- T.compileSizeType True front
               maxHist <- case isKnownSize len of
                            Just n -> pure n
                            Nothing ->
@@ -681,7 +684,7 @@ compileRecStream x def =
            (rexpr,histOrExt) <-
               if isExtern expr
                 then
-                  do extLen      <- T.compileStreamSizeType len
+                  do extLen      <- T.compileStreamSizeType True len
                      (extN,extE) <- doExternGen extLen rty expr
                      let val = callPrim Head [ IRExpr (IRVar extN) ] rty
                      pure (val, Just (extN,extE))
@@ -717,7 +720,7 @@ compileRecStream x def =
            case mb of
              Nothing -> C.unsupported "only `drop` in rec. gen."
              Just (amt,e1) ->
-               do iamt <- T.compileSizeType amt
+               do iamt <- T.compileSizeType True amt
                   case isKnownSize iamt of
                     Just i -> doRecGen elTy (n - i) e1
                     Nothing ->
@@ -818,7 +821,7 @@ compileRecursiveStreams defs k =
 
   where
   getName eqn =
-    do len  <- T.compileStreamSizeType (ceqLen eqn)
+    do len  <- T.compileStreamSizeType True (ceqLen eqn)
        elTy <- T.compileValType (ceqElTy eqn)
        let nm = ceqName eqn
        pure (nm, ceqTy eqn, IRName (NameId nm) (TStream len elTy))
